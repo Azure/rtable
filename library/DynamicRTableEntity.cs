@@ -34,49 +34,49 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // Read RTable meta data
             try
             {
-                RowLock = (bool)prop["RowLock"].BooleanValue; prop.Remove("RowLock");
+                _rtable_RowLock = (bool)prop["_rtable_RowLock"].BooleanValue; prop.Remove("_rtable_RowLock");
             }
             catch (KeyNotFoundException)
             {                          
             }
             try
             {
-                Version = (long)prop["Version"].Int64Value; prop.Remove("Version");
+                _rtable_Version = (long)prop["_rtable_Version"].Int64Value; prop.Remove("_rtable_Version");
             }
             catch (KeyNotFoundException)
             {
             }
             try
             {
-                Tombstone = (bool)prop["Tombstone"].BooleanValue; prop.Remove("Tombstone");
+                _rtable_Tombstone = (bool)prop["_rtable_Tombstone"].BooleanValue; prop.Remove("_rtable_Tombstone");
             }
             catch (KeyNotFoundException)
             {
             }
             try
             {
-                ViewId = (long)prop["ViewId"].Int64Value; prop.Remove("ViewId");
+                _rtable_ViewId = (long)prop["_rtable_ViewId"].Int64Value; prop.Remove("_rtable_ViewId");
             }
             catch (KeyNotFoundException)
             {
             }
             try
             {
-                Operation = (string)prop["Operation"].StringValue; prop.Remove("Operation");
+                _rtable_Operation = (string)prop["_rtable_Operation"].StringValue; prop.Remove("_rtable_Operation");
             }
             catch (KeyNotFoundException)
             {
             }
             try
             {
-                BatchId = (Guid)prop["BatchId"].GuidValue; prop.Remove("BatchId");
+                _rtable_BatchId = (Guid)prop["_rtable_BatchId"].GuidValue; prop.Remove("_rtable_BatchId");
             }
             catch (KeyNotFoundException)
             {
             }
             try
             {
-                LockAcquisition = (DateTimeOffset)prop["LockAcquisition"].DateTimeOffsetValue; prop.Remove("LockAcquisition");
+                _rtable_LockAcquisition = (DateTimeOffset)prop["_rtable_LockAcquisition"].DateTimeOffsetValue; prop.Remove("_rtable_LockAcquisition");
             }
             catch (KeyNotFoundException)
             {
@@ -94,7 +94,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             : base()
         {
             this.Properties = new Dictionary<string, EntityProperty>();
-            this.Operation = RTable.GetTableOperation(TableOperationType.Insert);
+            this._rtable_Operation = RTable.GetTableOperation(TableOperationType.Insert);
         }
 
         /// <summary>
@@ -170,13 +170,13 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             Dictionary<string, EntityProperty> prop = new Dictionary<string, EntityProperty>(properties);
 
             // Read RTable meta data
-            RowLock = (bool)prop["RowLock"].BooleanValue; prop.Remove("RowLock");
-            Version = (long)prop["Version"].Int64Value; prop.Remove("Version");
-            Tombstone = (bool)prop["Tombstone"].BooleanValue; prop.Remove("Tombstone");
-            ViewId = (long)prop["ViewId"].Int64Value; prop.Remove("ViewId");
-            Operation = (string)prop["Operation"].StringValue; prop.Remove("Operation");
-            BatchId = (Guid)prop["BatchId"].GuidValue; prop.Remove("BatchId");
-            LockAcquisition = (DateTimeOffset)prop["LockAcquisition"].DateTimeOffsetValue; prop.Remove("LockAcquisition");
+            _rtable_RowLock = (bool)prop["_rtable_RowLock"].BooleanValue; prop.Remove("_rtable_RowLock");
+            _rtable_Version = (long)prop["_rtable_Version"].Int64Value; prop.Remove("_rtable_Version");
+            _rtable_Tombstone = (bool)prop["_rtable_Tombstone"].BooleanValue; prop.Remove("_rtable_Tombstone");
+            _rtable_ViewId = (long)prop["_rtable_ViewId"].Int64Value; prop.Remove("_rtable_ViewId");
+            _rtable_Operation = (string)prop["_rtable_Operation"].StringValue; prop.Remove("_rtable_Operation");
+            _rtable_BatchId = (Guid)prop["_rtable_BatchId"].GuidValue; prop.Remove("_rtable_BatchId");
+            _rtable_LockAcquisition = (DateTimeOffset)prop["_rtable_LockAcquisition"].DateTimeOffsetValue; prop.Remove("_rtable_LockAcquisition");
             Properties = prop;
         }
 
@@ -190,13 +190,13 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // Write RTable meta data
             Dictionary<string, EntityProperty> prop = new Dictionary<string, EntityProperty>(Properties);
 
-            prop.Add("RowLock", new EntityProperty((bool?)RowLock));
-            prop.Add("Version", new EntityProperty((long?)Version));
-            prop.Add("Tombstone", new EntityProperty((bool?)Tombstone));
-            prop.Add("ViewId", new EntityProperty((long?)ViewId));
-            prop.Add("Operation", new EntityProperty((string)Operation));
-            prop.Add("BatchId", new EntityProperty((Guid?)BatchId));
-            prop.Add("LockAcquisition", new EntityProperty((DateTimeOffset)LockAcquisition));
+            prop.Add("_rtable_RowLock", new EntityProperty((bool?)_rtable_RowLock));
+            prop.Add("_rtable_Version", new EntityProperty((long?)_rtable_Version));
+            prop.Add("_rtable_Tombstone", new EntityProperty((bool?)_rtable_Tombstone));
+            prop.Add("_rtable_ViewId", new EntityProperty((long?)_rtable_ViewId));
+            prop.Add("_rtable_Operation", new EntityProperty((string)_rtable_Operation));
+            prop.Add("_rtable_BatchId", new EntityProperty((Guid?)_rtable_BatchId));
+            prop.Add("_rtable_LockAcquisition", new EntityProperty((DateTimeOffset)_rtable_LockAcquisition));
 
             return prop;
         }

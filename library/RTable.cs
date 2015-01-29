@@ -297,8 +297,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
         /// <summary>
         /// Transform an operation in a batch before executing it on RTable.
-        /// If row.RowLock == true (i.e. Prepare phase) or tailIndex, and if it is not an Insert operation,
-        /// this function will retrieve the row from the specified replica and increment row.Version.
+        /// If row._rtable_RowLock == true (i.e. Prepare phase) or tailIndex, and if it is not an Insert operation,
+        /// this function will retrieve the row from the specified replica and increment row._rtable_Version.
         /// Finally, (does not matter whether it is in Prepare or Commit phase), create and return an appropriate TableOperation.
         /// The caller of this function will then create a TableBatchOperation based on the return value of this function.
         /// </summary>
@@ -313,17 +313,17 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         {
             int tailIndex = CurrentView.Chain.Count - 1;
 
-            if ((row.RowLock == true) || (index == tailIndex))
+            if ((row._rtable_RowLock == true) || (index == tailIndex))
             {
                 // Here is the transformation we do on the operation for the prepare phase of non-tail replicas
                 //  or the commit phase for the tail replica.
 
-                if (row.Operation != GetTableOperation(TableOperationType.Insert))
+                if (row._rtable_Operation != GetTableOperation(TableOperationType.Insert))
                 {
 
                     // If it is InsertOrReplace or InsertOrMerge, then we do not have to check the etag.
-                    bool checkETag = ((row.Operation == GetTableOperation(TableOperationType.InsertOrReplace)) ||
-                                      (row.Operation == GetTableOperation(TableOperationType.InsertOrMerge)))
+                    bool checkETag = ((row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrReplace)) ||
+                                      (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrMerge)))
                         ? false
                         : true;
 
@@ -348,21 +348,21 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                         }
 
                         // Check if vertual Etag matches at the head replica. We don't need to match it every replica.
-                        if ((row.ETag != currentRow.Version.ToString()) && (index == 0))
+                        if ((row.ETag != currentRow._rtable_Version.ToString()) && (index == 0))
                         {
                             // Return the error code that Etag does not match with the input ETag
-                            Console.WriteLine("TransformOp(): Etag does not match. row.ETag ({0}) != currentRow.Version ({1})\n",
-                                row.ETag, currentRow.Version);
+                            Console.WriteLine("TransformOp(): Etag does not match. row.ETag ({0}) != currentRow._rtable_Version ({1})\n",
+                                row.ETag, currentRow._rtable_Version);
                             return null;
                         }
                     }
 
                     if (currentRow != null)
                     {
-                        // Set appropriate values in ETag and Version for merge, delete, replace,
+                        // Set appropriate values in ETag and _rtable_Version for merge, delete, replace,
                         // insertormerge, insertorreplace
                         row.ETag = retrievedResult.Etag;
-                        row.Version = currentRow.Version + 1;
+                        row._rtable_Version = currentRow._rtable_Version + 1;
                     }
                     else
                     {
@@ -373,23 +373,23 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
 
 
-            if ((row.Tombstone == true) && (phase == COMMIT_PHASE))
+            if ((row._rtable_Tombstone == true) && (phase == COMMIT_PHASE))
             {
                 // In the commit phase, we delete the rows if tombstones are set in the prepare phase
                 return TableOperation.Delete(row);
             }
-            else if ((row.Operation == GetTableOperation(TableOperationType.Delete)) && (phase == PREPARE_PHASE))
+            else if ((row._rtable_Operation == GetTableOperation(TableOperationType.Delete)) && (phase == PREPARE_PHASE))
             {
                 // In the prepare phase, we replace the rows with tombstones for delete operations
-                row.Tombstone = true;
+                row._rtable_Tombstone = true;
                 return TableOperation.Replace(row);
             }
             else if (
-                (row.Operation == GetTableOperation(TableOperationType.Replace))
+                (row._rtable_Operation == GetTableOperation(TableOperationType.Replace))
                 ||
-                (((row.Operation == GetTableOperation(TableOperationType.Insert)) ||
-                (row.Operation == GetTableOperation(TableOperationType.InsertOrMerge)) ||
-                (row.Operation == GetTableOperation(TableOperationType.InsertOrReplace)))
+                (((row._rtable_Operation == GetTableOperation(TableOperationType.Insert)) ||
+                (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrMerge)) ||
+                (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrReplace)))
                 && (phase == COMMIT_PHASE) && (index != tailIndex))
                 )
             {
@@ -397,21 +397,21 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 // for non-tail replicas.
                 return TableOperation.Replace(row);
             }
-            else if (row.Operation == GetTableOperation(TableOperationType.Merge))
+            else if (row._rtable_Operation == GetTableOperation(TableOperationType.Merge))
             {
                 // We use merge in both phases
                 return TableOperation.Merge(row);
             }
-            else if (row.Operation == GetTableOperation(TableOperationType.Insert))
+            else if (row._rtable_Operation == GetTableOperation(TableOperationType.Insert))
             {
                 // We insert in the prepare phase for non-tail replicas and during the commit phase at the tail replica
                 return TableOperation.Insert(row);
             }
-            else if (row.Operation == GetTableOperation(TableOperationType.InsertOrReplace))
+            else if (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrReplace))
             {
                 return TableOperation.InsertOrReplace(row);
             }
-            else if (row.Operation == GetTableOperation(TableOperationType.InsertOrMerge))
+            else if (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrMerge))
             {
                 return TableOperation.InsertOrMerge(row);
             }
@@ -480,15 +480,15 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 if (phase == PREPARE_PHASE)
                 {
                     // Initialize the operation in the prepare/lock phase
-                    row.Operation = GetTableOperation(opType);
-                    row.RowLock = true;
-                    row.LockAcquisition = DateTime.UtcNow;
-                    row.Tombstone = false;
-                    row.ViewId = CurrentView.ViewId;
-                    row.Version = 0;
+                    row._rtable_Operation = GetTableOperation(opType);
+                    row._rtable_RowLock = true;
+                    row._rtable_LockAcquisition = DateTime.UtcNow;
+                    row._rtable_Tombstone = false;
+                    row._rtable_ViewId = CurrentView.ViewId;
+                    row._rtable_Version = 0;
                     // Warning: We do not do a sanity check to check for Guid collisions, which should be very unlikely.
                     //          It may be better to check for safety but involves a round trip to the server.
-                    row.BatchId = Guid.NewGuid();
+                    row._rtable_BatchId = Guid.NewGuid();
 
                     if ((prepOp = TransformOp(row, phase, index, requestOptions, operationContext)) == null)
                     {
@@ -505,7 +505,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     {
                         return null;
                     }
-                    row.RowLock = false;
+                    row._rtable_RowLock = false;
 
                     if ((prepOp = TransformOp(row, phase, index, requestOptions, operationContext)) == null)
                     {
@@ -545,7 +545,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
 
                 TableOperationType opType;
-                TableOperationType.TryParse(row.Operation, out opType);
+                TableOperationType.TryParse(row._rtable_Operation, out opType);
 
                 switch (opType)
                 {
@@ -572,12 +572,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 // 2. Virtualize etags in the results as well as request (etags include physical etags in the batch after their execution).
                 if (phase == PREPARE_PHASE)
                 {
-                    long version = row.Version - 1;
+                    long version = row._rtable_Version - 1;
                     row.ETag = version.ToString(); // set it back to the prev version
                 }
                 else
                 {
-                    row.ETag = row.Version.ToString();
+                    row.ETag = row._rtable_Version.ToString();
                     result.Etag = row.ETag;
                 }
             }
@@ -659,9 +659,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 {
                     IRTableEntity currentRow = (IRTableEntity)(retrievedResult.Result);                  
 
-                    if (currentRow.RowLock == true)
+                    if (currentRow._rtable_RowLock == true)
                     {
-                        if (DateTime.UtcNow >= currentRow.LockAcquisition + rTableConfigurationService.LockTimeout)
+                        if (DateTime.UtcNow >= currentRow._rtable_LockAcquisition + rTableConfigurationService.LockTimeout)
                         {
                             try
                             {
@@ -796,27 +796,35 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult Retrieve(TableOperation operation, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            // Read from any (random) replica in the current view 
-            // If the lock bit is set after reading, retrieve from the tail replica.
-            // The tail replica is guaranteed to have the latest committed version.
-            int index = random.Next(0, CurrentView.Chain.Count);
+            // The tail replica is guaranteed to have the latest committed version. 
+            // The tail replica is usually configured to be the closest one, so always go there. This policy optimizes
+            // for latency. If read load balancing across replicas is desired, then choose a random replica and read if lock bit is 0.
             int tailIndex = CurrentView.Chain.Count - 1;
+            int index = tailIndex;
+            
             TableResult retrievedResult = null;
 
+
+            //The current read algorithm is as follows:
+            //  1. Try read from tail, since tail always has committed data
+            //  2. If above succeeds, return the result
+            //  2. If read at tail fails, then traverse the chain in reverse from tail to readHeadIndex. The first replica that 
+            //     can be reached and whose rowLock = false has the committed data. If no such replica exists we fail the read
             while (true)
             {
                 retrievedResult = RetrieveFromReplica(operation, index, requestOptions, operationContext);
 
                 if (retrievedResult == null)
                 {
-                    if (index == tailIndex)
+                    //If we attempted at the read head and still failed, we just fail the request
+                    if (index == CurrentView.ReadHeadIndex)
                     {
-                        // Throw an exception if we cannot reach the tail replica
-                        throw new Exception("Cannot reach the tail replica.");
+                        throw new Exception("Read failed at all replicas in the read view");
                     }
 
-                    // If it failed trying to read from a non-tail replica, then try the tail replica
-                    index = tailIndex;
+                    // If it failed trying to read from a replica other than the read head, 
+                    // try the replica previous to index
+                    index--;
                     continue;
                 }
 
@@ -842,25 +850,23 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 }
                 else
                 {
-                    // Throw an exception if we cannot reach the tail replica
-                    throw new Exception(
-                        "Illegal entity type used in RTable. Use TableOperation.Retrieve<T> with proper entity type T. ");
                 }
 
-                if (index != tailIndex && currentRow.RowLock)
+                if (index != tailIndex && currentRow != null && currentRow._rtable_RowLock)
                 {
-                    index = tailIndex;
-                    continue;
+                    //Since we always try the tail first, if we are here, it means all replicas from index to readHeadIndex
+                    //will also have the rowLock as true and hence we can just fail the read at this point
+                    throw new Exception("Read failed at all replicas");
                 }
 
                 // if the entry has a tombstone set, don't return it.
-                if (currentRow.Tombstone)
+                if (currentRow != null && currentRow._rtable_Tombstone)
                 {
                     return null;
                 }
 
                 // We read a committed value. return it after virtualizing the ETag
-                retrievedResult.Etag = currentRow.Version.ToString();
+                retrievedResult.Etag = currentRow._rtable_Version.ToString();
                 IRTableEntity row = (IRTableEntity) retrievedResult.Result;
                 row.ETag = retrievedResult.Etag;
 
@@ -875,12 +881,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             OperationContext operationContext = null)
         {
             IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
-            row.Operation = GetTableOperation(TableOperationType.Delete);
+            row._rtable_Operation = GetTableOperation(TableOperationType.Delete);
             TableOperation top;
 
-            // Delete() = Replace() with "Tombstone = true", rows are deleted in the commit phase 
+            // Delete() = Replace() with "_rtable_Tombstone = true", rows are deleted in the commit phase 
             // after they are replaced with tombstones in the prepare phase.
-            row.Tombstone = true;
+            row._rtable_Tombstone = true;
             top = TableOperation.Replace(row);
             return Replace(top, null, requestOptions, operationContext);
         }
@@ -894,8 +900,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         {
             IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
             TableResult result;
-            bool checkETag = (row.Operation == GetTableOperation(TableOperationType.InsertOrMerge)) ? false : true;
-            row.Operation = GetTableOperation(TableOperationType.Merge);
+            bool checkETag = (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrMerge)) ? false : true;
+            row._rtable_Operation = GetTableOperation(TableOperationType.Merge);
 
             if (retrievedResult == null)
             {
@@ -913,11 +919,11 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 // Row is present at the replica
                 // Merge the row
                 RTableEntity currentRow = (RTableEntity) (retrievedResult.Result);
-                if (checkETag && (row.ETag != (currentRow.Version.ToString())))
+                if (checkETag && (row.ETag != (currentRow._rtable_Version.ToString())))
                 {
                     // Return the error code that Etag does not match with the input ETag
-                    Console.WriteLine("Merge: ETag mismatch. row.ETag ({0}) != currentRow.Version ({1})",
-                        row.ETag, currentRow.Version);
+                    Console.WriteLine("Merge: ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
+                        row.ETag, currentRow._rtable_Version);
                     return new TableResult()
                     {
                         Result = null,
@@ -928,11 +934,11 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 
                 CloudTableClient tableClient = CurrentView[0];
                 row.ETag = retrievedResult.Etag;
-                row.RowLock = true;
-                row.LockAcquisition = DateTime.UtcNow;
-                row.Tombstone = false;
-                row.Version = currentRow.Version + 1;
-                row.ViewId = CurrentView.ViewId;
+                row._rtable_RowLock = true;
+                row._rtable_LockAcquisition = DateTime.UtcNow;
+                row._rtable_Tombstone = false;
+                row._rtable_Version = currentRow._rtable_Version + 1;
+                row._rtable_ViewId = CurrentView.ViewId;
 
                 // Lock the head first by inserting the row
                 if (((result = UpdateOrDeleteRow(tableClient, row)) == null) ||
@@ -965,7 +971,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 else
                 {
                     // Success. Virtualize Etag before returning the result
-                    result.Etag = row.Version.ToString();
+                    result.Etag = row._rtable_Version.ToString();
                     row.ETag = result.Etag;
                 }
 
@@ -980,7 +986,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             OperationContext operationContext = null)
         {
             IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
-            row.Operation = GetTableOperation(TableOperationType.InsertOrMerge);
+            row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrMerge);
             TableOperation top = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
             TableResult retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
 
@@ -1009,15 +1015,15 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
             TableResult result;
 
-            bool checkETag = (row.Operation != GetTableOperation(TableOperationType.InsertOrReplace));
+            bool checkETag = (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace));
 
             // If it's called by the delete operation do not set the tombstone
-            if (row.Operation != GetTableOperation(TableOperationType.Delete))
+            if (row._rtable_Operation != GetTableOperation(TableOperationType.Delete))
             {
-                row.Tombstone = false;
+                row._rtable_Tombstone = false;
             }
 
-            row.Operation = GetTableOperation(TableOperationType.Replace);
+            row._rtable_Operation = GetTableOperation(TableOperationType.Replace);
 
             if (retrievedResult == null)
             {
@@ -1032,18 +1038,18 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
             {
                 // Row is not present, return appropriate error code
-                Console.WriteLine("Insert: Row is not present ");
-                return new TableResult() {Result = null, Etag = null, HttpStatusCode = (int) HttpStatusCode.NotFound};
+                Console.WriteLine("Replace: Row is not present. ParitionKey={0} RowKey={1}", row.PartitionKey, row.RowKey);
+                return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound }; 
             }
 
             // Row is present at the replica
             // Replace the row 
             RTableEntity currentRow = (RTableEntity) (retrievedResult.Result);
-            if (checkETag && (row.ETag != (currentRow.Version.ToString())))
+            if (checkETag && (row.ETag != (currentRow._rtable_Version.ToString())))
             {
                 // Return the error code that Etag does not match with the input ETag
-                Console.WriteLine("Replace: Row is not present at the head. ETag mismatch. row.ETag ({0}) != currentRow.Version ({1})",
-                    row.ETag, currentRow.Version);
+                Console.WriteLine("Replace: Row is not present at the head. ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
+                    row.ETag, currentRow._rtable_Version);
                 return new TableResult()
                 {
                     Result = null,
@@ -1054,10 +1060,10 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             CloudTableClient tableClient = CurrentView[0];
             row.ETag = retrievedResult.Etag;
-            row.RowLock = true;
-            row.LockAcquisition = DateTime.UtcNow;
-            row.Version = currentRow.Version + 1;
-            row.ViewId = CurrentView.ViewId;
+            row._rtable_RowLock = true;
+            row._rtable_LockAcquisition = DateTime.UtcNow;
+            row._rtable_Version = currentRow._rtable_Version + 1;
+            row._rtable_ViewId = CurrentView.ViewId;
 
             // Lock the head first by inserting the row
             if (((result = UpdateOrDeleteRow(tableClient, row)) == null) ||
@@ -1089,7 +1095,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
 
             // Success. Virtualize Etag before returning the result
-            result.Etag = row.Version.ToString();
+            result.Etag = row._rtable_Version.ToString();
             row.ETag = result.Etag;
 
             return result;
@@ -1103,13 +1109,13 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
             IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
-            row.Operation = GetTableOperation(TableOperationType.Insert);
+            row._rtable_Operation = GetTableOperation(TableOperationType.Insert);
             TableResult result;
             string[] eTagStrings = new string[CurrentView.Chain.Count];
             
             if (retrievedResult == null)
             {
-                // In case the entry in Head account has RowLock=true
+                // In case the entry in Head account has _rtable_RowLock=true
                 retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
                 if (retrievedResult == null)
                 {
@@ -1122,12 +1128,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             // insert a tombstone first. we insert it without a lock since insert will detect conflict anyway.
             DynamicRTableEntity tsRow = new DynamicRTableEntity(row.PartitionKey, row.RowKey);
-            tsRow.RowLock = true;
-            tsRow.LockAcquisition = DateTime.UtcNow;
-            tsRow.ViewId = CurrentView.ViewId;
-            tsRow.Version = 0;
-            tsRow.Tombstone = true;
-            tsRow.Operation = GetTableOperation(TableOperationType.Insert);
+            tsRow._rtable_RowLock = true;
+            tsRow._rtable_LockAcquisition = DateTime.UtcNow;
+            tsRow._rtable_ViewId = CurrentView.ViewId;
+            tsRow._rtable_Version = 0;
+            tsRow._rtable_Tombstone = true;
+            tsRow._rtable_Operation = GetTableOperation(TableOperationType.Insert);
 
             // Lock the head first by inserting the row
             if ((result = InsertRow(headTableClient, tsRow)) == null)
@@ -1135,11 +1141,11 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 Console.WriteLine("Insert: Failed to insert at the head.");
                 return null;
             }
-
+            
             // insert must return the contents of the row
             if (result.HttpStatusCode != (int) HttpStatusCode.Created &&
                 result.HttpStatusCode != (int) HttpStatusCode.NoContent)
-            {
+            {                
                 Console.WriteLine("Insert: Failed to insert at the head with HttpStatusCode = {0}", result.HttpStatusCode);
                 return new TableResult()
                 {
@@ -1163,7 +1169,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
 
             // now replace the row with version 0 in RTable and return the result
-            row.ETag = tsRow.Version.ToString();
+            row.ETag = tsRow._rtable_Version.ToString();
             return Replace(TableOperation.Replace(row), retrievedResult, requestOptions, operationContext);
         }
 
@@ -1174,7 +1180,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             OperationContext operationContext = null)
         {
             IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
-            row.Operation = GetTableOperation(TableOperationType.InsertOrReplace);
+            row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrReplace);
             TableOperation top = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
             TableResult retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
 
@@ -1199,7 +1205,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         {
             // Retrieve from the head
             TableResult result = null;
-            int headIndex = 0;
+            int headIndex = 0; 
 
             TableResult retrievedResult = null;
             if (this.rTableConfigurationService.ConvertXStoreTableMode)
@@ -1225,24 +1231,89 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
                 };
             }
-            else if (retrievedResult.Result == null)
+            else if (retrievedResult.Result == null || retrievedResult.HttpStatusCode == (int)HttpStatusCode.NotFound)
             {
-                // Row may not have been present, return the error code 
-                result = retrievedResult;
+                if (CurrentView.ReadHeadIndex == 0)
+                {
+                    // Row may not have been present, return the error code 
+                    result = retrievedResult;
+                }
+
+                // We just added a Head Replica (i.e. CurrentView.ReadHeadIndex != 0), 
+                // It is possible that to get NotFound (i.e., entry is not in Head Replica). 
+                // Call RepairRow() to repair it.
+                Console.WriteLine("FlushAndRetrieve(): Row is not present at Head Replica. Calling RepairRow(). ParitionKey={0} RowKey={1}", 
+                    row.PartitionKey, row.RowKey);
+                TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
+                if (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK
+                    && repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.NoContent)
+                {
+                    Console.WriteLine("FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}", 
+                        repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
+                    return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
+                }
+                else
+                {
+                    // RepairRow() works. Return Conflict so that caller can retry the original API again.
+                    Console.WriteLine("FlushAndRetrieve(): RepairRow() returned expected StatusCode {0}. ParitionKey={1} RowKey={2}", 
+                        repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
+                    return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.Conflict };
+                }
             }
             else if (retrievedResult.HttpStatusCode == (int) HttpStatusCode.OK)
             {
-                IRTableEntity readRow = (IRTableEntity) retrievedResult.Result;                
+                IRTableEntity readRow = (IRTableEntity) retrievedResult.Result;
+
+                if (CurrentView.ReadHeadIndex != 0)
+                {
+                    // We just added a Head Replica. If the entry in Tail Replica has a later (larger) version than the entry in Head Replica, 
+                    // it means the entry in the Head Replica is stale. Repair the row.
+                    // Entity in Tail Replica = "row" (input to FlushAndRetrieve())
+                    // Entity in Head Replica = "readRow"
+
+                    if (row._rtable_Version > 0 && row._rtable_Version < readRow._rtable_Version)
+                    {
+                        Console.WriteLine("FlushAndRetrieve(): Something is Really Wrong. (Tail) row._rtable_Version ({0}) < (Head) readRow._rtable_Version ({1})",
+                                row._rtable_Version, readRow._rtable_Version);
+                        return new TableResult()
+                        {
+                            Result = null,
+                            Etag = null,
+                            HttpStatusCode = (int)HttpStatusCode.NotFound
+                        };
+                    }
+                    if ((row._rtable_Version > readRow._rtable_Version)
+                        || (row._rtable_Version == 0 && readRow._rtable_Version > 0))
+                    {
+                        Console.WriteLine("FlushAndRetrieve(): Calling RepairRow(). (Tail) row._rtable_Version ({0}) > (Head) readRow._rtable_Version ({1}) OR row._rtable_Version == 0",
+                                row._rtable_Version, readRow._rtable_Version);
+                        TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
+                        if (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK
+                            && repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.NoContent)
+                        {
+                            Console.WriteLine("FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}",
+                                repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
+                            return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
+                        }
+                        else
+                        {
+                            // RepairRow() worked. Return Conflict so that caller can retry the original API.
+                            Console.WriteLine("FlushAndRetrieve(): RepairRow() returned expected StatusCode {0}. ParitionKey={1} RowKey={2}",
+                                repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
+                            return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.Conflict };
+                        }
+                    }
+                }
 
                 // If it is not committed, either:
                 // (1) (Lock expired) flush the row to other replicas, commit it, and return the result.
                 // Or (2) (Lock not expired) return a Conflict so that the caller can try again later,
-                if (readRow.RowLock == true)
+                if (readRow._rtable_RowLock == true)
                 {
-                    if (DateTime.UtcNow >= readRow.LockAcquisition + rTableConfigurationService.LockTimeout)
+                    if (DateTime.UtcNow >= readRow._rtable_LockAcquisition + rTableConfigurationService.LockTimeout)
                     {
-                        Console.WriteLine("FlushAndRetrieve(): RowLock has expired. So, calling Flush2PC(). LockAcquisition={0} CurrentTime={1}",
-                            readRow.LockAcquisition, DateTime.UtcNow);
+                        Console.WriteLine("FlushAndRetrieve(): _rtable_RowLock has expired. So, calling Flush2PC(). _rtable_LockAcquisition={0} CurrentTime={1}",
+                            readRow._rtable_LockAcquisition, DateTime.UtcNow);
 
                         // The entity was locked by a different client a long time ago, so flush it.
                         
@@ -1252,14 +1323,14 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                         {
                             // If flush is successful, return the result from the head.
                             result = retrievedResult;
-                            if (virtualizeEtag) result.Etag = readRow.Version.ToString();
+                            if (virtualizeEtag) result.Etag = readRow._rtable_Version.ToString();
                         }
                     }
                     else
                     {
                         // The entity was locked by a different client recently. Return conflict so that the caller can retry.
-                        Console.WriteLine("FlushAndRetrieve(): Row is locked. LockAcquisition={0} CurrentTime={1} timeout={2}", 
-                            readRow.LockAcquisition, DateTime.UtcNow, rTableConfigurationService.LockTimeout);
+                        Console.WriteLine("FlushAndRetrieve(): Row is locked. _rtable_LockAcquisition={0} CurrentTime={1} timeout={2}", 
+                            readRow._rtable_LockAcquisition, DateTime.UtcNow, rTableConfigurationService.LockTimeout);
                         result = new TableResult()
                         {
                             Result = null,
@@ -1272,7 +1343,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 {
                     // It is already committed, return the retrieved result from the head
                     result = retrievedResult;
-                    if (virtualizeEtag) result.Etag = readRow.Version.ToString();
+                    if (virtualizeEtag) result.Etag = readRow._rtable_Version.ToString();
                 }
             }
 
@@ -1325,12 +1396,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             if (retrievedResult != null)
             {
                 IRTableEntity readRow = (IRTableEntity)(retrievedResult.Result);
-                if (readRow != null && this.CurrentView != null && this.CurrentView.ViewId < readRow.ViewId)
+                if (readRow != null && this.CurrentView != null && this.CurrentView.ViewId < readRow._rtable_ViewId)
                 {
                     throw new RTableStaleViewException(
-                        string.Format("current ViewId {0} is smaller than ViewId of existing row {1}",
+                        string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}",
                         this.CurrentView.ViewId.ToString(),
-                        readRow.ViewId));
+                        readRow._rtable_ViewId));
                 }
             }
             
@@ -1394,11 +1465,11 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // COMMIT PHASE: Commits the replicas in the reverse order starting from the tail replica
             for (int index = CurrentView.TailIndex; index >= 0; index--)
             {
-                row.RowLock = false;
+                row._rtable_RowLock = false;
                 result = InsertUpdateOrDeleteRow(row, index, eTagStrings[index], requestOptions, operationContext);
 
                 // It is possible that UpdateInsertOrDeleteRow() returns result.Result = null
-                // It happens when the Head entry is Tombstone and the Tail entry is gone already.
+                // It happens when the Head entry is _rtable_Tombstone and the Tail entry is gone already.
                 // So, just check for "result == null" and return error
                 if (result == null)
                 {
@@ -1439,7 +1510,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 return UpdateOrDeleteRow(tableClient, row);
             }
 
-            if (row.Operation == GetTableOperation(TableOperationType.Insert))
+            if (row._rtable_Operation == GetTableOperation(TableOperationType.Insert))
             {
                 // if the operation is insert and it is in the prepare phase, just insert the data
                 return InsertRow(tableClient, row);
@@ -1471,7 +1542,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 // **Except** when the row is being deleted
                 // during recovery by another client, the operation type might not be delete, 
                 // check for the presence of tombstone during commit phase
-                if (row.Operation == GetTableOperation(TableOperationType.Delete) || (row.Tombstone && row.RowLock == false))
+                if (row._rtable_Operation == GetTableOperation(TableOperationType.Delete) || (row._rtable_Tombstone && row._rtable_RowLock == false))
                 {
                     return retrievedResult;
                 }
@@ -1524,13 +1595,13 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             try
             {
                 CloudTable table = tableClient.GetTableReference(tableName);
-                if ((row.Tombstone == true) && (row.RowLock == false))
+                if ((row._rtable_Tombstone == true) && (row._rtable_RowLock == false))
                 {                    
                     // For delete operations, call the delete operation if it is being committed
                     TableOperation top = TableOperation.Delete(row);
                     return table.Execute(top);
                 }
-                else if (row.Operation == GetTableOperation(TableOperationType.Merge))
+                else if (row._rtable_Operation == GetTableOperation(TableOperationType.Merge))
                 {
                     // For Merge operations, call merge row for both phases
                     TableOperation top = TableOperation.Merge(row);
@@ -1544,7 +1615,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
             catch (Exception e)
             {
-                Console.WriteLine("TryWriteConditionalRow:Error: exception {0}", e);
+                Console.WriteLine("UpdateOrDeleteRow(): Error: exception {0}", e);
                 return null;
             }
         }
@@ -1587,7 +1658,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     {
                         TableOperation operation = enumerator.Current;
                         IRTableEntity row = (IRTableEntity) this.GetEntityFromOperation(operation);
-                        row.RowLock = false;
+                        row._rtable_RowLock = false;
                         row.ETag = result.Etag;
                     }
                 }
@@ -1804,7 +1875,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             DateTime startTime = DateTime.UtcNow;
             IQueryable<DynamicRTableEntity> query =
                 from ent in readHeadTable.CreateQuery<DynamicRTableEntity>()
-                where ent.ViewId >= viewIdToRecoverFrom
+                where ent._rtable_ViewId >= viewIdToRecoverFrom
                 select ent;
 
             foreach (DynamicRTableEntity entry in query)
@@ -1822,7 +1893,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             // now find any entries that are in the write view but not in the read view
             query = from ent in writeHeadTable.CreateQuery<DynamicRTableEntity>()
-                where ent.ViewId < CurrentView.ViewId
+                where ent._rtable_ViewId < CurrentView.ViewId
                 select ent;
 
             foreach (DynamicRTableEntity extraEntity in query)
@@ -1971,7 +2042,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             if (writeHeadResult.HttpStatusCode == (int) HttpStatusCode.OK && writeHeadResult.Result != null)
             {
                 writeViewEntity = (DynamicRTableEntity) writeHeadResult.Result;
-                if (writeViewEntity.ViewId >= CurrentView.GetReplicaInfo(CurrentView.WriteHeadIndex).ViewInWhichAddedToChain)
+                if (writeViewEntity._rtable_ViewId >= CurrentView.GetReplicaInfo(CurrentView.WriteHeadIndex).ViewInWhichAddedToChain)
                 {
                     // nothing to repair in this case.
                     return result;
@@ -1983,8 +2054,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             {
                 if (writeViewEntity != null)
                 {
-                    writeViewEntity.Tombstone = true;
-                    writeViewEntity.RowLock = false;
+                    writeViewEntity._rtable_Tombstone = true;
+                    writeViewEntity._rtable_RowLock = false;
 
                     // delete row from the write view
                     result = UpdateOrDeleteRow(CurrentView[CurrentView.WriteHeadIndex], writeViewEntity);
@@ -2000,15 +2071,15 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
 
             IRTableEntity readHeadEntity = (IRTableEntity) readHeadResult.Result;
-            bool readHeadLocked = readHeadEntity.RowLock;
-            bool readHeadLockExpired = (readHeadEntity.LockAcquisition + rTableConfigurationService.LockTimeout >
+            bool readHeadLocked = readHeadEntity._rtable_RowLock;
+            bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + rTableConfigurationService.LockTimeout >
                                         DateTime.UtcNow);
 
             // take a lock on the read view entity unless the entity is already locked
-            readHeadEntity.RowLock = true;
-            readHeadEntity.ViewId = CurrentView.ViewId;
-            readHeadEntity.LockAcquisition = DateTime.UtcNow;
-            readHeadEntity.Operation = GetTableOperation(TableOperationType.Replace);
+            readHeadEntity._rtable_RowLock = true;
+            readHeadEntity._rtable_ViewId = CurrentView.ViewId;
+            readHeadEntity._rtable_LockAcquisition = DateTime.UtcNow;
+            readHeadEntity._rtable_Operation = GetTableOperation(TableOperationType.Replace);
 
             result = UpdateOrDeleteRow(CurrentView[CurrentView.ReadHeadIndex], readHeadEntity);
             if (result == null)
@@ -2052,7 +2123,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             if (!readHeadLocked)
             {
-                readHeadEntity.RowLock = false;
+                readHeadEntity._rtable_RowLock = false;
                 readHeadEntity.ETag = readHeadEtag;
                 result = UpdateOrDeleteRow(CurrentView[CurrentView.ReadHeadIndex], readHeadEntity);
                 if (result == null)
@@ -2070,7 +2141,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
                 Console.WriteLine("RepairRow: read head unlock result: {0}", result.HttpStatusCode);
 
-                readHeadEntity.RowLock = false;
+                readHeadEntity._rtable_RowLock = false;
                 readHeadEntity.ETag = writeHeadEtagForCommit;
                 result = UpdateOrDeleteRow(CurrentView[CurrentView.WriteHeadIndex], readHeadEntity);
 
@@ -2093,7 +2164,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // if the lock on the read head had expired, flush this row
             else if (readHeadLockExpired)
             {
-                readHeadEntity.RowLock = true;
+                readHeadEntity._rtable_RowLock = true;
                 result = Flush2PC(readHeadEntity, null, null, writeHeadEtagForCommit);
                 if (result == null)
                 {
@@ -2106,7 +2177,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
         /// <summary>
         /// Call this function to convert all the remaining XStore Table entities to RTable entities.
-        /// "remaining" XStore entities are those with ViewId == 0.
+        /// "remaining" XStore entities are those with _rtable_ViewId == 0.
         /// </summary>
         /// <param name="successCount"></param>
         /// <param name="skippedCount"></param>
@@ -2156,20 +2227,20 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 while (enumerator.MoveNext())
                 {
                     DynamicRTableEntity2 entity = enumerator.Current;
-                    if (entity.ViewId != 0)
+                    if (entity._rtable_ViewId != 0)
                     {
-                        // ViewId = 0 means that the entity has not been operated on since ther XStore Table was converted to RTable.
+                        // _rtable_ViewId = 0 means that the entity has not been operated on since ther XStore Table was converted to RTable.
                         // So, convert it manually now.
                         Console.WriteLine("Skipped XStore entity with Partition={0} Row={1}", entity.PartitionKey, entity.RowKey);
                         skippedCount++;
                         continue;
                     }
-                    entity.ViewId = currentReadView.ViewId;
-                    entity.Version = 1;
+                    entity._rtable_ViewId = currentReadView.ViewId;
+                    entity._rtable_Version = 1;
                     TableOperation top = TableOperation.Replace(entity);
                     try
                     {
-                        TableResult result = tailTable.Execute(top, requestOptions, operationContext); // TODO context
+                        TableResult result = tailTable.Execute(top, requestOptions, operationContext);
                         successCount++;
                         Console.WriteLine("Converted XStore entity with Partition={0} Row={1}", entity.PartitionKey, entity.RowKey);
                     }

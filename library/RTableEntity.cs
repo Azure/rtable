@@ -45,31 +45,31 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public string ETag { get; set; }
 
         // lock bit: used to detect that replication is in progress
-        public bool RowLock { get; set; }
+        public bool _rtable_RowLock { get; set; }
 
         // version: used as (virtual) etag for replicated table with different (physical) etags  
-        public long Version { get; set; }
+        public long _rtable_Version { get; set; }
 
         // tomb stone: to support deletes
-        public bool Tombstone { get; set; }
+        public bool _rtable_Tombstone { get; set; }
 
         // view number: to support changes in replica configurations
-        public long ViewId { get; set; }
+        public long _rtable_ViewId { get; set; }
         
-        // Operation type: last operation type that modified this data
-        public string Operation { get; set; } 
+        // _rtable_Operation type: last operation type that modified this data
+        public string _rtable_Operation { get; set; } 
 
         // Batch id: to support batch operations
-        public Guid BatchId { get; set; }
+        public Guid _rtable_BatchId { get; set; }
 
         /// <summary>
-        /// If RowLock=true, it is the timestamp (UTC) in which the RowLock could be reset back to false.
+        /// If _rtable_RowLock=true, it is the timestamp (UTC) in which the _rtable_RowLock could be reset back to false.
         /// </summary>
-        public DateTimeOffset LockAcquisition { get; set; }
+        public DateTimeOffset _rtable_LockAcquisition { get; set; }
 
         public RTableEntity()
         {
-            this.LockAcquisition = new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromTicks(0));
+            this._rtable_LockAcquisition = new DateTimeOffset(2000, 1, 1, 0, 0, 0, TimeSpan.FromTicks(0));
         }
         
         
@@ -113,9 +113,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             if ((this.PartitionKey != that.PartitionKey) ||
                 (this.RowKey != that.RowKey) ||
-                (this.RowLock != that.RowLock) ||
-                (this.Version != that.Version) ||
-                (this.Tombstone != that.Tombstone))
+                (this._rtable_RowLock != that._rtable_RowLock) ||
+                (this._rtable_Version != that._rtable_Version) ||
+                (this._rtable_Tombstone != that._rtable_Tombstone))
             {
                 return false;
             }

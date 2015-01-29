@@ -16,28 +16,28 @@ namespace Microsoft.WindowsAzure.Storage.RTable
     public interface IRTableEntity : ITableEntity
     {
         // lock bit: used to detect that replication is in progress
-        bool RowLock { get; set; }
+        bool _rtable_RowLock { get; set; }
 
         // version: used as (virtual) etag for replicated table with different (physical) etags  
-        long Version { get; set; }
+        long _rtable_Version { get; set; }
 
         // tomb stone: to support deletes
-        bool Tombstone { get; set; }
+        bool _rtable_Tombstone { get; set; }
 
         // view number: to support changes in replica configurations
-        long ViewId { get; set; }
+        long _rtable_ViewId { get; set; }
 
-        // Operation type: last operation type that modified this data
-        string Operation { get; set; }
+        // _rtable_Operation type: last operation type that modified this data
+        string _rtable_Operation { get; set; }
 
         // Batch id: to support batch operations
-        Guid BatchId { get; set; }
+        Guid _rtable_BatchId { get; set; }
 
         /// <summary>
-        /// (If RowLock=true) LockAcquisition is the timestamp in which the row was locked by the client. 
+        /// (If _rtable_RowLock=true) _rtable_LockAcquisition is the timestamp in which the row was locked by the client. 
         /// New clients can use their own timeout (LockTimeout) value to determine whether to initiate replication or not.
         /// </summary>
-        DateTimeOffset LockAcquisition { get; set; }
+        DateTimeOffset _rtable_LockAcquisition { get; set; }
     }
 }
 
