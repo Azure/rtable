@@ -850,6 +850,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 }
                 else
                 {
+                    throw new Exception("Illegal entity type used in RTable. Use TableOperation.Retrieve<T> with proper entity type T. ");
                 }
 
                 if (index != tailIndex && currentRow != null && currentRow._rtable_RowLock)
