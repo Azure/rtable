@@ -853,7 +853,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     throw new Exception("Illegal entity type used in RTable. Use TableOperation.Retrieve<T> with proper entity type T. ");
                 }
 
-                if (index != tailIndex && currentRow != null && currentRow._rtable_RowLock)
+                if (index != tailIndex && currentRow._rtable_RowLock)
                 {
                     //Since we always try the tail first, if we are here, it means all replicas from index to readHeadIndex
                     //will also have the rowLock as true and hence we can just fail the read at this point
@@ -861,7 +861,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 }
 
                 // if the entry has a tombstone set, don't return it.
-                if (currentRow != null && currentRow._rtable_Tombstone)
+                if (currentRow._rtable_Tombstone)
                 {
                     return null;
                 }
