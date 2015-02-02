@@ -76,6 +76,10 @@
     <Compile Include="RTableStaleViewException.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj">
+      <Project>{0134b83b-566a-4621-a358-ef1ed756ed1a}</Project>
+      <Name>Common</Name>
+    </ProjectReference>
     <ProjectReference Include="..\ConfigurationAgentLibrary\ConfigurationAgentLibrary.csproj">
       <Project>{06b1f7b8-7567-4c78-bb2f-3aba2a506982}</Project>
       <Name>ConfigurationAgentLibrary</Name>

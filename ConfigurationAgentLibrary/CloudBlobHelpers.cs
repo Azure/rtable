@@ -94,7 +94,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
             }
             catch (Exception e)
             {
-                Console.WriteLine("Error reading blob: {0}. Exception: {1}", blob.Uri, e.Message);
+                Logger.LogError("Error reading blob: {0}. Exception: {1}", 
+                    blob.Uri, 
+                    e.Message);
             }
 
             return false;
@@ -113,7 +115,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
             }
             catch (Exception e)
             {
-                Console.WriteLine("Error creating cloud table client: Connection string {0}. Exception: {1}", storageAccountConnectionString, e.Message);
+                Logger.LogError("Error creating cloud table client: Connection string {0}. Exception: {1}", 
+                    storageAccountConnectionString, 
+                    e.Message);
             }
 
             return false;

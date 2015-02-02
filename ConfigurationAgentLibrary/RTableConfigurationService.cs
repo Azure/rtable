@@ -145,7 +145,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
                 }
                 catch (StorageException e)
                 {
-                    Console.WriteLine("Updating the blob: {0} failed. Exception: {1}", blob.Value, e.Message);
+                    Logger.LogError("Updating the blob: {0} failed. Exception: {1}", blob.Value, e.Message);
                 }
             });
 
@@ -204,8 +204,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
 
                     if (configurationStore.ViewId <= 0)
                     {
-                        Console.WriteLine("ViewId={0} is invalid. Must be >= 1. Skipping this blob {1}.",
-                            configurationStore.ViewId, blob.Value.Uri);
+                        Logger.LogInformational("ViewId={0} is invalid. Must be >= 1. Skipping this blob {1}.",
+                            configurationStore.ViewId, 
+                            blob.Value.Uri);
                         continue;
                     }
 
@@ -282,7 +283,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
             CloudTableClient tableClient = null;
             if (!CloudBlobHelpers.TryCreateCloudTableClient(connectionString, out tableClient))
             {
-                Console.WriteLine("No table client created for replica info: {0}", replica);
+                Logger.LogError("No table client created for replica info: {0}", replica);
             }
 
             return tableClient;
@@ -296,7 +297,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
                 if ((DateTime.UtcNow - this.lastViewRefreshTime) >
                     TimeSpan.FromSeconds(ConfigurationConstants.LeaseRenewalIntervalInSec))
                 {
-                    Console.WriteLine("Need to renew lease on the view/refresh the view");
+                    Logger.LogInformational("Need to renew lease on the view/refresh the view");
                     return true;
                 }
 

@@ -17,11 +17,11 @@
 
 namespace Microsoft.WindowsAzure.Storage.RTable
 {
-    internal static class Logger
+    public static class Logger
     {
         private static RTableEventSource eventSource = new RTableEventSource();
 
-        internal static void LogError(string format, params object[] args)
+        public static void LogError(string format, params object[] args)
         {
             if (Logger.eventSource.IsEnabled())
             {
@@ -29,7 +29,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
         }
 
-        internal static void LogWarning(string format, params object[] args)
+        public static void LogWarning(string format, params object[] args)
         {
             if (Logger.eventSource.IsEnabled())
             {
@@ -37,7 +37,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
         }
 
-        internal static void LogInformational(string format, params object[] args)
+        public static void LogInformational(string format, params object[] args)
         {
             if (Logger.eventSource.IsEnabled())
             {
@@ -45,7 +45,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
         }
 
-        internal static void LogVerbose(string format, params object[] args)
+        public static void LogVerbose(string format, params object[] args)
         {
             if (Logger.eventSource.IsEnabled())
             {
