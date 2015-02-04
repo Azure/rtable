@@ -41,7 +41,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
         {
             return string.Format("Account Name: {0}, AccountKey: {1}, ViewInWhichAddedToChain: {2}", 
                 this.StorageAccountName, 
-                "XXXXXX", 
+                "***********", 
                 this.ViewInWhichAddedToChain);
         }
     }
