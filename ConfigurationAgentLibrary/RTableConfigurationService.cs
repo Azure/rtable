@@ -41,10 +41,6 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
         private PeriodicTimer viewRefreshTimer;
         private bool disposed = false;
 
-        /// <summary>
-        /// When an entity is locked by a client and that client did not unlock the entity, other clients are free to unlock it afer this much time has elasped.
-        /// </summary>
-        private const int LockTimeoutInSeconds = 60;
 
         public RTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations, 
             bool useHttps, 
@@ -55,7 +51,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
             this.lastViewRefreshTime = DateTime.MinValue;
             this.lastRenewedReadView = new View();
             this.lastRenewedWriteView = new View();
-            this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? LockTimeoutInSeconds : lockTimeoutInSeconds);
+            this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? ConfigurationConstants.LockTimeoutInSeconds : lockTimeoutInSeconds);
             this.Initialize();
 
             this.viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, 
