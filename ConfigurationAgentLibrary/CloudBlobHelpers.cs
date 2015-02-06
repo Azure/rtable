@@ -21,7 +21,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
     using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.Storage.Blob;
 
-    public class CloudBlobHelpers
+    class CloudBlobHelpers
     {
         public static CloudBlockBlob GetBlockBlob(string configurationStorageConnectionString, string configurationLocation)
         {

@@ -24,7 +24,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
     using System.Runtime.Serialization.Json;
     using System.Text;
 
-    public class JsonStore<T> where T : class
+    class JsonStore<T> where T : class
     {
         /// <summary>
         /// JSON Serialization

@@ -23,7 +23,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
     /// <summary>
     /// http://msdn.microsoft.com/en-us/library/ah1h85ch.aspx for instantiating Timer Class
     /// </summary>
-    public class PeriodicTimer
+    class PeriodicTimer
     {
         private Timer timer;
 

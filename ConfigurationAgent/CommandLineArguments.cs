@@ -162,7 +162,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgent
     /// Used to control parsing of command line arguments.
     /// </summary>
     [Flags]
-    public enum ArgumentType
+    enum ArgumentType
     {
         /// <summary>
         /// Indicates that this field is required. An error will be displayed
@@ -207,7 +207,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgent
     /// as the destination of command line argument parsing.
     /// </summary>
     [AttributeUsage(AttributeTargets.Field)]
-    public class ArgumentAttribute : Attribute
+    class ArgumentAttribute : Attribute
     {
         /// <summary>
         /// Allows control of command line parsing.
@@ -303,7 +303,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgent
     /// does not affect the usage of the argument.
     /// </summary>
     [AttributeUsage(AttributeTargets.Field)]
-    public class DefaultArgumentAttribute : ArgumentAttribute
+    class DefaultArgumentAttribute : ArgumentAttribute
     {
         /// <summary>
         /// Indicates that this argument is the default argument.
@@ -318,7 +318,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgent
     /// <summary>
     /// A delegate used in error reporting.
     /// </summary>
-    public delegate void ErrorReporter(string message);
+    delegate void ErrorReporter(string message);
 
     /// <summary>
     /// Parser for command line arguments.
@@ -344,7 +344,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgent
     /// Arguments which are array types are collection arguments. Collection
     /// arguments can be specified multiple times.
     /// </summary>
-    public sealed class Parser
+    sealed class Parser
     {
         /// <summary>
         /// The System Defined new line string.
