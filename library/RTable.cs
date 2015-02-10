@@ -196,7 +196,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             return true;
         }
-        
+
 
         //
         // Validate and return appropriate view for given an operation. 
@@ -227,7 +227,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 .GetProperty("OperationType", System.Reflection.BindingFlags.GetProperty |
                                               System.Reflection.BindingFlags.Instance |
                                               System.Reflection.BindingFlags.NonPublic);
-            TableOperationType opTypeValue = (TableOperationType) (opType.GetValue(operation, null));
+            TableOperationType opTypeValue = (TableOperationType)(opType.GetValue(operation, null));
 
             return opTypeValue;
         }
@@ -248,54 +248,54 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             switch (opTypeValue)
             {
-                    /// <summary>
-                    /// Represents a retrieve operation.
-                    /// </summary>
+                /// <summary>
+                /// Represents a retrieve operation.
+                /// </summary>
                 case TableOperationType.Retrieve:
                     result = Retrieve(operation, requestOptions, operationContext);
                     break;
 
-                    /// <summary>
-                    /// Represents an insert or replace operation.
-                    /// </summary>
+                /// <summary>
+                /// Represents an insert or replace operation.
+                /// </summary>
                 case TableOperationType.InsertOrReplace:
                     result = InsertOrReplace(operation, requestOptions, operationContext);
                     break;
 
-                    /// <summary>
-                    /// Represents an insert operation.
-                    /// </summary>
+                /// <summary>
+                /// Represents an insert operation.
+                /// </summary>
                 case TableOperationType.Insert:
                     result = Insert(operation, null, requestOptions, operationContext);
                     break;
 
-                    /// <summary>
-                    /// Represents a delete operation.
-                    /// </summary>
+                /// <summary>
+                /// Represents a delete operation.
+                /// </summary>
                 case TableOperationType.Delete:
                     // If there is a write view, then overwrite the currentView with the write view
                     result = Delete(operation, requestOptions, operationContext);
                     break;
 
-                    /// <summary>
-                    /// Represents a replace operation.
-                    /// </summary>
+                /// <summary>
+                /// Represents a replace operation.
+                /// </summary>
                 case TableOperationType.Replace:
                     // If there is a write view, then overwrite the currentView with the write view
                     result = Replace(operation, null, requestOptions, operationContext);
                     break;
 
-                    /// <summary>
-                    /// Represents a merge operation.
-                    /// </summary>
+                /// <summary>
+                /// Represents a merge operation.
+                /// </summary>
                 case TableOperationType.Merge:
                     // If there is a write view, then overwrite the currentView with the write view
                     result = Merge(operation, null, requestOptions, operationContext);
                     break;
 
-                    /// <summary>
-                    /// Represents an insert or merge operation.
-                    /// </summary>
+                /// <summary>
+                /// Represents an insert or merge operation.
+                /// </summary>
                 case TableOperationType.InsertOrMerge:
                     // If there is a write view, then overwrite the currentView with the write view
                     result = InsertOrMerge(operation, requestOptions, operationContext);
@@ -345,11 +345,11 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                         return null;
                     }
 
-                    IRTableEntity currentRow = (IRTableEntity) (retrievedResult.Result);
+                    IRTableEntity currentRow = (IRTableEntity)(retrievedResult.Result);
 
                     if (checkETag == true)
                     {
-                        if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
+                        if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
                         {
                             // Row is not present, return appropriate error code as Merge, Delete and Replace
                             // requires row to be present.
@@ -442,7 +442,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             {
                 TableOperation operation = enumerator.Current;
                 TableOperationType opType = GetOpType(operation);
-                IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
+                IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
 
                 if (opType == TableOperationType.Retrieve)
                 {
@@ -467,7 +467,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             PropertyInfo entity = operation.GetType().GetProperty("Entity", System.Reflection.BindingFlags.GetProperty |
                                                                             System.Reflection.BindingFlags.Instance |
                                                                             System.Reflection.BindingFlags.NonPublic);
-            return (ITableEntity) (entity.GetValue(operation, null));
+            return (ITableEntity)(entity.GetValue(operation, null));
         }
 
         private TableBatchOperation TransformUpdateBatchOp(TableBatchOperation batch, int phase, int index,
@@ -485,7 +485,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 TableOperation operation = enumerator.Current;
                 TableOperationType opType = GetOpType(operation);
                 TableOperation prepOp = null;
-                IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
+                IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
 
                 if (phase == PREPARE_PHASE)
                 {
@@ -552,7 +552,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             {
                 TableResult result = iter.Current;
                 TableOperation operation = enumerator.Current;
-                IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
+                IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
 
                 TableOperationType opType;
                 TableOperationType.TryParse(row._rtable_Operation, out opType);
@@ -566,8 +566,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     case TableOperationType.InsertOrMerge:
                     case TableOperationType.InsertOrReplace:
                         if ((result == null) ||
-                            ((result.HttpStatusCode != (int) HttpStatusCode.Created) &&
-                             (result.HttpStatusCode != (int) HttpStatusCode.NoContent)))
+                            ((result.HttpStatusCode != (int)HttpStatusCode.Created) &&
+                             (result.HttpStatusCode != (int)HttpStatusCode.NoContent)))
                         {
                             return false;
                         }
@@ -599,8 +599,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// Executes a batch operation on a table as an atomic operation, using the specified <see cref="TableRequestOptions"/> and <see cref="OperationContext"/>.
         /// </summary>
         public IList<TableResult> ExecuteBatch(
-            TableBatchOperation batch, 
-            TableRequestOptions requestOptions = null, 
+            TableBatchOperation batch,
+            TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
             // Invalid argument
@@ -625,7 +625,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             IList<TableResult> headResults = this.RunPreparePhaseAgainstHeadReplica(batch, requestOptions, operationContext);
 
             // Perform the Prepare phase for the other replicas and the Commit phase for all replica.
-            results = this.Flush2PCBatch(batch, headResults, requestOptions, operationContext);           
+            results = this.Flush2PCBatch(batch, headResults, requestOptions, operationContext);
 
             // Return the results returned by the tail replica, where all original operations are run.
             return results[CurrentView.Chain.Count - 1];
@@ -644,7 +644,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             TableBatchOperation batch,
             TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
-        {           
+        {
             TableBatchOperation flushBatch = new TableBatchOperation();
 
             int headIndex = 0;
@@ -667,7 +667,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 }
                 else if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK)
                 {
-                    IRTableEntity currentRow = (IRTableEntity)(retrievedResult.Result);                  
+                    IRTableEntity currentRow = (IRTableEntity)(retrievedResult.Result);
 
                     if (currentRow._rtable_RowLock == true)
                     {
@@ -742,9 +742,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// <param name="operationContext"></param>
         /// <returns></returns>
         private IList<TableResult>[] Flush2PCBatch(
-            TableBatchOperation batch, 
+            TableBatchOperation batch,
             IList<TableResult> headResults,
-            TableRequestOptions requestOptions = null, 
+            TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
             IList<TableResult>[] results = new IList<TableResult>[CurrentView.Chain.Count];
@@ -811,7 +811,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // for latency. If read load balancing across replicas is desired, then choose a random replica and read if lock bit is 0.
             int tailIndex = CurrentView.Chain.Count - 1;
             int index = tailIndex;
-            
+
             TableResult retrievedResult = null;
 
 
@@ -844,7 +844,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     return retrievedResult;
                 }
 
-                if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
+                if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
                 {
                     return retrievedResult;
                 }
@@ -878,7 +878,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
                 // We read a committed value. return it after virtualizing the ETag
                 retrievedResult.Etag = currentRow._rtable_Version.ToString();
-                IRTableEntity row = (IRTableEntity) retrievedResult.Result;
+                IRTableEntity row = (IRTableEntity)retrievedResult.Result;
                 row.ETag = retrievedResult.Etag;
 
                 return retrievedResult;
@@ -891,7 +891,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult Delete(TableOperation operation, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
+            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.Delete);
             TableOperation top;
 
@@ -909,7 +909,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult Merge(TableOperation operation, TableResult retrievedResult,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
+            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
             TableResult result;
             bool checkETag = (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrMerge)) ? false : true;
             row._rtable_Operation = GetTableOperation(TableOperationType.Merge);
@@ -919,17 +919,17 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
             }
 
-            if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
+            if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
             {
                 // Row is not present, return appropriate error code
                 Logger.LogInformational("Insert: Row is already present ");
-                return new TableResult() {Result = null, Etag = null, HttpStatusCode = (int) HttpStatusCode.NotFound};
+                return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
             }
             else
             {
                 // Row is present at the replica
                 // Merge the row
-                RTableEntity currentRow = (RTableEntity) (retrievedResult.Result);
+                RTableEntity currentRow = (RTableEntity)(retrievedResult.Result);
                 if (checkETag && (row.ETag != (currentRow._rtable_Version.ToString())))
                 {
                     // Return the error code that Etag does not match with the input ETag
@@ -940,9 +940,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                         Result = null,
                         Etag = null,
                         HttpStatusCode = (int)HttpStatusCode.Conflict
-                    };                    
+                    };
                 }
-                
+
                 CloudTableClient tableClient = CurrentView[0];
                 row.ETag = retrievedResult.Etag;
                 row._rtable_RowLock = true;
@@ -953,21 +953,21 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
                 // Lock the head first by inserting the row
                 if (((result = UpdateOrDeleteRow(tableClient, row)) == null) ||
-                    (result.HttpStatusCode != (int) HttpStatusCode.NoContent))
+                    (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
                 {
                     Logger.LogError("Merge: Failed to lock the head. ");
                     return new TableResult()
                     {
                         Result = null,
                         Etag = null,
-                        HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
+                        HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
                     };
                 }
 
                 // Call Flush2PC to run 2PC on backup (non-head) replicas
                 // If successful, it returns HttpStatusCode 204 (no content returned, when replaced in the second phase) 
                 if (((result = Flush2PC(row, requestOptions, operationContext, result.Etag)) == null) ||
-                    (result.HttpStatusCode != (int) HttpStatusCode.NoContent))
+                    (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
                 {
                     // Failed, abort with error and let the application take care of it by reissuing it 
                     // TO DO: Alternately, we could wait and retry after sometime using requestOptions. 
@@ -976,7 +976,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     {
                         Result = null,
                         Etag = null,
-                        HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
+                        HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
                     };
                 }
                 else
@@ -996,12 +996,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult InsertOrMerge(TableOperation operation, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
+            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrMerge);
             TableOperation top = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
             TableResult retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
 
-            if (retrievedResult.HttpStatusCode == (int) HttpStatusCode.OK)
+            if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK)
             {
                 // Row is present at the replica, merge the row
                 top = TableOperation.Merge(row);
@@ -1023,7 +1023,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult Replace(TableOperation operation, TableResult retrievedResult,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
+            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
             TableResult result;
 
             bool checkETag = (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace));
@@ -1041,21 +1041,21 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
             }
 
-            if (retrievedResult.HttpStatusCode == (int) HttpStatusCode.Conflict)
+            if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.Conflict)
             {
-                return new TableResult() {Result = null, Etag = null, HttpStatusCode = (int) HttpStatusCode.Conflict};
+                return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.Conflict };
             }
 
-            if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
+            if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
             {
                 // Row is not present, return appropriate error code
                 Logger.LogInformational("Replace: Row is not present. ParitionKey={0} RowKey={1}", row.PartitionKey, row.RowKey);
-                return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound }; 
+                return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
             }
 
             // Row is present at the replica
             // Replace the row 
-            RTableEntity currentRow = (RTableEntity) (retrievedResult.Result);
+            RTableEntity currentRow = (RTableEntity)(retrievedResult.Result);
             if (checkETag && (row.ETag != (currentRow._rtable_Version.ToString())))
             {
                 // Return the error code that Etag does not match with the input ETag
@@ -1078,21 +1078,21 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             // Lock the head first by inserting the row
             if (((result = UpdateOrDeleteRow(tableClient, row)) == null) ||
-                (result.HttpStatusCode != (int) HttpStatusCode.NoContent))
+                (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
             {
                 Logger.LogError("Insert: Failed to lock the head. ");
                 return new TableResult()
                 {
                     Result = null,
                     Etag = null,
-                    HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
+                    HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
                 };
             }
 
             // Call Flush2PC to run 2PC on the chain
             // If successful, it returns HttpStatusCode 204 (no content returned, when replaced in the second phase) 
             if (((result = Flush2PC(row, requestOptions, operationContext, result.Etag)) == null) ||
-                (result.HttpStatusCode != (int) HttpStatusCode.NoContent))
+                (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
             {
                 // Failed, abort with error and let the application take care of it by reissuing it 
                 // TO DO: Alternately, we could wait and retry after sometime using requestOptions. 
@@ -1101,7 +1101,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 {
                     Result = null,
                     Etag = null,
-                    HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
+                    HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
                 };
             }
 
@@ -1119,11 +1119,11 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult Insert(TableOperation operation, TableResult retrievedResult,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
+            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.Insert);
             TableResult result;
             string[] eTagStrings = new string[CurrentView.Chain.Count];
-            
+
             if (retrievedResult == null)
             {
                 // In case the entry in Head account has _rtable_RowLock=true
@@ -1152,10 +1152,10 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 Logger.LogError("Insert: Failed to insert at the head.");
                 return null;
             }
-            
+
             // insert must return the contents of the row
-            if (result.HttpStatusCode != (int) HttpStatusCode.Created &&
-                result.HttpStatusCode != (int) HttpStatusCode.NoContent)
+            if (result.HttpStatusCode != (int)HttpStatusCode.Created &&
+                result.HttpStatusCode != (int)HttpStatusCode.NoContent)
             {
                 Logger.LogError("Insert: Failed to insert at the head with HttpStatusCode = {0}", result.HttpStatusCode);
                 return new TableResult()
@@ -1168,7 +1168,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             // copy the resulting row from the head into the head result to pass to the Replace operation later on.
             retrievedResult = result;
-            retrievedResult.HttpStatusCode = (int) HttpStatusCode.OK;
+            retrievedResult.HttpStatusCode = (int)HttpStatusCode.OK;
             retrievedResult.Result = tsRow;
 
             // we have taken a lock on the head.
@@ -1190,12 +1190,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult InsertOrReplace(TableOperation operation, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity) GetEntityFromOperation(operation);
+            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrReplace);
             TableOperation top = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
             TableResult retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
 
-            if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
+            if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
             {
                 // Row is not present at the head, insert the row
                 return Insert(operation, retrievedResult, requestOptions, operationContext);
@@ -1216,7 +1216,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         {
             // Retrieve from the head
             TableResult result = null;
-            int headIndex = 0; 
+            int headIndex = 0;
 
             TableResult retrievedResult = null;
             if (this.rTableConfigurationService.ConvertXStoreTableMode)
@@ -1239,7 +1239,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 {
                     Result = null,
                     Etag = null,
-                    HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
+                    HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
                 };
             }
             else if (retrievedResult.Result == null || retrievedResult.HttpStatusCode == (int)HttpStatusCode.NotFound)
@@ -1253,27 +1253,27 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 // We just added a Head Replica (i.e. CurrentView.ReadHeadIndex != 0), 
                 // It is possible that to get NotFound (i.e., entry is not in Head Replica). 
                 // Call RepairRow() to repair it.
-                Logger.LogWarning("FlushAndRetrieve(): Row is not present at Head Replica. Calling RepairRow(). ParitionKey={0} RowKey={1}", 
+                Logger.LogWarning("FlushAndRetrieve(): Row is not present at Head Replica. Calling RepairRow(). ParitionKey={0} RowKey={1}",
                     row.PartitionKey, row.RowKey);
                 TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
                 if (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK
                     && repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.NoContent)
                 {
-                    Logger.LogError("FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}", 
+                    Logger.LogError("FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}",
                         repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
                     return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
                 }
                 else
                 {
                     // RepairRow() works. Return Conflict so that caller can retry the original API again.
-                    Logger.LogInformational("FlushAndRetrieve(): RepairRow() returned expected StatusCode {0}. ParitionKey={1} RowKey={2}", 
+                    Logger.LogInformational("FlushAndRetrieve(): RepairRow() returned expected StatusCode {0}. ParitionKey={1} RowKey={2}",
                         repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
                     return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.Conflict };
                 }
             }
-            else if (retrievedResult.HttpStatusCode == (int) HttpStatusCode.OK)
+            else if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK)
             {
-                IRTableEntity readRow = (IRTableEntity) retrievedResult.Result;
+                IRTableEntity readRow = (IRTableEntity)retrievedResult.Result;
 
                 if (CurrentView.ReadHeadIndex != 0)
                 {
@@ -1282,38 +1282,14 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     // Entity in Tail Replica = "row" (input to FlushAndRetrieve())
                     // Entity in Head Replica = "readRow"
 
-                    if (row._rtable_Version > 0 && row._rtable_Version < readRow._rtable_Version)
-                    {
-                        Logger.LogError("FlushAndRetrieve(): Something is Really Wrong. (Tail) row._rtable_Version ({0}) < (Head) readRow._rtable_Version ({1})",
-                                row._rtable_Version, readRow._rtable_Version);
-                        return new TableResult()
-                        {
-                            Result = null,
-                            Etag = null,
-                            HttpStatusCode = (int)HttpStatusCode.NotFound
-                        };
-                    }
-                    if ((row._rtable_Version > readRow._rtable_Version)
-                        || (row._rtable_Version == 0 && readRow._rtable_Version > 0))
-                    {
-                        Logger.LogWarning("FlushAndRetrieve(): Calling RepairRow(). (Tail) row._rtable_Version ({0}) > (Head) readRow._rtable_Version ({1}) OR row._rtable_Version == 0",
-                                row._rtable_Version, readRow._rtable_Version);
-                        TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
+                    TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
 
-                        if (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK
-                            && repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.NoContent)
-                        {
-                            Logger.LogError("FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}",
-                                repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
-                            return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
-                        }
-                        else
-                        {
-                            // RepairRow() worked. Return Conflict so that caller can retry the original API.
-                            Logger.LogInformational("FlushAndRetrieve(): RepairRow() returned expected StatusCode {0}. ParitionKey={1} RowKey={2}",
-                                repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
-                            return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.Conflict };
-                        }
+                    if (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK
+                        && repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.NoContent)
+                    {
+                        Logger.LogError("FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}",
+                            repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
+                        return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
                     }
                 }
 
@@ -1328,7 +1304,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                             readRow._rtable_LockAcquisition, DateTime.UtcNow);
 
                         // The entity was locked by a different client a long time ago, so flush it.
-                        
+
                         result = Flush2PC(readRow, requestOptions, operationContext);
                         if ((result.HttpStatusCode == (int)HttpStatusCode.OK) ||
                             (result.HttpStatusCode == (int)HttpStatusCode.NoContent))
@@ -1341,7 +1317,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     else
                     {
                         // The entity was locked by a different client recently. Return conflict so that the caller can retry.
-                        Logger.LogInformational("FlushAndRetrieve(): Row is locked. _rtable_LockAcquisition={0} CurrentTime={1} timeout={2}", 
+                        Logger.LogInformational("FlushAndRetrieve(): Row is locked. _rtable_LockAcquisition={0} CurrentTime={1} timeout={2}",
                             readRow._rtable_LockAcquisition, DateTime.UtcNow, rTableConfigurationService.LockTimeout);
                         result = new TableResult()
                         {
@@ -1399,7 +1375,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
             catch (Exception e)
             {
-                Logger.LogError("Error in RetrieveFromReplica(): caught exception {0}", e);                
+                Logger.LogError("Error in RetrieveFromReplica(): caught exception {0}", e);
                 return null;
             }
 
@@ -1416,7 +1392,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                         readRow._rtable_ViewId));
                 }
             }
-            
+
             return retrievedResult;
         }
 
@@ -1446,7 +1422,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         private TableResult FlushPreparePhase(IRTableEntity row, TableRequestOptions requestOptions,
             OperationContext operationContext, string[] eTagsStrings)
         {
-            TableResult result = new TableResult() {HttpStatusCode = (int) HttpStatusCode.OK};
+            TableResult result = new TableResult() { HttpStatusCode = (int)HttpStatusCode.OK };
 
             // PREPARE PHASE: Uses chain replication to prepare replicas starting from "head+1" to 
             // "tail" sequentially
@@ -1488,7 +1464,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     // Failed in the middle, abort with error
                     Logger.LogError(
                         "F2PC: Failed during commit phase in 2PC at replica with index: {0} when reading a row with row key: {1}",
-                        index, 
+                        index,
                         row.RowKey);
                     break;
                 }
@@ -1542,14 +1518,14 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 return null;
             }
 
-            if (retrievedResult.HttpStatusCode == (int) HttpStatusCode.OK)
+            if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK)
             {
                 // Row is present, overwrite the row
                 row.ETag = retrievedResult.Etag;
                 return UpdateOrDeleteRow(tableClient, row);
             }
 
-            if (retrievedResult.HttpStatusCode == (int) HttpStatusCode.NotFound || retrievedResult.Result == null)
+            if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.NotFound || retrievedResult.Result == null)
             {
                 // Row is not present, insert the row
                 // **Except** when the row is being deleted
@@ -1563,7 +1539,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 // non-delete operation: Row is not present, create the row and return the result
                 TableResult result;
                 if (((result = InsertRow(tableClient, row)) == null) ||
-                    (result.HttpStatusCode != (int) HttpStatusCode.NoContent) || (result.Result == null))
+                    (result.HttpStatusCode != (int)HttpStatusCode.NoContent) || (result.Result == null))
                 {
                     Logger.LogError(
                         "IUD: Failed at replica with index: {0} when inserting a new row with row key: {1}", index,
@@ -1591,7 +1567,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             catch (StorageException ex)
             {
                 Logger.LogError(ex.ToString());
-                result = new TableResult() {Result = null, Etag = null, HttpStatusCode = (int)ex.RequestInformation.HttpStatusCode};
+                result = new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)ex.RequestInformation.HttpStatusCode };
                 return result;
             }
             catch (Exception e)
@@ -1609,7 +1585,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             {
                 CloudTable table = tableClient.GetTableReference(tableName);
                 if ((row._rtable_Tombstone == true) && (row._rtable_RowLock == false))
-                {                    
+                {
                     // For delete operations, call the delete operation if it is being committed
                     TableOperation top = TableOperation.Delete(row);
                     return table.Execute(top);
@@ -1670,7 +1646,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     if (unlock)
                     {
                         TableOperation operation = enumerator.Current;
-                        IRTableEntity row = (IRTableEntity) this.GetEntityFromOperation(operation);
+                        IRTableEntity row = (IRTableEntity)this.GetEntityFromOperation(operation);
                         row._rtable_RowLock = false;
                         row.ETag = result.Etag;
                     }
@@ -1753,7 +1729,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     int i = 0;
                     while (i < batchSize && enumerator.MoveNext())
                     {
-                        if (i < batchSize/2)
+                        if (i < batchSize / 2)
                         {
                             leftBatch.Add(enumerator.Current);
                         }
@@ -1858,7 +1834,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public ReconfigStatus RepairTable(int viewIdToRecoverFrom, TableBatchOperation unfinishedOps,
             long maxBatchSize = 100L)
         {
-            ReconfigStatus status = (int) ReconfigStatus.SUCCESS;
+            ReconfigStatus status = (int)ReconfigStatus.SUCCESS;
             if (this.rTableConfigurationService.IsViewStable())
             {
                 return ReconfigStatus.SUCCESS;
@@ -1897,8 +1873,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
                 TableResult result = RepairRow(entry.PartitionKey, entry.RowKey, null);
 
-                if (result.HttpStatusCode != (int) HttpStatusCode.OK &&
-                    result.HttpStatusCode != (int) HttpStatusCode.NoContent)
+                if (result.HttpStatusCode != (int)HttpStatusCode.OK &&
+                    result.HttpStatusCode != (int)HttpStatusCode.NoContent)
                 {
                     status = ReconfigStatus.PARTIAL_FAILURE;
                 }
@@ -1906,8 +1882,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             // now find any entries that are in the write view but not in the read view
             query = from ent in writeHeadTable.CreateQuery<DynamicRTableEntity>()
-                where ent._rtable_ViewId < CurrentView.ViewId
-                select ent;
+                    where ent._rtable_ViewId < CurrentView.ViewId
+                    select ent;
 
             foreach (DynamicRTableEntity extraEntity in query)
             {
@@ -2022,7 +1998,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// <returns></returns>
         public TableResult RepairRow(string partitionKey, string rowKey, IRTableEntity existingRow)
         {
-            TableResult result = new TableResult() {HttpStatusCode = (int) HttpStatusCode.OK};
+            TableResult result = new TableResult() { HttpStatusCode = (int)HttpStatusCode.OK };
 
             // read from the head of the read view
             TableOperation operation = TableOperation.Retrieve<DynamicRTableEntity>(partitionKey, rowKey);
@@ -2034,7 +2010,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 {
                     Result = null,
                     Etag = null,
-                    HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
+                    HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
                 };
             }
 
@@ -2052,9 +2028,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
 
             DynamicRTableEntity writeViewEntity = null;
-            if (writeHeadResult.HttpStatusCode == (int) HttpStatusCode.OK && writeHeadResult.Result != null)
+            if (writeHeadResult.HttpStatusCode == (int)HttpStatusCode.OK && writeHeadResult.Result != null)
             {
-                writeViewEntity = (DynamicRTableEntity) writeHeadResult.Result;
+                writeViewEntity = (DynamicRTableEntity)writeHeadResult.Result;
                 if (writeViewEntity._rtable_ViewId >= CurrentView.GetReplicaInfo(CurrentView.WriteHeadIndex).ViewInWhichAddedToChain)
                 {
                     // nothing to repair in this case.
@@ -2063,7 +2039,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
 
             // if row does not exist in the read view, delete it from the write view
-            if (readHeadResult.Result == null || readHeadResult.HttpStatusCode == (int) HttpStatusCode.NoContent)
+            if (readHeadResult.Result == null || readHeadResult.HttpStatusCode == (int)HttpStatusCode.NoContent)
             {
                 if (writeViewEntity != null)
                 {
@@ -2083,7 +2059,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 return readHeadResult;
             }
 
-            IRTableEntity readHeadEntity = (IRTableEntity) readHeadResult.Result;
+            IRTableEntity readHeadEntity = (IRTableEntity)readHeadResult.Result;
             bool readHeadLocked = readHeadEntity._rtable_RowLock;
             bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + rTableConfigurationService.LockTimeout >
                                         DateTime.UtcNow);
@@ -2101,7 +2077,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 return null;
             }
 
-            if (result.HttpStatusCode != (int) HttpStatusCode.OK && result.HttpStatusCode != (int) HttpStatusCode.NoContent)
+            if (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent)
             {
                 Logger.LogError("RepairRow: failed to take lock on read head: {0}", result.HttpStatusCode);
                 return null;
@@ -2126,7 +2102,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 return null;
             }
 
-            if (result.HttpStatusCode != (int) HttpStatusCode.OK && result.HttpStatusCode != (int) HttpStatusCode.NoContent)
+            if (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent)
             {
                 Logger.LogError("RepairRow: failed to write to write head: {0}", result.HttpStatusCode);
                 return result;
@@ -2145,8 +2121,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     return null;
                 }
 
-                if (result.HttpStatusCode != (int) HttpStatusCode.OK &&
-                    result.HttpStatusCode != (int) HttpStatusCode.NoContent)
+                if (result.HttpStatusCode != (int)HttpStatusCode.OK &&
+                    result.HttpStatusCode != (int)HttpStatusCode.NoContent)
                 {
                     Logger.LogError("RepairRow: failed to unlock read head: {0}", result.HttpStatusCode);
                     return result;
@@ -2198,10 +2174,10 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// <param name="requestOptions"></param>
         /// <param name="operationContext"></param>
         public void ConvertXStoreTable(
-            out long successCount, 
-            out long skippedCount, 
+            out long successCount,
+            out long skippedCount,
             out long failedCount,
-            TableRequestOptions requestOptions = null, 
+            TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
             successCount = 0;
@@ -2213,7 +2189,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             {
                 throw new ApplicationException("Unable to load the current read view");
             }
-            
+
             if (this.rTableConfigurationService.ConvertXStoreTableMode == false)
             {
                 throw new InvalidOperationException("ConvertXStoreTable() API is NOT supported when RTable is NOT in ConvertXStoreTableMode.");
@@ -2230,11 +2206,11 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             CloudTableClient tailTableClient = currentReadView[tailIndex];
             CloudTable tailTable = tailTableClient.GetTableReference(this.tableName);
-            
+
             IQueryable<DynamicRTableEntity2> query =
-                                    from ent in tailTable.CreateQuery<DynamicRTableEntity2>().AsQueryable<DynamicRTableEntity2>()                                    
+                                    from ent in tailTable.CreateQuery<DynamicRTableEntity2>().AsQueryable<DynamicRTableEntity2>()
                                     select ent;
-            
+
             using (IEnumerator<DynamicRTableEntity2> enumerator = query.GetEnumerator())
             {
                 while (enumerator.MoveNext())
@@ -2260,7 +2236,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     catch (Exception ex)
                     {
                         failedCount++;
-                        Logger.LogError("Exception when converting XStore entity with Partition={0} Row={1}. Ex = {2}", 
+                        Logger.LogError("Exception when converting XStore entity with Partition={0} Row={1}. Ex = {2}",
                             entity.PartitionKey, entity.RowKey, ex.ToString());
                     }
                 }
