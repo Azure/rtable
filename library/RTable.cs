@@ -1214,9 +1214,23 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult FlushAndRetrieve(IRTableEntity row, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null, bool virtualizeEtag = true)
         {
-            // Retrieve from the head
-            TableResult result = null;
-            int headIndex = 0;
+            //
+            // If this row needs repair due to an unstable view, do it now
+            //
+            TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
+            if (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK
+                && repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.NoContent)
+            {
+                Logger.LogError(
+                    "FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}",
+                    repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
+                return new TableResult()
+                {
+                    Result = null,
+                    Etag = null,
+                    HttpStatusCode = (int)HttpStatusCode.NotFound
+                };
+            }
 
             TableResult retrievedResult = null;
             if (this.rTableConfigurationService.ConvertXStoreTableMode)
@@ -1224,115 +1238,79 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 // When we are in ConvertXStoreTableMode, the existing entities were created as XStore entities.
                 // Hence, need to use DynamicRTableEntity2 which catches KeyNotFoundException
                 TableOperation operation = TableOperation.Retrieve<DynamicRTableEntity2>(row.PartitionKey, row.RowKey);
-                retrievedResult = RetrieveFromReplica(operation, headIndex, requestOptions, operationContext);
+                retrievedResult = RetrieveFromReplica(operation, CurrentView.WriteHeadIndex, requestOptions, operationContext);
             }
             else
             {
                 TableOperation operation = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
-                retrievedResult = RetrieveFromReplica(operation, headIndex, requestOptions, operationContext);
+                retrievedResult = RetrieveFromReplica(operation, CurrentView.WriteHeadIndex, requestOptions, operationContext);
             }
 
             if (retrievedResult == null)
             {
                 // If retrieve fails for some reason then return "service unavailable - 503 " error code
-                result = new TableResult()
+                return new TableResult()
                 {
                     Result = null,
                     Etag = null,
                     HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
                 };
             }
-            else if (retrievedResult.Result == null || retrievedResult.HttpStatusCode == (int)HttpStatusCode.NotFound)
-            {
-                if (CurrentView.ReadHeadIndex == 0)
-                {
-                    // Row may not have been present, return the error code 
-                    result = retrievedResult;
-                }
 
-                // We just added a Head Replica (i.e. CurrentView.ReadHeadIndex != 0), 
-                // It is possible that to get NotFound (i.e., entry is not in Head Replica). 
-                // Call RepairRow() to repair it.
-                Logger.LogWarning("FlushAndRetrieve(): Row is not present at Head Replica. Calling RepairRow(). ParitionKey={0} RowKey={1}",
-                    row.PartitionKey, row.RowKey);
-                TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
-                if (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK
-                    && repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.NoContent)
-                {
-                    Logger.LogError("FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}",
-                        repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
-                    return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
-                }
-                else
-                {
-                    // RepairRow() works. Return Conflict so that caller can retry the original API again.
-                    Logger.LogInformational("FlushAndRetrieve(): RepairRow() returned expected StatusCode {0}. ParitionKey={1} RowKey={2}",
-                        repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
-                    return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.Conflict };
-                }
+            if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
+            {
+                // Row may not have been present, return the error code 
+                return retrievedResult;
             }
-            else if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK)
+
+            IRTableEntity readRow = (IRTableEntity) retrievedResult.Result;
+            // Retrieve from the head
+            TableResult result = null;
+
+
+            if (readRow._rtable_RowLock == false)
             {
-                IRTableEntity readRow = (IRTableEntity)retrievedResult.Result;
-
-                if (CurrentView.ReadHeadIndex != 0)
+                // The row is already committed, return the retrieved result from the head
+                result = retrievedResult;
+                if (virtualizeEtag)
                 {
-                    // We just added a Head Replica. If the entry in Tail Replica has a later (larger) version than the entry in Head Replica, 
-                    // it means the entry in the Head Replica is stale. Repair the row.
-                    // Entity in Tail Replica = "row" (input to FlushAndRetrieve())
-                    // Entity in Head Replica = "readRow"
-
-                    TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
-
-                    if (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK
-                        && repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.NoContent)
-                    {
-                        Logger.LogError("FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}",
-                            repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
-                        return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
-                    }
+                    result.Etag = readRow._rtable_Version.ToString();
                 }
+                return result;
+            }
 
-                // If it is not committed, either:
-                // (1) (Lock expired) flush the row to other replicas, commit it, and return the result.
-                // Or (2) (Lock not expired) return a Conflict so that the caller can try again later,
-                if (readRow._rtable_RowLock == true)
+            // If the row is not committed, either:
+            // (1) (Lock expired) flush the row to other replicas, commit it, and return the result.
+            // Or (2) (Lock not expired) return a Conflict so that the caller can try again later,
+            if (DateTime.UtcNow >= readRow._rtable_LockAcquisition + rTableConfigurationService.LockTimeout)
+            {
+                Logger.LogInformational(
+                    "FlushAndRetrieve(): _rtable_RowLock has expired. So, calling Flush2PC(). _rtable_LockAcquisition={0} CurrentTime={1}",
+                    readRow._rtable_LockAcquisition, DateTime.UtcNow);
+
+                // The entity was locked by a different client a long time ago, so flush it.
+
+                result = Flush2PC(readRow, requestOptions, operationContext);
+                if ((result.HttpStatusCode == (int) HttpStatusCode.OK) ||
+                    (result.HttpStatusCode == (int) HttpStatusCode.NoContent))
                 {
-                    if (DateTime.UtcNow >= readRow._rtable_LockAcquisition + rTableConfigurationService.LockTimeout)
-                    {
-                        Logger.LogInformational("FlushAndRetrieve(): _rtable_RowLock has expired. So, calling Flush2PC(). _rtable_LockAcquisition={0} CurrentTime={1}",
-                            readRow._rtable_LockAcquisition, DateTime.UtcNow);
-
-                        // The entity was locked by a different client a long time ago, so flush it.
-
-                        result = Flush2PC(readRow, requestOptions, operationContext);
-                        if ((result.HttpStatusCode == (int)HttpStatusCode.OK) ||
-                            (result.HttpStatusCode == (int)HttpStatusCode.NoContent))
-                        {
-                            // If flush is successful, return the result from the head.
-                            result = retrievedResult;
-                            if (virtualizeEtag) result.Etag = readRow._rtable_Version.ToString();
-                        }
-                    }
-                    else
-                    {
-                        // The entity was locked by a different client recently. Return conflict so that the caller can retry.
-                        Logger.LogInformational("FlushAndRetrieve(): Row is locked. _rtable_LockAcquisition={0} CurrentTime={1} timeout={2}",
-                            readRow._rtable_LockAcquisition, DateTime.UtcNow, rTableConfigurationService.LockTimeout);
-                        result = new TableResult()
-                        {
-                            Result = null,
-                            Etag = null,
-                            HttpStatusCode = (int)HttpStatusCode.Conflict
-                        };
-                    }
-                }
-                else
-                {
-                    // It is already committed, return the retrieved result from the head
+                    // If flush is successful, return the result from the head.
                     result = retrievedResult;
                     if (virtualizeEtag) result.Etag = readRow._rtable_Version.ToString();
                 }
+            }
+            else
+            {
+                // The entity was locked by a different client recently. Return conflict so that the caller can retry.
+                Logger.LogInformational(
+                    "FlushAndRetrieve(): Row is locked. _rtable_LockAcquisition={0} CurrentTime={1} timeout={2}",
+                    readRow._rtable_LockAcquisition, DateTime.UtcNow, rTableConfigurationService.LockTimeout);
+                result = new TableResult()
+                {
+                    Result = null,
+                    Etag = null,
+                    HttpStatusCode = (int) HttpStatusCode.Conflict
+                };
             }
 
             return result;
@@ -1999,6 +1977,11 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult RepairRow(string partitionKey, string rowKey, IRTableEntity existingRow)
         {
             TableResult result = new TableResult() { HttpStatusCode = (int)HttpStatusCode.OK };
+
+            if (CurrentView.IsStable)
+            {
+                return result;
+            }
 
             // read from the head of the read view
             TableOperation operation = TableOperation.Retrieve<DynamicRTableEntity>(partitionKey, rowKey);

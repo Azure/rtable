@@ -60,6 +60,11 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
             get { return 0; }
         }
 
+        public bool IsStable
+        {
+            get { return ReadHeadIndex == 0; }
+        }
+
         public static bool operator ==(View view1, View view2)
         {
             if ( object.ReferenceEquals(view1, null) ||
