@@ -7,8 +7,8 @@
     <ProjectGuid>{0F6D71F2-1322-4B32-BB08-A6A99EB812D4}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>library</RootNamespace>
-    <AssemblyName>library</AssemblyName>
+    <RootNamespace>Microsoft.Azure.Toolkit.Replication</RootNamespace>
+    <AssemblyName>Microsoft.Azure.Toolkit.Replication</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
