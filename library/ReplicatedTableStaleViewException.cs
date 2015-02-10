@@ -1,6 +1,4 @@
-﻿// The MIT License (MIT)
-//
-// Copyright (c) 2015 Microsoft Corporation
+﻿// Copyright (c) 2015 Microsoft Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,22 +17,25 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+namespace Microsoft.Azure.Toolkit.Replication
+{
+    using System;
+    using Microsoft.WindowsAzure.Storage;
 
-[assembly: AssemblyTitle("Microsoft Azure Toolkit ReplicatedTable Configuration Agent")]
-[assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Microsoft")]
-[assembly: AssemblyProduct("Microsoft Azure Toolkit ReplicatedTable")]
-[assembly: AssemblyCopyright("Copyright © Microsoft Corporation")]
-[assembly: AssemblyTrademark("")]
-[assembly: AssemblyCulture("")]
+    public class ReplicatedTableStaleViewException : StorageException
+    {
+        public ReplicatedTableStaleViewException()
+        {
+        }
 
-[assembly: ComVisible(false)]
+        public ReplicatedTableStaleViewException(string message)
+            : base(message)
+        {
+        }
 
-[assembly: Guid("54b0ed44-920d-407c-acff-2dbb64f9e576")]
-
-[assembly: AssemblyVersion("0.9.0.0")]
-[assembly: AssemblyFileVersion("0.9.0.0")]
+        public ReplicatedTableStaleViewException(string message, Exception inner)
+            : base(message, inner)
+        {
+        }
+    }
+}

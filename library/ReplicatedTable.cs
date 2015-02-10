@@ -1,38 +1,41 @@
-﻿//-----------------------------------------------------------------------
-// <copyright file="RTable.cs" company="Microsoft">
-//    Copyright 2013 Microsoft Corporation
+﻿// The MIT License (MIT)
 //
-//    Licensed under the Apache License, Version 2.0 (the "License");
-//    you may not use this file except in compliance with the License.
-//    You may obtain a copy of the License at
-//      http://www.apache.org/licenses/LICENSE-2.0
+// Copyright (c) 2015 Microsoft Corporation
 //
-//    Unless required by applicable law or agreed to in writing, software
-//    distributed under the License is distributed on an "AS IS" BASIS,
-//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//    See the License for the specific language governing permissions and
-//    limitations under the License.
-// </copyright>
-//-
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 
-namespace Microsoft.WindowsAzure.Storage.RTable
+namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
+    using System.Data.Services.Client;
     using System.Linq;
     using System.Net;
+    using System.Reflection;
     using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Table;
-    using Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary;
-    using System.Data.Services.Client;
-    using System.Reflection;
 
-    public class RTable : IRTable
+    public class ReplicatedTable : IReplicatedTable
     {
-        private RTableConfigurationService rTableConfigurationService;
+        private ReplicatedTableConfigurationService _replicatedTableConfigurationService;
         private string myName;
 
-        public string tableName
+        public string TableName
         {
             get
             {
@@ -47,7 +50,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         // Current read view 
         private View CurrentView
         {
-            get { return rTableConfigurationService.GetWriteView(); }
+            get { return _replicatedTableConfigurationService.GetWriteView(); }
         }
 
         // Used for read optimization to read from random replica
@@ -57,38 +60,26 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         private const int PREPARE_PHASE = 1;
         private const int COMMIT_PHASE = 2;
 
-        // Reconfig status
-        public enum ReconfigStatus
-        {
-            SUCCESS = 0,
-            PARTIAL_FAILURE = 1,
-            LOCK_FAILURE = 2,
-            UNLOCK_FAILURE = 4,
-            FAULTY_WRITE_VIEW = 8,
-            TABLE_NOT_FOUND = 16,
-            FAILURE = 32
-        }
-
         // Following fields are used by the caller to find the 
         // number of replicas created or deleted when 
         // CreateIfNotExists and DeleteIfExists are called.
         public short replicasCreated { get; private set; }
         public short replicasDeleted { get; private set; }
 
-        public RTable(string name, RTableConfigurationService rTableConfigurationAgent)
+        public ReplicatedTable(string name, ReplicatedTableConfigurationService replicatedTableConfigurationAgent)
         {
-            this.rTableConfigurationService = rTableConfigurationAgent;
-            tableName = name;
+            this._replicatedTableConfigurationService = replicatedTableConfigurationAgent;
+            TableName = name;
         }
 
-        // Create RTable replicas if they do not exist.
+        // Create ReplicatedTable replicas if they do not exist.
         // Returns: true if it creates all replicas as defined in the configuration service
         //        : false if it cannot create all replicas or if the config file has zero replicas
         // It sets the number of replicas created for the caller to check.
         public bool CreateIfNotExists(TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            Logger.LogVerbose("CreateIfNotExists");
+            ReplicatedTableLogger.LogVerbose("CreateIfNotExists");
 
             if (CurrentView.Chain.Count == 0)
             {
@@ -98,8 +89,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // Create individual table replicas if they are not created already 
             foreach (var entry in this.CurrentView.Chain)
             {
-                Logger.LogVerbose("Replica: {0}", entry.Item2.BaseUri.ToString());
-                CloudTable ctable = entry.Item2.GetTableReference(this.tableName);
+                ReplicatedTableLogger.LogVerbose("Replica: {0}", entry.Item2.BaseUri.ToString());
+                CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
                 if (ctable.CreateIfNotExists() == false)
                 {
                     return false;
@@ -123,7 +114,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // Return false if individual tables do not exist 
             foreach (var entry in this.CurrentView.Chain)
             {
-                CloudTable ctable = entry.Item2.GetTableReference(this.tableName);
+                CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
                 if (ctable.Exists() == false)
                 {
                     return false;
@@ -134,7 +125,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         }
 
 
-        // Delete RTable replicas if they exist.
+        // Delete ReplicatedTable replicas if they exist.
         // Returns: true if it deletes all replicas as defined in the configuration service
         //        : false if it cannot delete all replicas or if the config file has zero replicas
         // It sets the number of replicas deleted for the caller to check.
@@ -150,7 +141,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // Create individual table replicas if they are not created already 
             foreach (var entry in this.CurrentView.Chain)
             {
-                CloudTable ctable = entry.Item2.GetTableReference(this.tableName);
+                CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
                 if (ctable.DeleteIfExists() == false)
                 {
                     return false;
@@ -168,8 +159,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         private bool ValidateViews()
         {
             // Always replicas should be added (1) before the tail replica and (2) after the head replica if there are more than 2 replicas.
-            View readView = rTableConfigurationService.GetReadView();
-            View writeView = rTableConfigurationService.GetWriteView();
+            View readView = _replicatedTableConfigurationService.GetReadView();
+            View writeView = _replicatedTableConfigurationService.GetWriteView();
 
             // 0. If there is no write view or read view, return false
             if (writeView == null || readView == null)
@@ -204,15 +195,15 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         private View ValidateAndFetchView(TableOperationType opTypeValue)
         {
 
-            if ((opTypeValue == TableOperationType.Retrieve) || (rTableConfigurationService.IsViewStable() == true))
+            if ((opTypeValue == TableOperationType.Retrieve) || (_replicatedTableConfigurationService.IsViewStable() == true))
             {
                 // Return read view if the operation is retrieve or if the view is stable
-                return rTableConfigurationService.GetReadView();
+                return _replicatedTableConfigurationService.GetReadView();
             }
             else if (ValidateViews() == true)
             {
                 // Validate the write view and return it
-                return rTableConfigurationService.GetWriteView();
+                return _replicatedTableConfigurationService.GetWriteView();
             }
             else
                 return null;
@@ -306,7 +297,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         }
 
         /// <summary>
-        /// Transform an operation in a batch before executing it on RTable.
+        /// Transform an operation in a batch before executing it on ReplicatedTable.
         /// If row._rtable_RowLock == true (i.e. Prepare phase) or tailIndex, and if it is not an Insert operation,
         /// this function will retrieve the row from the specified replica and increment row._rtable_Version.
         /// Finally, (does not matter whether it is in Prepare or Commit phase), create and return an appropriate TableOperation.
@@ -318,7 +309,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// <param name="requestOptions"></param>
         /// <param name="operationContext"></param>
         /// <returns></returns>
-        private TableOperation TransformOp(IRTableEntity row, int phase, int index,
+        private TableOperation TransformOp(IReplicatedTableEntity row, int phase, int index,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
             int tailIndex = CurrentView.Chain.Count - 1;
@@ -338,14 +329,14 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                         : true;
 
                     // If Etag is not supplied, retrieve the row first before writing
-                    TableOperation operation = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
+                    TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
                     TableResult retrievedResult = RetrieveFromReplica(operation, index, requestOptions, operationContext);
                     if (retrievedResult == null)
                     {
                         return null;
                     }
 
-                    IRTableEntity currentRow = (IRTableEntity)(retrievedResult.Result);
+                    IReplicatedTableEntity currentRow = (IReplicatedTableEntity)(retrievedResult.Result);
 
                     if (checkETag == true)
                     {
@@ -353,7 +344,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                         {
                             // Row is not present, return appropriate error code as Merge, Delete and Replace
                             // requires row to be present.
-                            Logger.LogInformational("Row is not present.");
+                            ReplicatedTableLogger.LogInformational("Row is not present.");
                             return null;
                         }
 
@@ -361,7 +352,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                         if ((row.ETag != currentRow._rtable_Version.ToString()) && (index == 0))
                         {
                             // Return the error code that Etag does not match with the input ETag
-                            Logger.LogInformational("TransformOp(): Etag does not match. row.ETag ({0}) != currentRow._rtable_Version ({1})",
+                            ReplicatedTableLogger.LogInformational("TransformOp(): Etag does not match. row.ETag ({0}) != currentRow._rtable_Version ({1})",
                                                     row.ETag, currentRow._rtable_Version);
                             return null;
                         }
@@ -442,7 +433,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             {
                 TableOperation operation = enumerator.Current;
                 TableOperationType opType = GetOpType(operation);
-                IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+                IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
 
                 if (opType == TableOperationType.Retrieve)
                 {
@@ -485,7 +476,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 TableOperation operation = enumerator.Current;
                 TableOperationType opType = GetOpType(operation);
                 TableOperation prepOp = null;
-                IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+                IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
 
                 if (phase == PREPARE_PHASE)
                 {
@@ -552,7 +543,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             {
                 TableResult result = iter.Current;
                 TableOperation operation = enumerator.Current;
-                IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+                IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
 
                 TableOperationType opType;
                 TableOperationType.TryParse(row._rtable_Operation, out opType);
@@ -609,7 +600,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 throw new InvalidOperationException("Cannot execute an empty batch operation");
             }
 
-            //   Extract operations from the batch and transform them to RTable operations. 
+            //   Extract operations from the batch and transform them to ReplicatedTable operations. 
             //   If it is a retrieve operation, just call the retrieve function
             //   Otherwise, transform operations and run prepare phase
             IList<TableResult>[] results = new IList<TableResult>[CurrentView.Chain.Count];
@@ -653,9 +644,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             {
                 TableOperation operation = enumerator.Current;
                 TableOperationType opType = GetOpType(operation); // This is the caller's intended operation on the row
-                IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+                IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
 
-                TableOperation retrieveOperation = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
+                TableOperation retrieveOperation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
                 TableResult retrievedResult = RetrieveFromReplica(retrieveOperation, headIndex, requestOptions, operationContext);
                 if (retrievedResult == null)
                 {
@@ -667,26 +658,26 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 }
                 else if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK)
                 {
-                    IRTableEntity currentRow = (IRTableEntity)(retrievedResult.Result);
+                    IReplicatedTableEntity currentRow = (IReplicatedTableEntity)(retrievedResult.Result);
 
                     if (currentRow._rtable_RowLock == true)
                     {
-                        if (DateTime.UtcNow >= currentRow._rtable_LockAcquisition + rTableConfigurationService.LockTimeout)
+                        if (DateTime.UtcNow >= currentRow._rtable_LockAcquisition + _replicatedTableConfigurationService.LockTimeout)
                         {
                             try
                             {
-                                Logger.LogInformational("FlushAndRetrieveBatch(): Row is locked and has expired. PartitionKey={0} RowKey={1}",
+                                ReplicatedTableLogger.LogInformational("FlushAndRetrieveBatch(): Row is locked and has expired. PartitionKey={0} RowKey={1}",
                                                         row.PartitionKey, row.RowKey);
                                 this.Flush2PC(currentRow, requestOptions, operationContext);
                             }
                             catch (Exception ex)
                             {
-                                Logger.LogError("FlushAndRetrieveBatch(): Flush2PC() exception {0}", ex.ToString());
+                                ReplicatedTableLogger.LogError("FlushAndRetrieveBatch(): Flush2PC() exception {0}", ex.ToString());
                             }
                         }
                         else
                         {
-                            Logger.LogInformational("FlushAndRetrieveBatch(): Row is locked but NOT expired. PartitionKey={1} RowKey={1}",
+                            ReplicatedTableLogger.LogInformational("FlushAndRetrieveBatch(): Row is locked but NOT expired. PartitionKey={1} RowKey={1}",
                                                     row.PartitionKey, row.RowKey);
                         }
                     }
@@ -716,12 +707,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             int phase = PREPARE_PHASE;
 
             CloudTableClient tableClient = CurrentView[headIndex];
-            CloudTable table = tableClient.GetTableReference(this.tableName);
+            CloudTable table = tableClient.GetTableReference(this.TableName);
             TableBatchOperation batchOp = TransformUpdateBatchOp(batch, phase, headIndex, null, requestOptions,
                 operationContext);
             if (batchOp == null)
             {
-                throw new RTableConflictException("Please retry again after random timeout");
+                throw new ReplicatedTableConflictException("Please retry again after random timeout");
             }
             results = table.ExecuteBatch(batchOp, requestOptions, operationContext);
             if (PostProcessBatchExec(batch, results, phase) == false)
@@ -757,12 +748,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             for (int index = 1; index < tailIndex; index++)
             {
                 CloudTableClient tableClient = CurrentView[index];
-                CloudTable table = tableClient.GetTableReference(this.tableName);
+                CloudTable table = tableClient.GetTableReference(this.TableName);
                 TableBatchOperation batchOp = TransformUpdateBatchOp(batch, phase, index, null, requestOptions,
                     operationContext);
                 if (batchOp == null)
                 {
-                    throw new RTableConflictException("Please retry again after a random delay");
+                    throw new ReplicatedTableConflictException("Please retry again after a random delay");
                 }
                 results[index] = table.ExecuteBatch(batchOp, requestOptions, operationContext);
                 if (PostProcessBatchExec(batch, results[index], phase) == false)
@@ -775,7 +766,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             for (int index = tailIndex; index >= 0; index--)
             {
                 CloudTableClient tableClient = CurrentView[index];
-                CloudTable table = tableClient.GetTableReference(this.tableName);
+                CloudTable table = tableClient.GetTableReference(this.TableName);
                 TableBatchOperation batchOp;
 
                 // If there is only one replica then we have to transform the operation 
@@ -849,18 +840,18 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     return retrievedResult;
                 }
 
-                IRTableEntity currentRow = null;
-                if (retrievedResult.Result is DynamicRTableEntity)
+                IReplicatedTableEntity currentRow = null;
+                if (retrievedResult.Result is DynamicReplicatedTableEntity)
                 {
-                    currentRow = retrievedResult.Result as DynamicRTableEntity;
+                    currentRow = retrievedResult.Result as DynamicReplicatedTableEntity;
                 }
-                else if (retrievedResult.Result is RTableEntity)
+                else if (retrievedResult.Result is ReplicatedTableEntity)
                 {
-                    currentRow = retrievedResult.Result as RTableEntity;
+                    currentRow = retrievedResult.Result as ReplicatedTableEntity;
                 }
                 else
                 {
-                    throw new Exception("Illegal entity type used in RTable. Use TableOperation.Retrieve<T> with proper entity type T. ");
+                    throw new Exception("Illegal entity type used in ReplicatedTable. Use TableOperation.Retrieve<T> with proper entity type T. ");
                 }
 
                 if (index != tailIndex && currentRow._rtable_RowLock)
@@ -878,7 +869,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
                 // We read a committed value. return it after virtualizing the ETag
                 retrievedResult.Etag = currentRow._rtable_Version.ToString();
-                IRTableEntity row = (IRTableEntity)retrievedResult.Result;
+                IReplicatedTableEntity row = (IReplicatedTableEntity)retrievedResult.Result;
                 row.ETag = retrievedResult.Etag;
 
                 return retrievedResult;
@@ -891,7 +882,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult Delete(TableOperation operation, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+            IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.Delete);
             TableOperation top;
 
@@ -909,7 +900,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult Merge(TableOperation operation, TableResult retrievedResult,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+            IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             TableResult result;
             bool checkETag = (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrMerge)) ? false : true;
             row._rtable_Operation = GetTableOperation(TableOperationType.Merge);
@@ -922,18 +913,18 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
             {
                 // Row is not present, return appropriate error code
-                Logger.LogInformational("Insert: Row is already present ");
+                ReplicatedTableLogger.LogInformational("Insert: Row is already present ");
                 return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
             }
             else
             {
                 // Row is present at the replica
                 // Merge the row
-                RTableEntity currentRow = (RTableEntity)(retrievedResult.Result);
+                ReplicatedTableEntity currentRow = (ReplicatedTableEntity)(retrievedResult.Result);
                 if (checkETag && (row.ETag != (currentRow._rtable_Version.ToString())))
                 {
                     // Return the error code that Etag does not match with the input ETag
-                    Logger.LogInformational("Merge: ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
+                    ReplicatedTableLogger.LogInformational("Merge: ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
                                             row.ETag, currentRow._rtable_Version);
                     return new TableResult()
                     {
@@ -955,7 +946,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 if (((result = UpdateOrDeleteRow(tableClient, row)) == null) ||
                     (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
                 {
-                    Logger.LogError("Merge: Failed to lock the head. ");
+                    ReplicatedTableLogger.LogError("Merge: Failed to lock the head. ");
                     return new TableResult()
                     {
                         Result = null,
@@ -971,7 +962,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 {
                     // Failed, abort with error and let the application take care of it by reissuing it 
                     // TO DO: Alternately, we could wait and retry after sometime using requestOptions. 
-                    Logger.LogError("Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
+                    ReplicatedTableLogger.LogError("Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
                     return new TableResult()
                     {
                         Result = null,
@@ -996,9 +987,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult InsertOrMerge(TableOperation operation, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+            IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrMerge);
-            TableOperation top = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
+            TableOperation top = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
             TableResult retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
 
             if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK)
@@ -1023,7 +1014,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult Replace(TableOperation operation, TableResult retrievedResult,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+            IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             TableResult result;
 
             bool checkETag = (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace));
@@ -1049,17 +1040,17 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
             {
                 // Row is not present, return appropriate error code
-                Logger.LogInformational("Replace: Row is not present. ParitionKey={0} RowKey={1}", row.PartitionKey, row.RowKey);
+                ReplicatedTableLogger.LogInformational("Replace: Row is not present. ParitionKey={0} RowKey={1}", row.PartitionKey, row.RowKey);
                 return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
             }
 
             // Row is present at the replica
             // Replace the row 
-            RTableEntity currentRow = (RTableEntity)(retrievedResult.Result);
+            ReplicatedTableEntity currentRow = (ReplicatedTableEntity)(retrievedResult.Result);
             if (checkETag && (row.ETag != (currentRow._rtable_Version.ToString())))
             {
                 // Return the error code that Etag does not match with the input ETag
-                Logger.LogInformational("Replace: Row is not present at the head. ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
+                ReplicatedTableLogger.LogInformational("Replace: Row is not present at the head. ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
                                         row.ETag, currentRow._rtable_Version);
                 return new TableResult()
                 {
@@ -1080,7 +1071,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             if (((result = UpdateOrDeleteRow(tableClient, row)) == null) ||
                 (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
             {
-                Logger.LogError("Insert: Failed to lock the head. ");
+                ReplicatedTableLogger.LogError("Insert: Failed to lock the head. ");
                 return new TableResult()
                 {
                     Result = null,
@@ -1096,7 +1087,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             {
                 // Failed, abort with error and let the application take care of it by reissuing it 
                 // TO DO: Alternately, we could wait and retry after sometime using requestOptions. 
-                Logger.LogError("IOR: Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
+                ReplicatedTableLogger.LogError("IOR: Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
                 return new TableResult()
                 {
                     Result = null,
@@ -1119,7 +1110,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult Insert(TableOperation operation, TableResult retrievedResult,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+            IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.Insert);
             TableResult result;
             string[] eTagStrings = new string[CurrentView.Chain.Count];
@@ -1130,7 +1121,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
                 if (retrievedResult == null)
                 {
-                    Logger.LogError("Insert: failure in flush.");
+                    ReplicatedTableLogger.LogError("Insert: failure in flush.");
                     return null;
                 }
             }
@@ -1138,7 +1129,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             CloudTableClient headTableClient = CurrentView[0];
 
             // insert a tombstone first. we insert it without a lock since insert will detect conflict anyway.
-            DynamicRTableEntity tsRow = new DynamicRTableEntity(row.PartitionKey, row.RowKey);
+            DynamicReplicatedTableEntity tsRow = new DynamicReplicatedTableEntity(row.PartitionKey, row.RowKey);
             tsRow._rtable_RowLock = true;
             tsRow._rtable_LockAcquisition = DateTime.UtcNow;
             tsRow._rtable_ViewId = CurrentView.ViewId;
@@ -1149,7 +1140,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // Lock the head first by inserting the row
             if ((result = InsertRow(headTableClient, tsRow)) == null)
             {
-                Logger.LogError("Insert: Failed to insert at the head.");
+                ReplicatedTableLogger.LogError("Insert: Failed to insert at the head.");
                 return null;
             }
 
@@ -1157,7 +1148,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             if (result.HttpStatusCode != (int)HttpStatusCode.Created &&
                 result.HttpStatusCode != (int)HttpStatusCode.NoContent)
             {
-                Logger.LogError("Insert: Failed to insert at the head with HttpStatusCode = {0}", result.HttpStatusCode);
+                ReplicatedTableLogger.LogError("Insert: Failed to insert at the head with HttpStatusCode = {0}", result.HttpStatusCode);
                 return new TableResult()
                 {
                     Result = null,
@@ -1179,7 +1170,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 return null;
             }
 
-            // now replace the row with version 0 in RTable and return the result
+            // now replace the row with version 0 in ReplicatedTable and return the result
             row.ETag = tsRow._rtable_Version.ToString();
             return Replace(TableOperation.Replace(row), retrievedResult, requestOptions, operationContext);
         }
@@ -1190,9 +1181,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         public TableResult InsertOrReplace(TableOperation operation, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            IRTableEntity row = (IRTableEntity)GetEntityFromOperation(operation);
+            IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrReplace);
-            TableOperation top = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
+            TableOperation top = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
             TableResult retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
 
             if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
@@ -1211,7 +1202,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         //
         // FlushAndRetrieve: Flush (if it is not committed) and retrieve a row.  
         //
-        public TableResult FlushAndRetrieve(IRTableEntity row, TableRequestOptions requestOptions = null,
+        public TableResult FlushAndRetrieve(IReplicatedTableEntity row, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null, bool virtualizeEtag = true)
         {
             //
@@ -1221,7 +1212,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             if (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK
                 && repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.NoContent)
             {
-                Logger.LogError(
+                ReplicatedTableLogger.LogError(
                     "FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}",
                     repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
                 return new TableResult()
@@ -1233,16 +1224,16 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
 
             TableResult retrievedResult = null;
-            if (this.rTableConfigurationService.ConvertXStoreTableMode)
+            if (this._replicatedTableConfigurationService.ConvertXStoreTableMode)
             {
                 // When we are in ConvertXStoreTableMode, the existing entities were created as XStore entities.
-                // Hence, need to use DynamicRTableEntity2 which catches KeyNotFoundException
-                TableOperation operation = TableOperation.Retrieve<DynamicRTableEntity2>(row.PartitionKey, row.RowKey);
+                // Hence, need to use InitDynamicReplicatedTableEntity which catches KeyNotFoundException
+                TableOperation operation = TableOperation.Retrieve<InitDynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
                 retrievedResult = RetrieveFromReplica(operation, CurrentView.WriteHeadIndex, requestOptions, operationContext);
             }
             else
             {
-                TableOperation operation = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
+                TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
                 retrievedResult = RetrieveFromReplica(operation, CurrentView.WriteHeadIndex, requestOptions, operationContext);
             }
 
@@ -1263,7 +1254,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 return retrievedResult;
             }
 
-            IRTableEntity readRow = (IRTableEntity) retrievedResult.Result;
+            IReplicatedTableEntity readRow = (IReplicatedTableEntity) retrievedResult.Result;
             // Retrieve from the head
             TableResult result = null;
 
@@ -1282,9 +1273,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // If the row is not committed, either:
             // (1) (Lock expired) flush the row to other replicas, commit it, and return the result.
             // Or (2) (Lock not expired) return a Conflict so that the caller can try again later,
-            if (DateTime.UtcNow >= readRow._rtable_LockAcquisition + rTableConfigurationService.LockTimeout)
+            if (DateTime.UtcNow >= readRow._rtable_LockAcquisition + _replicatedTableConfigurationService.LockTimeout)
             {
-                Logger.LogInformational(
+                ReplicatedTableLogger.LogInformational(
                     "FlushAndRetrieve(): _rtable_RowLock has expired. So, calling Flush2PC(). _rtable_LockAcquisition={0} CurrentTime={1}",
                     readRow._rtable_LockAcquisition, DateTime.UtcNow);
 
@@ -1302,9 +1293,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             else
             {
                 // The entity was locked by a different client recently. Return conflict so that the caller can retry.
-                Logger.LogInformational(
+                ReplicatedTableLogger.LogInformational(
                     "FlushAndRetrieve(): Row is locked. _rtable_LockAcquisition={0} CurrentTime={1} timeout={2}",
-                    readRow._rtable_LockAcquisition, DateTime.UtcNow, rTableConfigurationService.LockTimeout);
+                    readRow._rtable_LockAcquisition, DateTime.UtcNow, _replicatedTableConfigurationService.LockTimeout);
                 result = new TableResult()
                 {
                     Result = null,
@@ -1324,12 +1315,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
             try
             {
-                CloudTable tail = GetTailTableClient().GetTableReference(tableName);
+                CloudTable tail = GetTailTableClient().GetTableReference(TableName);
                 rows = tail.ExecuteQuery(query);
             }
             catch (Exception e)
             {
-                Logger.LogError("Error in ExecuteQuery: caught exception {0}", e);
+                ReplicatedTableLogger.LogError("Error in ExecuteQuery: caught exception {0}", e);
             }
 
             return rows;
@@ -1344,7 +1335,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
             CloudTableClient tableClient = CurrentView[index];
-            CloudTable table = tableClient.GetTableReference(this.tableName);
+            CloudTable table = tableClient.GetTableReference(this.TableName);
             TableResult retrievedResult = null;
 
             try
@@ -1353,7 +1344,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
             catch (Exception e)
             {
-                Logger.LogError("Error in RetrieveFromReplica(): caught exception {0}", e);
+                ReplicatedTableLogger.LogError("Error in RetrieveFromReplica(): caught exception {0}", e);
                 return null;
             }
 
@@ -1361,10 +1352,10 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // then check consistency of viewId between the currentView and existing entity.
             if (retrievedResult != null)
             {
-                IRTableEntity readRow = (IRTableEntity)(retrievedResult.Result);
+                IReplicatedTableEntity readRow = (IReplicatedTableEntity)(retrievedResult.Result);
                 if (readRow != null && this.CurrentView != null && this.CurrentView.ViewId < readRow._rtable_ViewId)
                 {
-                    throw new RTableStaleViewException(
+                    throw new ReplicatedTableStaleViewException(
                         string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}",
                         this.CurrentView.ViewId.ToString(),
                         readRow._rtable_ViewId));
@@ -1377,7 +1368,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         //
         // Flush2PC protocol: Executes chain 2PC protocol after a row is updated and locked at the head.
         //
-        private TableResult Flush2PC(IRTableEntity row, TableRequestOptions requestOptions = null,
+        private TableResult Flush2PC(IReplicatedTableEntity row, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null, string etagOnHead = null)
         {
             TableResult result = null;
@@ -1397,7 +1388,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             return FlushCommitPhase(row, requestOptions, operationContext, eTagsStrings);
         }
 
-        private TableResult FlushPreparePhase(IRTableEntity row, TableRequestOptions requestOptions,
+        private TableResult FlushPreparePhase(IReplicatedTableEntity row, TableRequestOptions requestOptions,
             OperationContext operationContext, string[] eTagsStrings)
         {
             TableResult result = new TableResult() { HttpStatusCode = (int)HttpStatusCode.OK };
@@ -1410,7 +1401,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     null)
                 {
                     // Failed in the middle, abort with error
-                    Logger.LogError(
+                    ReplicatedTableLogger.LogError(
                         "F2PC: Failed during prepare phase in 2PC at replica with index: {0} for row with row key: {1}",
                         index, row.RowKey);
                     return null;
@@ -1423,7 +1414,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             return result;
         }
 
-        private TableResult FlushCommitPhase(IRTableEntity row, TableRequestOptions requestOptions, OperationContext operationContext,
+        private TableResult FlushCommitPhase(IReplicatedTableEntity row, TableRequestOptions requestOptions, OperationContext operationContext,
             string[] eTagStrings)
         {
             TableResult result = null;
@@ -1440,7 +1431,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 if (result == null)
                 {
                     // Failed in the middle, abort with error
-                    Logger.LogError(
+                    ReplicatedTableLogger.LogError(
                         "F2PC: Failed during commit phase in 2PC at replica with index: {0} when reading a row with row key: {1}",
                         index,
                         row.RowKey);
@@ -1462,12 +1453,12 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         //                      to prevent race conditions from multiple writers.
         //  Returns the new table result if it succeeds. Otherwise, it returns null
         //
-        private TableResult InsertUpdateOrDeleteRow(IRTableEntity row, int index, string Etag,
+        private TableResult InsertUpdateOrDeleteRow(IReplicatedTableEntity row, int index, string Etag,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
             // Read the row before updating it
             CloudTableClient tableClient = CurrentView[index];
-            TableOperation operation = TableOperation.Retrieve<DynamicRTableEntity>(row.PartitionKey, row.RowKey);
+            TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
 
             // If the Etag is supplied, this is an update or delete based on existing eTag
             // no need to retrieve
@@ -1490,7 +1481,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             if (retrievedResult == null)
             {
                 // If retrieve fails for some reason then return "service unavailable - 503 " error code
-                Logger.LogError(
+                ReplicatedTableLogger.LogError(
                     "IUD: Failed to access replica with index: {0} when reading a row with row key: {1}", index,
                     row.RowKey);
                 return null;
@@ -1519,7 +1510,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 if (((result = InsertRow(tableClient, row)) == null) ||
                     (result.HttpStatusCode != (int)HttpStatusCode.NoContent) || (result.Result == null))
                 {
-                    Logger.LogError(
+                    ReplicatedTableLogger.LogError(
                         "IUD: Failed at replica with index: {0} when inserting a new row with row key: {1}", index,
                         row.RowKey);
                     return null;
@@ -1527,41 +1518,41 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 return result;
             }
 
-            Logger.LogError("IUD: Failed to access replica with index: {0}, error code = {1}", index,
+            ReplicatedTableLogger.LogError("IUD: Failed to access replica with index: {0}, error code = {1}", index,
                 retrievedResult.HttpStatusCode);
             return null;
         }
 
-        private TableResult InsertRow(CloudTableClient tableClient, IRTableEntity row)
+        private TableResult InsertRow(CloudTableClient tableClient, IReplicatedTableEntity row)
         {
             TableResult result;
 
             try
             {
-                CloudTable table = tableClient.GetTableReference(tableName);
+                CloudTable table = tableClient.GetTableReference(TableName);
                 TableOperation top = TableOperation.Insert(row);
                 result = table.Execute(top);
             }
             catch (StorageException ex)
             {
-                Logger.LogError(ex.ToString());
+                ReplicatedTableLogger.LogError(ex.ToString());
                 result = new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)ex.RequestInformation.HttpStatusCode };
                 return result;
             }
             catch (Exception e)
             {
-                Logger.LogError("TryInsertRow:Error: exception {0}", e);
+                ReplicatedTableLogger.LogError("TryInsertRow:Error: exception {0}", e);
                 return null;
             }
 
             return result;
         }
 
-        private TableResult UpdateOrDeleteRow(CloudTableClient tableClient, IRTableEntity row)
+        private TableResult UpdateOrDeleteRow(CloudTableClient tableClient, IReplicatedTableEntity row)
         {
             try
             {
-                CloudTable table = tableClient.GetTableReference(tableName);
+                CloudTable table = tableClient.GetTableReference(TableName);
                 if ((row._rtable_Tombstone == true) && (row._rtable_RowLock == false))
                 {
                     // For delete operations, call the delete operation if it is being committed
@@ -1582,7 +1573,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
             catch (Exception e)
             {
-                Logger.LogError("UpdateOrDeleteRow(): Error: exception {0}", e);
+                ReplicatedTableLogger.LogError("UpdateOrDeleteRow(): Error: exception {0}", e);
                 return null;
             }
         }
@@ -1624,7 +1615,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     if (unlock)
                     {
                         TableOperation operation = enumerator.Current;
-                        IRTableEntity row = (IRTableEntity)this.GetEntityFromOperation(operation);
+                        IReplicatedTableEntity row = (IReplicatedTableEntity)this.GetEntityFromOperation(operation);
                         row._rtable_RowLock = false;
                         row.ETag = result.Etag;
                     }
@@ -1640,7 +1631,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             IList<TableResult> result;
             try
             {
-                CloudTable table = tableClient.GetTableReference(this.tableName);
+                CloudTable table = tableClient.GetTableReference(this.TableName);
                 IList<TableResult> results;
                 if ((results = table.ExecuteBatch(batch, requestOptions, operationContext)) == null ||
                     !this.ValidateAndUnlock(batch, results, unlock))
@@ -1654,7 +1645,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
             catch (Exception e)
             {
-                Logger.LogError("RunBatch: exception {0}", e);
+                ReplicatedTableLogger.LogError("RunBatch: exception {0}", e);
                 result = null;
             }
             return result;
@@ -1809,21 +1800,21 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// <param name="unfinishedOps"></param>
         /// <param name="maxBatchSize"></param>
         /// <returns></returns>
-        public ReconfigStatus RepairTable(int viewIdToRecoverFrom, TableBatchOperation unfinishedOps,
+        public ReconfigurationStatus RepairTable(int viewIdToRecoverFrom, TableBatchOperation unfinishedOps,
             long maxBatchSize = 100L)
         {
-            ReconfigStatus status = (int)ReconfigStatus.SUCCESS;
-            if (this.rTableConfigurationService.IsViewStable())
+            ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
+            if (this._replicatedTableConfigurationService.IsViewStable())
             {
-                return ReconfigStatus.SUCCESS;
+                return ReconfigurationStatus.SUCCESS;
             }
             if (!this.ValidateViews())
             {
-                return ReconfigStatus.FAULTY_WRITE_VIEW;
+                return ReconfigurationStatus.FAULTY_WRITE_VIEW;
             }
 
             CloudTableClient writeHeadClient = CurrentView[CurrentView.WriteHeadIndex];
-            CloudTable writeHeadTable = writeHeadClient.GetTableReference(this.tableName);
+            CloudTable writeHeadTable = writeHeadClient.GetTableReference(this.TableName);
 
             // TO DO: Optimization
             // Now we are relying on caller to pass the viewIdToRecoverFrom. Instead, we can find the viewIdToRecoverFrom of the old replica 
@@ -1837,51 +1828,51 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             writeHeadTable.CreateIfNotExists(null, null);
 
             CloudTableClient readHeadTableClient = this.CurrentView[CurrentView.ReadHeadIndex];
-            CloudTable readHeadTable = readHeadTableClient.GetTableReference(this.tableName);
+            CloudTable readHeadTable = readHeadTableClient.GetTableReference(this.TableName);
 
             DateTime startTime = DateTime.UtcNow;
-            IQueryable<DynamicRTableEntity> query =
-                from ent in readHeadTable.CreateQuery<DynamicRTableEntity>()
+            IQueryable<DynamicReplicatedTableEntity> query =
+                from ent in readHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
                 where ent._rtable_ViewId >= viewIdToRecoverFrom
                 select ent;
 
-            foreach (DynamicRTableEntity entry in query)
+            foreach (DynamicReplicatedTableEntity entry in query)
             {
-                Logger.LogWarning("RepairReplica: repairing entity: Pk: {0}, Rk: {1}", entry.PartitionKey, entry.RowKey);
+                ReplicatedTableLogger.LogWarning("RepairReplica: repairing entity: Pk: {0}, Rk: {1}", entry.PartitionKey, entry.RowKey);
 
                 TableResult result = RepairRow(entry.PartitionKey, entry.RowKey, null);
 
                 if (result.HttpStatusCode != (int)HttpStatusCode.OK &&
                     result.HttpStatusCode != (int)HttpStatusCode.NoContent)
                 {
-                    status = ReconfigStatus.PARTIAL_FAILURE;
+                    status = ReconfigurationStatus.PARTIAL_FAILURE;
                 }
             }
 
             // now find any entries that are in the write view but not in the read view
-            query = from ent in writeHeadTable.CreateQuery<DynamicRTableEntity>()
+            query = from ent in writeHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
                     where ent._rtable_ViewId < CurrentView.ViewId
                     select ent;
 
-            foreach (DynamicRTableEntity extraEntity in query)
+            foreach (DynamicReplicatedTableEntity extraEntity in query)
             {
-                Logger.LogWarning("RepairReplica: deleting entity pk: {0}, rk: {1}", extraEntity.PartitionKey, extraEntity.RowKey);
+                ReplicatedTableLogger.LogWarning("RepairReplica: deleting entity pk: {0}, rk: {1}", extraEntity.PartitionKey, extraEntity.RowKey);
 
                 TableResult result = RepairRow(extraEntity.PartitionKey, extraEntity.RowKey, null);
 
                 if (result.HttpStatusCode != (int)HttpStatusCode.OK &&
                     result.HttpStatusCode != (int)HttpStatusCode.NoContent)
                 {
-                    status = ReconfigStatus.PARTIAL_FAILURE;
+                    status = ReconfigurationStatus.PARTIAL_FAILURE;
                 }
             }
 
-            Logger.LogInformational("RepairTable: took {0}", DateTime.UtcNow - startTime);
+            ReplicatedTableLogger.LogInformational("RepairTable: took {0}", DateTime.UtcNow - startTime);
 
             return status;
         }
 
-        private void FlushRecoveryBatch(TableBatchOperation unfinishedOps, long maxBatchSize, ref ReconfigStatus status,
+        private void FlushRecoveryBatch(TableBatchOperation unfinishedOps, long maxBatchSize, ref ReconfigurationStatus status,
             CloudTableClient newTableClient, CloudTableClient headTableClient, TableBatchOperation batchHead,
             TableBatchOperation batchNewReplica, ref long batchCount, ref Guid batchId)
         {
@@ -1901,7 +1892,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     if (this.RunBatchSplit(headTableClient, batchHead, false, ref outBatch, null, null) == null ||
                         outBatch.Count != batchHead.Count)
                     {
-                        status = ReconfigStatus.UNLOCK_FAILURE;
+                        status = ReconfigurationStatus.UNLOCK_FAILURE;
                     }
                 }
                 else
@@ -1911,7 +1902,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     if (this.RunBatchSplit(headTableClient, batchHead, false, ref newOutBatch, null, null) == null)
                     {
                         // Oops, unlock failed
-                        status |= ReconfigStatus.UNLOCK_FAILURE;
+                        status |= ReconfigurationStatus.UNLOCK_FAILURE;
                     }
 
                     // Copy unfinished operations in the head to the unfinished batch
@@ -1921,7 +1912,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                         if (!outBatch.Contains(enumerator.Current))
                         {
                             unfinishedOps.Add(enumerator.Current);
-                            status |= ReconfigStatus.PARTIAL_FAILURE;
+                            status |= ReconfigurationStatus.PARTIAL_FAILURE;
                         }
                     }
                 }
@@ -1933,9 +1924,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 if (outBatch.Count > 0 &&
                     this.RunBatchSplit(headTableClient, outBatch, false, ref newOutBatch, null, null) == null)
                 {
-                    status |= ReconfigStatus.UNLOCK_FAILURE;
+                    status |= ReconfigurationStatus.UNLOCK_FAILURE;
                 }
-                status |= ReconfigStatus.PARTIAL_FAILURE;
+                status |= ReconfigurationStatus.PARTIAL_FAILURE;
                 unfinishedOps.Concat(batchNewReplica);
             }
             batchCount = 0L;
@@ -1974,7 +1965,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// <param name="rowKey"></param>
         /// <param name="existingRow">if existing row is specified, then the row is already locked in read view</param>
         /// <returns></returns>
-        public TableResult RepairRow(string partitionKey, string rowKey, IRTableEntity existingRow)
+        public TableResult RepairRow(string partitionKey, string rowKey, IReplicatedTableEntity existingRow)
         {
             TableResult result = new TableResult() { HttpStatusCode = (int)HttpStatusCode.OK };
 
@@ -1984,7 +1975,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
 
             // read from the head of the read view
-            TableOperation operation = TableOperation.Retrieve<DynamicRTableEntity>(partitionKey, rowKey);
+            TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(partitionKey, rowKey);
             TableResult readHeadResult = RetrieveFromReplica(operation, CurrentView.ReadHeadIndex);
             if (readHeadResult == null)
             {
@@ -2010,10 +2001,10 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 };
             }
 
-            DynamicRTableEntity writeViewEntity = null;
+            DynamicReplicatedTableEntity writeViewEntity = null;
             if (writeHeadResult.HttpStatusCode == (int)HttpStatusCode.OK && writeHeadResult.Result != null)
             {
-                writeViewEntity = (DynamicRTableEntity)writeHeadResult.Result;
+                writeViewEntity = (DynamicReplicatedTableEntity)writeHeadResult.Result;
                 if (writeViewEntity._rtable_ViewId >= CurrentView.GetReplicaInfo(CurrentView.WriteHeadIndex).ViewInWhichAddedToChain)
                 {
                     // nothing to repair in this case.
@@ -2031,20 +2022,20 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
                     // delete row from the write view
                     result = UpdateOrDeleteRow(CurrentView[CurrentView.WriteHeadIndex], writeViewEntity);
-                    Logger.LogWarning("RepairRow: attempt to delete from write head returned: {0}", result.HttpStatusCode);
+                    ReplicatedTableLogger.LogWarning("RepairRow: attempt to delete from write head returned: {0}", result.HttpStatusCode);
                     return result;
                 }
             }
 
             if (readHeadResult.HttpStatusCode != (int)HttpStatusCode.OK || readHeadResult.Result == null)
             {
-                Logger.LogError("RepairRow: unexpected result on the read view head: {0}", readHeadResult.HttpStatusCode);
+                ReplicatedTableLogger.LogError("RepairRow: unexpected result on the read view head: {0}", readHeadResult.HttpStatusCode);
                 return readHeadResult;
             }
 
-            IRTableEntity readHeadEntity = (IRTableEntity)readHeadResult.Result;
+            IReplicatedTableEntity readHeadEntity = (IReplicatedTableEntity)readHeadResult.Result;
             bool readHeadLocked = readHeadEntity._rtable_RowLock;
-            bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + rTableConfigurationService.LockTimeout >
+            bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + _replicatedTableConfigurationService.LockTimeout >
                                         DateTime.UtcNow);
 
             // take a lock on the read view entity unless the entity is already locked
@@ -2056,13 +2047,13 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             result = UpdateOrDeleteRow(CurrentView[CurrentView.ReadHeadIndex], readHeadEntity);
             if (result == null)
             {
-                Logger.LogError("RepairRow: failed to take lock on read head.");
+                ReplicatedTableLogger.LogError("RepairRow: failed to take lock on read head.");
                 return null;
             }
 
             if (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent)
             {
-                Logger.LogError("RepairRow: failed to take lock on read head: {0}", result.HttpStatusCode);
+                ReplicatedTableLogger.LogError("RepairRow: failed to take lock on read head: {0}", result.HttpStatusCode);
                 return null;
             }
 
@@ -2081,13 +2072,13 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             result = InsertUpdateOrDeleteRow(readHeadEntity, CurrentView.WriteHeadIndex, readHeadEntity.ETag);
             if (result == null)
             {
-                Logger.LogError("RepairRow: failed to write entity on the write view.");
+                ReplicatedTableLogger.LogError("RepairRow: failed to write entity on the write view.");
                 return null;
             }
 
             if (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent)
             {
-                Logger.LogError("RepairRow: failed to write to write head: {0}", result.HttpStatusCode);
+                ReplicatedTableLogger.LogError("RepairRow: failed to write to write head: {0}", result.HttpStatusCode);
                 return result;
             }
 
@@ -2100,18 +2091,18 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 result = UpdateOrDeleteRow(CurrentView[CurrentView.ReadHeadIndex], readHeadEntity);
                 if (result == null)
                 {
-                    Logger.LogError("RepairRow: failed to unlock read view.");
+                    ReplicatedTableLogger.LogError("RepairRow: failed to unlock read view.");
                     return null;
                 }
 
                 if (result.HttpStatusCode != (int)HttpStatusCode.OK &&
                     result.HttpStatusCode != (int)HttpStatusCode.NoContent)
                 {
-                    Logger.LogError("RepairRow: failed to unlock read head: {0}", result.HttpStatusCode);
+                    ReplicatedTableLogger.LogError("RepairRow: failed to unlock read head: {0}", result.HttpStatusCode);
                     return result;
                 }
 
-                Logger.LogInformational("RepairRow: read head unlock result: {0}", result.HttpStatusCode);
+                ReplicatedTableLogger.LogInformational("RepairRow: read head unlock result: {0}", result.HttpStatusCode);
 
                 readHeadEntity._rtable_RowLock = false;
                 readHeadEntity.ETag = writeHeadEtagForCommit;
@@ -2119,18 +2110,18 @@ namespace Microsoft.WindowsAzure.Storage.RTable
 
                 if (result == null)
                 {
-                    Logger.LogError("RepairRow: failed to unlock write view.");
+                    ReplicatedTableLogger.LogError("RepairRow: failed to unlock write view.");
                     return null;
                 }
 
                 if (result.HttpStatusCode != (int)HttpStatusCode.OK &&
                     result.HttpStatusCode != (int)HttpStatusCode.NoContent)
                 {
-                    Logger.LogError("RepairRow: failed to unlock write head: {0}", result.HttpStatusCode);
+                    ReplicatedTableLogger.LogError("RepairRow: failed to unlock write head: {0}", result.HttpStatusCode);
                     return result;
                 }
 
-                Logger.LogInformational("RepairRow: write head unlock result: {0}", result.HttpStatusCode);
+                ReplicatedTableLogger.LogInformational("RepairRow: write head unlock result: {0}", result.HttpStatusCode);
             }
 
             // if the lock on the read head had expired, flush this row
@@ -2140,7 +2131,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 result = Flush2PC(readHeadEntity, null, null, writeHeadEtagForCommit);
                 if (result == null)
                 {
-                    Logger.LogError("RepairRow: failed flush2pc on expired lock.");
+                    ReplicatedTableLogger.LogError("RepairRow: failed flush2pc on expired lock.");
                 }
             }
 
@@ -2148,7 +2139,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         }
 
         /// <summary>
-        /// Call this function to convert all the remaining XStore Table entities to RTable entities.
+        /// Call this function to convert all the remaining XStore Table entities to ReplicatedTable entities.
         /// "remaining" XStore entities are those with _rtable_ViewId == 0.
         /// </summary>
         /// <param name="successCount"></param>
@@ -2173,9 +2164,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                 throw new ApplicationException("Unable to load the current read view");
             }
 
-            if (this.rTableConfigurationService.ConvertXStoreTableMode == false)
+            if (this._replicatedTableConfigurationService.ConvertXStoreTableMode == false)
             {
-                throw new InvalidOperationException("ConvertXStoreTable() API is NOT supported when RTable is NOT in ConvertXStoreTableMode.");
+                throw new InvalidOperationException("ConvertXStoreTable() API is NOT supported when ReplicatedTable is NOT in ConvertXStoreTableMode.");
             }
 
             int tailIndex = currentReadView.TailIndex;
@@ -2185,25 +2176,25 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             }
 
             DateTime startTime = DateTime.UtcNow;
-            Logger.LogInformational("ConvertXStoreTable() started {0}", startTime);
+            ReplicatedTableLogger.LogInformational("ConvertXStoreTable() started {0}", startTime);
 
             CloudTableClient tailTableClient = currentReadView[tailIndex];
-            CloudTable tailTable = tailTableClient.GetTableReference(this.tableName);
+            CloudTable tailTable = tailTableClient.GetTableReference(this.TableName);
 
-            IQueryable<DynamicRTableEntity2> query =
-                                    from ent in tailTable.CreateQuery<DynamicRTableEntity2>().AsQueryable<DynamicRTableEntity2>()
+            IQueryable<InitDynamicReplicatedTableEntity> query =
+                                    from ent in tailTable.CreateQuery<InitDynamicReplicatedTableEntity>().AsQueryable<InitDynamicReplicatedTableEntity>()
                                     select ent;
 
-            using (IEnumerator<DynamicRTableEntity2> enumerator = query.GetEnumerator())
+            using (IEnumerator<InitDynamicReplicatedTableEntity> enumerator = query.GetEnumerator())
             {
                 while (enumerator.MoveNext())
                 {
-                    DynamicRTableEntity2 entity = enumerator.Current;
+                    InitDynamicReplicatedTableEntity entity = enumerator.Current;
                     if (entity._rtable_ViewId != 0)
                     {
-                        // _rtable_ViewId = 0 means that the entity has not been operated on since ther XStore Table was converted to RTable.
+                        // _rtable_ViewId = 0 means that the entity has not been operated on since ther XStore Table was converted to ReplicatedTable.
                         // So, convert it manually now.
-                        Logger.LogInformational("Skipped XStore entity with Partition={0} Row={1}", entity.PartitionKey, entity.RowKey);
+                        ReplicatedTableLogger.LogInformational("Skipped XStore entity with Partition={0} Row={1}", entity.PartitionKey, entity.RowKey);
                         skippedCount++;
                         continue;
                     }
@@ -2214,19 +2205,19 @@ namespace Microsoft.WindowsAzure.Storage.RTable
                     {
                         TableResult result = tailTable.Execute(top, requestOptions, operationContext);
                         successCount++;
-                        Logger.LogInformational("Converted XStore entity with Partition={0} Row={1}", entity.PartitionKey, entity.RowKey);
+                        ReplicatedTableLogger.LogInformational("Converted XStore entity with Partition={0} Row={1}", entity.PartitionKey, entity.RowKey);
                     }
                     catch (Exception ex)
                     {
                         failedCount++;
-                        Logger.LogError("Exception when converting XStore entity with Partition={0} Row={1}. Ex = {2}",
+                        ReplicatedTableLogger.LogError("Exception when converting XStore entity with Partition={0} Row={1}. Ex = {2}",
                             entity.PartitionKey, entity.RowKey, ex.ToString());
                     }
                 }
             }
             DateTime endTime = DateTime.UtcNow;
-            Logger.LogInformational("ConvertXStoreTable() finished {0}. Time took to convert = {1}", endTime, endTime - startTime);
-            Logger.LogInformational("successCount={0} skippedCount={1} failedCount={2}", successCount, skippedCount, failedCount);
+            ReplicatedTableLogger.LogInformational("ConvertXStoreTable() finished {0}. Time took to convert = {1}", endTime, endTime - startTime);
+            ReplicatedTableLogger.LogInformational("successCount={0} skippedCount={1} failedCount={2}", successCount, skippedCount, failedCount);
         }
 
     }

@@ -1,30 +1,36 @@
-﻿//-----------------------------------------------------------------------
-// <copyright file="RTableConfigurationService.cs" company="Microsoft">
-//    Copyright 2013 Microsoft Corporation
+﻿// The MIT License (MIT)
 //
-//    Licensed under the Apache License, Version 2.0 (the "License");
-//    you may not use this file except in compliance with the License.
-//    You may obtain a copy of the License at
-//      http://www.apache.org/licenses/LICENSE-2.0
+// Copyright (c) 2015 Microsoft Corporation
 //
-//    Unless required by applicable law or agreed to in writing, software
-//    distributed under the License is distributed on an "AS IS" BASIS,
-//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//    See the License for the specific language governing permissions and
-//    limitations under the License.
-// </copyright>
-//-----------
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 
-namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
+
+namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
     using System.Threading;
-    using Microsoft.WindowsAzure.Storage.Blob;
     using System.Threading.Tasks;
+    using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.Blob;
     using Microsoft.WindowsAzure.Storage.Table;
 
-    public class RTableConfigurationService : IDisposable
+    public class ReplicatedTableConfigurationService : IDisposable
     {
         private List<ConfigurationStoreLocationInfo> blobLocations;
         private Dictionary<string, CloudBlockBlob> blobs = new Dictionary<string, CloudBlockBlob>();
@@ -42,7 +48,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
         private bool disposed = false;
 
 
-        public RTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations, 
+        public ReplicatedTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations, 
             bool useHttps, 
             int lockTimeoutInSeconds = 0)
         {
@@ -51,14 +57,14 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
             this.lastViewRefreshTime = DateTime.MinValue;
             this.lastRenewedReadView = new View();
             this.lastRenewedWriteView = new View();
-            this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? ConfigurationConstants.LockTimeoutInSeconds : lockTimeoutInSeconds);
+            this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? Constants.LockTimeoutInSeconds : lockTimeoutInSeconds);
             this.Initialize();
 
             this.viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, 
-                                                      TimeSpan.FromSeconds(ConfigurationConstants.LeaseRenewalIntervalInSec));
+                                                      TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec));
         }
 
-        ~RTableConfigurationService()
+        ~ReplicatedTableConfigurationService()
         {
             this.Dispose(false);
         }
@@ -98,17 +104,17 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
         {
             Parallel.ForEach(this.blobs, blob =>
             {
-                RTableConfigurationStore configurationStore = null;
+                ReplicatedTableConfigurationStore configurationStore = null;
                 long newViewId = 0;
-                if (!CloudBlobHelpers.TryReadBlob<RTableConfigurationStore>(blob.Value, out configurationStore))
+                if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
                 {
                     //This is the first time we are uploading the config
-                    configurationStore = new RTableConfigurationStore();
+                    configurationStore = new ReplicatedTableConfigurationStore();
                 }
 
                 newViewId = configurationStore.ViewId + 1;
 
-                configurationStore.LeaseDuration = ConfigurationConstants.LeaseDurationInSec;
+                configurationStore.LeaseDuration = Constants.LeaseDurationInSec;
                 configurationStore.Timestamp = DateTime.UtcNow;
                 configurationStore.ReplicaChain = replicaChain;
                 configurationStore.ReadViewHeadIndex = readViewHeadIndex;
@@ -129,19 +135,19 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
                 try
                 {
                     //Step 1: Delete the current configuration
-                    blob.Value.UploadText(ConfigurationConstants.ConfigurationStoreUpdatingText);
+                    blob.Value.UploadText(Constants.ConfigurationStoreUpdatingText);
 
                     //Step 2: Wait for L + CF to make sure no pending transaction working on old views
-                    Thread.Sleep(TimeSpan.FromSeconds(ConfigurationConstants.LeaseDurationInSec +
-                                                        ConfigurationConstants.ClockFactorInSec));
+                    Thread.Sleep(TimeSpan.FromSeconds(Constants.LeaseDurationInSec +
+                                                        Constants.ClockFactorInSec));
 
                     //Step 3: Update new config
-                    blob.Value.UploadText(JsonStore<RTableConfigurationStore>.Serialize(configurationStore));
+                    blob.Value.UploadText(JsonStore<ReplicatedTableConfigurationStore>.Serialize(configurationStore));
 
                 }
                 catch (StorageException e)
                 {
-                    Logger.LogError("Updating the blob: {0} failed. Exception: {1}", blob.Value, e.Message);
+                    ReplicatedTableLogger.LogError("Updating the blob: {0} failed. Exception: {1}", blob.Value, e.Message);
                 }
             });
 
@@ -192,15 +198,15 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
 
                 foreach (var blob in this.blobs)
                 {
-                    RTableConfigurationStore configurationStore;
-                    if (!CloudBlobHelpers.TryReadBlob<RTableConfigurationStore>(blob.Value, out configurationStore))
+                    ReplicatedTableConfigurationStore configurationStore;
+                    if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
                     {
                         continue;
                     }
 
                     if (configurationStore.ViewId <= 0)
                     {
-                        Logger.LogInformational("ViewId={0} is invalid. Must be >= 1. Skipping this blob {1}.",
+                        ReplicatedTableLogger.LogInformational("ViewId={0} is invalid. Must be >= 1. Skipping this blob {1}.",
                             configurationStore.ViewId, 
                             blob.Value.Uri);
                         continue;
@@ -256,8 +262,8 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
             int viewStableCount = 0;
             foreach (var blob in this.blobs)
             {
-                RTableConfigurationStore configurationStore;
-                if (!CloudBlobHelpers.TryReadBlob<RTableConfigurationStore>(blob.Value, out configurationStore))
+                ReplicatedTableConfigurationStore configurationStore;
+                if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
                 {
                     continue;
                 }
@@ -279,7 +285,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
             CloudTableClient tableClient = null;
             if (!CloudBlobHelpers.TryCreateCloudTableClient(connectionString, out tableClient))
             {
-                Logger.LogError("No table client created for replica info: {0}", replica);
+                ReplicatedTableLogger.LogError("No table client created for replica info: {0}", replica);
             }
 
             return tableClient;
@@ -291,9 +297,9 @@ namespace Microsoft.WindowsAzure.Storage.RTable.ConfigurationAgentLibrary
             lock (this)
             {
                 if ((DateTime.UtcNow - this.lastViewRefreshTime) >
-                    TimeSpan.FromSeconds(ConfigurationConstants.LeaseRenewalIntervalInSec))
+                    TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec))
                 {
-                    Logger.LogInformational("Need to renew lease on the view/refresh the view");
+                    ReplicatedTableLogger.LogInformational("Need to renew lease on the view/refresh the view");
                     return true;
                 }
 

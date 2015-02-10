@@ -1,21 +1,25 @@
-﻿//-----------------------------------------------------------------------
-// <copyright file="DynamicRTableEntity.cs" company="Microsoft">
-//    Copyright 2013 Microsoft Corporation
+﻿// The MIT License (MIT)
 //
-//    Licensed under the Apache License, Version 2.0 (the "License");
-//    you may not use this file except in compliance with the License.
-//    You may obtain a copy of the License at
-//      http://www.apache.org/licenses/LICENSE-2.0
+// Copyright (c) 2015 Microsoft Corporation
 //
-//    Unless required by applicable law or agreed to in writing, software
-//    distributed under the License is distributed on an "AS IS" BASIS,
-//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//    See the License for the specific language governing permissions and
-//    limitations under the License.
-// </copyright>
-//-----------
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 
-namespace Microsoft.WindowsAzure.Storage.RTable
+namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
@@ -23,17 +27,18 @@ namespace Microsoft.WindowsAzure.Storage.RTable
     using Microsoft.WindowsAzure.Storage.Table;
 
     /// <summary>
-    /// DynamicRTableEntity2 is the same as DynamicRTableEntity except KeyNotFoundException is caught in ReadEntity().
-    /// DynamicRTableEntity2 is used instead of DynamicRTableEntity when ConvertXStoreTableMode = true.
+    /// InitDynamicReplicatedTableEntity is the same as DynamicReplicatedTableEntity except KeyNotFoundException is caught in ReadEntity().
+    /// InitDynamicReplicatedTableEntity is used instead of DynamicReplicatedTableEntity when ConvertXStoreTableMode = true. This 
+    /// is used to aid in transitioning an existing Azure Table to ReplicatedTable
     /// </summary>
-    public class DynamicRTableEntity2 : DynamicRTableEntity
+    public class InitDynamicReplicatedTableEntity : DynamicReplicatedTableEntity
     {
-        public DynamicRTableEntity2()
+        public InitDynamicReplicatedTableEntity()
             : base()
         {
         }
 
-        public DynamicRTableEntity2(string partitionKey, string rowKey)
+        public InitDynamicReplicatedTableEntity(string partitionKey, string rowKey)
             : base(partitionKey, rowKey)
         {
         }
@@ -42,7 +47,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         {
             Dictionary<string, EntityProperty> prop = new Dictionary<string, EntityProperty>(properties);
 
-            // Read RTable meta data
+            // Read ReplicatedTable meta data
             try
             {
                 _rtable_RowLock = (bool)prop["_rtable_RowLock"].BooleanValue; prop.Remove("_rtable_RowLock");
@@ -96,16 +101,16 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         }
     }
 
-    public class DynamicRTableEntity : RTableEntity
+    public class DynamicReplicatedTableEntity : ReplicatedTableEntity
     {
         /// <summary>
-        /// Initializes a new instance of the <see cref="DynamicRTableEntity"/> class.
+        /// Initializes a new instance of the <see cref="DynamicReplicatedTableEntity"/> class.
         /// </summary>
-        public DynamicRTableEntity() 
+        public DynamicReplicatedTableEntity() 
             : base()
         {
             this.Properties = new Dictionary<string, EntityProperty>();
-            this._rtable_Operation = RTable.GetTableOperation(TableOperationType.Insert);
+            this._rtable_Operation = ReplicatedTable.GetTableOperation(TableOperationType.Insert);
         }
 
         /// <summary>
@@ -113,7 +118,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// </summary>
         /// <param name="partitionKey">The partition key value for the entity.</param>
         /// <param name="rowKey">The row key value for the entity.</param>
-        public DynamicRTableEntity(string partitionKey, string rowKey)
+        public DynamicReplicatedTableEntity(string partitionKey, string rowKey)
             : this(partitionKey, rowKey, DateTimeOffset.MinValue, null /* timestamp */, new Dictionary<string, EntityProperty>())
         {
         }
@@ -125,7 +130,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// <param name="rowKey">The entity's row key.</param>
         /// <param name="etag">The entity's current ETag.</param>
         /// <param name="properties">The entity's properties, indexed by property name.</param>
-        public DynamicRTableEntity(string partitionKey, string rowKey, string etag, IDictionary<string, EntityProperty> properties)
+        public DynamicReplicatedTableEntity(string partitionKey, string rowKey, string etag, IDictionary<string, EntityProperty> properties)
             : this(partitionKey, rowKey, DateTimeOffset.MinValue, etag, properties)
         {
         }
@@ -138,7 +143,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// <param name="timestamp">The timestamp for this entity as returned by Windows Azure.</param>
         /// <param name="etag">The entity's current ETag; set to null to ignore the ETag during subsequent update operations.</param>
         /// <param name="properties">An <see cref="IDictionary{TKey,TElement}"/> containing a map of <see cref="string"/> property names to <see cref="EntityProperty"/> data typed values to store in the new <see cref="DynamicTableEntity"/>.</param>
-        internal DynamicRTableEntity(string partitionKey, string rowKey, DateTimeOffset timestamp, string etag, IDictionary<string, EntityProperty> properties)
+        internal DynamicReplicatedTableEntity(string partitionKey, string rowKey, DateTimeOffset timestamp, string etag, IDictionary<string, EntityProperty> properties)
             : this()
         {
             if ((partitionKey == null) || (rowKey == null) || (properties == null))
@@ -180,7 +185,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         {
             Dictionary<string, EntityProperty> prop = new Dictionary<string, EntityProperty>(properties);
 
-            // Read RTable meta data
+            // Read ReplicatedTable meta data
             _rtable_RowLock = (bool)prop["_rtable_RowLock"].BooleanValue; prop.Remove("_rtable_RowLock");
             _rtable_Version = (long)prop["_rtable_Version"].Int64Value; prop.Remove("_rtable_Version");
             _rtable_Tombstone = (bool)prop["_rtable_Tombstone"].BooleanValue; prop.Remove("_rtable_Tombstone");
@@ -198,7 +203,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
         /// <returns>A collection containing the map of string property names to values of type <see cref="EntityProperty"/> stored in this <see cref="DynamicTableEntity"/> instance.</returns>
         public override IDictionary<string, EntityProperty> WriteEntity(OperationContext operationContext)
         {
-            // Write RTable meta data
+            // Write ReplicatedTable meta data
             Dictionary<string, EntityProperty> prop = new Dictionary<string, EntityProperty>(Properties);
 
             prop.Add("_rtable_RowLock", new EntityProperty((bool?)_rtable_RowLock));

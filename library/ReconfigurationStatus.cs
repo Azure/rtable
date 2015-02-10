@@ -19,22 +19,18 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 
-[assembly: AssemblyTitle("Microsoft Azure Toolkit ReplicatedTable Configuration Agent")]
-[assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Microsoft")]
-[assembly: AssemblyProduct("Microsoft Azure Toolkit ReplicatedTable")]
-[assembly: AssemblyCopyright("Copyright © Microsoft Corporation")]
-[assembly: AssemblyTrademark("")]
-[assembly: AssemblyCulture("")]
-
-[assembly: ComVisible(false)]
-
-[assembly: Guid("54b0ed44-920d-407c-acff-2dbb64f9e576")]
-
-[assembly: AssemblyVersion("0.9.0.0")]
-[assembly: AssemblyFileVersion("0.9.0.0")]
+namespace Microsoft.Azure.Toolkit.Replication
+{
+    // Enum for status codes returned during recovery/reconfiguration
+    public enum ReconfigurationStatus
+    {
+        SUCCESS = 0,
+        PARTIAL_FAILURE = 1,
+        LOCK_FAILURE = 2,
+        UNLOCK_FAILURE = 4,
+        FAULTY_WRITE_VIEW = 8,
+        TABLE_NOT_FOUND = 16,
+        FAILURE = 32
+    }
+}

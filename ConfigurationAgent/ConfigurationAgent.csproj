@@ -74,14 +74,14 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\ConfigurationAgentLibrary\ConfigurationAgentLibrary.csproj">
-      <Project>{06b1f7b8-7567-4c78-bb2f-3aba2a506982}</Project>
-      <Name>ConfigurationAgentLibrary</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
     <None Include="app.config" />
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\library\Microsoft.Azure.Toolkit.Replication.csproj">
+      <Project>{0f6d71f2-1322-4b32-bb08-a6a99eb812d4}</Project>
+      <Name>Microsoft.Azure.Toolkit.Replication</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

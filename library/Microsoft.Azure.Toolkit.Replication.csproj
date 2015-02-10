@@ -4,11 +4,11 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{06B1F7B8-7567-4C78-BB2F-3ABA2A506982}</ProjectGuid>
+    <ProjectGuid>{0F6D71F2-1322-4B32-BB08-A6A99EB812D4}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>ConfigurationAgentLibrary</RootNamespace>
-    <AssemblyName>ConfigurationAgentLibrary</AssemblyName>
+    <RootNamespace>library</RootNamespace>
+    <AssemblyName>library</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
@@ -38,10 +38,6 @@
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\packages\Microsoft.Data.OData.5.6.3\lib\net40\Microsoft.Data.OData.dll</HintPath>
     </Reference>
-    <Reference Include="Microsoft.Data.Services.Client, Version=5.6.3.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\Microsoft.Data.Services.Client.5.6.3\lib\net40\Microsoft.Data.Services.Client.dll</HintPath>
-    </Reference>
     <Reference Include="Microsoft.WindowsAzure.Configuration, Version=1.8.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\packages\Microsoft.WindowsAzure.ConfigurationManager.1.8.0.0\lib\net35-full\Microsoft.WindowsAzure.Configuration.dll</HintPath>
@@ -55,7 +51,9 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Data.Services.Client" />
     <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.ServiceModel" />
     <Reference Include="System.Spatial, Version=5.6.3.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\packages\System.Spatial.5.6.3\lib\net40\System.Spatial.dll</HintPath>
@@ -68,25 +66,29 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CloudBlobHelpers.cs" />
-    <Compile Include="ConfigurationConstants.cs" />
+    <Compile Include="Constants.cs" />
     <Compile Include="ConfigurationStore.cs" />
     <Compile Include="ConfigurationStoreLocationInfo.cs" />
+    <Compile Include="DynamicReplicatedTableEntity.cs" />
+    <Compile Include="IReplicatedTable.cs" />
+    <Compile Include="IReplicatedTableEntity.cs" />
     <Compile Include="JsonStore.cs" />
+    <Compile Include="ReconfigurationStatus.cs" />
+    <Compile Include="ReplicatedTableLogger.cs" />
     <Compile Include="PeriodicTimer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ReplicaInfo.cs" />
-    <Compile Include="RTableConfigurationService.cs" />
-    <Compile Include="RtableConfigurationStore.cs" />
+    <Compile Include="ReplicatedTable.cs" />
+    <Compile Include="ReplicatedTableConflictException.cs" />
+    <Compile Include="ReplicatedTableEntity.cs" />
+    <Compile Include="ReplicatedTableStaleViewException.cs" />
+    <Compile Include="ReplicatedTableConfigurationService.cs" />
+    <Compile Include="ReplicatedTableConfigurationStore.cs" />
+    <Compile Include="ReplicatedTableEventSource.cs" />
     <Compile Include="View.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Common\Common.csproj">
-      <Project>{0134b83b-566a-4621-a358-ef1ed756ed1a}</Project>
-      <Name>Common</Name>
-    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

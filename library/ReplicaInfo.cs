@@ -19,22 +19,34 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+namespace Microsoft.Azure.Toolkit.Replication
+{
+    using System.Runtime.Serialization;
+    
+    [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
+    public class ReplicaInfo
+    {
+        [DataMember(IsRequired = true)]
+        public string StorageAccountName { get; set; }
 
-[assembly: AssemblyTitle("Microsoft Azure Toolkit ReplicatedTable Configuration Agent")]
-[assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Microsoft")]
-[assembly: AssemblyProduct("Microsoft Azure Toolkit ReplicatedTable")]
-[assembly: AssemblyCopyright("Copyright © Microsoft Corporation")]
-[assembly: AssemblyTrademark("")]
-[assembly: AssemblyCulture("")]
+        //Eventually, need a way to NOT pass this in here
+        [DataMember(IsRequired = true)]
+        public string StorageAccountKey { get; set; }
 
-[assembly: ComVisible(false)]
+        [DataMember(IsRequired = true)]
+        public long ViewInWhichAddedToChain { get; set; }
 
-[assembly: Guid("54b0ed44-920d-407c-acff-2dbb64f9e576")]
+        public ReplicaInfo()
+        {
+            this.ViewInWhichAddedToChain = 1;
+        }
 
-[assembly: AssemblyVersion("0.9.0.0")]
-[assembly: AssemblyFileVersion("0.9.0.0")]
+        public override string ToString()
+        {
+            return string.Format("Account Name: {0}, AccountKey: {1}, ViewInWhichAddedToChain: {2}", 
+                this.StorageAccountName, 
+                "***********", 
+                this.ViewInWhichAddedToChain);
+        }
+    }
+}

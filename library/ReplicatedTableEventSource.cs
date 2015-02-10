@@ -1,6 +1,4 @@
-﻿// The MIT License (MIT)
-//
-// Copyright (c) 2015 Microsoft Corporation
+﻿// Copyright (c) 2015 Microsoft Corporation
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -19,22 +17,39 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+namespace Microsoft.Azure.Toolkit.Replication
+{
+    using System.Diagnostics.Tracing;
 
-[assembly: AssemblyTitle("Microsoft Azure Toolkit ReplicatedTable Configuration Agent")]
-[assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Microsoft")]
-[assembly: AssemblyProduct("Microsoft Azure Toolkit ReplicatedTable")]
-[assembly: AssemblyCopyright("Copyright © Microsoft Corporation")]
-[assembly: AssemblyTrademark("")]
-[assembly: AssemblyCulture("")]
+    [EventSource(Name = Constants.LogSourceName)]
+    internal class ReplicatedTableEventSource : EventSource
+    {
+        internal ReplicatedTableEventSource()
+        {
+        }
 
-[assembly: ComVisible(false)]
+        [Event(1, Level = EventLevel.Error)]
+        internal void Error(string message)
+        {
+            this.WriteEvent(1, message);
+        }
 
-[assembly: Guid("54b0ed44-920d-407c-acff-2dbb64f9e576")]
+        [Event(2, Level = EventLevel.Warning)]
+        internal void Warning(string message)
+        {
+            this.WriteEvent(2, message);
+        }
 
-[assembly: AssemblyVersion("0.9.0.0")]
-[assembly: AssemblyFileVersion("0.9.0.0")]
+        [Event(3, Level = EventLevel.Informational)]
+        internal void Informational(string message)
+        {
+            this.WriteEvent(3, message);
+        }
+
+        [Event(4, Level = EventLevel.Verbose)]
+        internal void Verbose(string message)
+        {
+            this.WriteEvent(4, message);
+        }
+    }
+}

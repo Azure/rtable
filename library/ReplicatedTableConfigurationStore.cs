@@ -19,22 +19,28 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 
-using System.Reflection;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
+namespace Microsoft.Azure.Toolkit.Replication
+{
+    using System.Collections.Generic;
+    using System.Runtime.Serialization;
 
-[assembly: AssemblyTitle("Microsoft Azure Toolkit ReplicatedTable Configuration Agent")]
-[assembly: AssemblyDescription("")]
-[assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("Microsoft")]
-[assembly: AssemblyProduct("Microsoft Azure Toolkit ReplicatedTable")]
-[assembly: AssemblyCopyright("Copyright © Microsoft Corporation")]
-[assembly: AssemblyTrademark("")]
-[assembly: AssemblyCulture("")]
+    [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
+    public class ReplicatedTableConfigurationStore : ConfigurationStore
+    {
+        public ReplicatedTableConfigurationStore()
+            : base()
+        {
+            this.ReplicaChain = new List<ReplicaInfo>();
+        }
 
-[assembly: ComVisible(false)]
+        [DataMember(IsRequired = true)]
+        public List<ReplicaInfo> ReplicaChain { get; set; }
 
-[assembly: Guid("54b0ed44-920d-407c-acff-2dbb64f9e576")]
+        [DataMember(IsRequired = true)]
+        public int ReadViewHeadIndex { get; set; }
 
-[assembly: AssemblyVersion("0.9.0.0")]
-[assembly: AssemblyFileVersion("0.9.0.0")]
+        [DataMember(IsRequired = false)]
+        public bool ConvertXStoreTableMode { get; set; }
+
+    }
+}
