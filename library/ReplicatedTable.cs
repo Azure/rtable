@@ -1470,7 +1470,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return UpdateOrDeleteRow(tableClient, row);
             }
 
-            if (row._rtable_Operation == GetTableOperation(TableOperationType.Insert))
+            if (row._rtable_RowLock == true && row._rtable_Operation == GetTableOperation(TableOperationType.Insert))
             {
                 // if the operation is insert and it is in the prepare phase, just insert the data
                 return InsertRow(tableClient, row);
