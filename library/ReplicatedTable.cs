@@ -49,7 +49,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        // Current read view 
+        // Current view
         private View CurrentView
         {
             get { return _replicatedTableConfigurationService.GetWriteView(); }

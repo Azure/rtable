@@ -195,6 +195,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 this.lastRenewedReadView = new View();
                 this.lastRenewedWriteView = new View();
 
+                DateTime refreshStartTime = DateTime.UtcNow;
+
                 Dictionary<long, List<CloudBlockBlob>> viewResult = new Dictionary<long, List<CloudBlockBlob>>();
 
                 foreach (var blob in this.blobs)
@@ -241,7 +243,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                                 }
 
                                 //Note the time when the view was updated
-                                this.lastViewRefreshTime = DateTime.UtcNow;
+                                this.lastViewRefreshTime = refreshStartTime;
 
                                 this.ConvertXStoreTableMode = configurationStore.ConvertXStoreTableMode;
                             }

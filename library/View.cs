@@ -71,6 +71,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             get { return ReadHeadIndex == 0; }
         }
 
+        public bool IsEmpty
+        {
+            get { return Chain.Count == 0; }
+        }
+
         public static bool operator ==(View view1, View view2)
         {
             if ( object.ReferenceEquals(view1, null) ||
