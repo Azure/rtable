@@ -103,5 +103,14 @@ namespace Microsoft.WindowsAzure.Test.Network
                 this.onSessionSelected(relatedSession);
             }
         }
+
+        /// <summary>
+        /// If it is decided to skip an initial session, update the Count().
+        /// </summary>
+        /// <param name="relatedSession"></param>
+        public void ExecuteSkipInitialSession(Session relatedSession)
+        {
+            this.options.DecrementSkipInitialSessionCount();
+        }
     }
 }

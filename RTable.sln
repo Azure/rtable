@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureStorageMangler", "Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HttpMangler", "Test\Common\HttpMangler\HttpMangler.csproj", "{CA607E8F-2906-4065-A1A9-4A3733F0CC31}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Test\Tests\Tests.csproj", "{86E095D8-ABDC-4CE8-A9DD-39BCFE445FC3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -31,6 +33,10 @@ Global
 		{CA607E8F-2906-4065-A1A9-4A3733F0CC31}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CA607E8F-2906-4065-A1A9-4A3733F0CC31}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CA607E8F-2906-4065-A1A9-4A3733F0CC31}.Release|Any CPU.Build.0 = Release|Any CPU
+		{86E095D8-ABDC-4CE8-A9DD-39BCFE445FC3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{86E095D8-ABDC-4CE8-A9DD-39BCFE445FC3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{86E095D8-ABDC-4CE8-A9DD-39BCFE445FC3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{86E095D8-ABDC-4CE8-A9DD-39BCFE445FC3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -176,13 +176,68 @@ namespace Microsoft.WindowsAzure.Test.Network
         /// </summary>
         /// <param name="openSession">The relevant session for this event</param>
         /// <param name="triggerFlag">An enum value representing the type of event that has been raised</param>
-        private void HandleFiddlerEvent(Session openSession, TriggerType triggerFlag)
-        {
+        private void HandleFiddlerEvent_ORIGINAL(Session openSession, TriggerType triggerFlag)
+        {            
             for (int i = 0; i < this.behaviors.Length; ++i)
             {
-                if (this.ShouldCallBehavior(this.behaviors[i], openSession, triggerFlag))
+                if (ShouldSkipInitialSession(this.behaviors[i], openSession, triggerFlag))
                 {
-                    this.behaviors[i].Execute(openSession);
+                    this.behaviors[i].ExecuteSkipInitialSession(openSession);
+                }
+                else
+                {
+                    if (this.ShouldCallBehavior(this.behaviors[i], openSession, triggerFlag))
+                    {
+                        this.behaviors[i].Execute(openSession);
+                    }   
+                }     
+            }
+        }
+
+        /// <summary>
+        /// Use this version of HandleFiddlerEvent() for debugging.
+        /// </summary>
+        /// <param name="openSession"></param>
+        /// <param name="triggerFlag"></param>
+        private void HandleFiddlerEvent(Session openSession, TriggerType triggerFlag)
+        {
+            if (triggerFlag == TriggerType.BeforeRequest)
+            {
+                Console.WriteLine("\n\n\t\t HandleFiddlerEvent() {0:hh:mm:ss.fff} triggerFlag={1} openSession: id={2} host={3}",
+                    DateTime.UtcNow, triggerFlag, openSession.id, openSession.host);
+            }
+            for (int i = 0; i < this.behaviors.Length; ++i)
+            {
+                bool shouldSkip = this.ShouldSkipInitialSession(this.behaviors[i], openSession, triggerFlag);
+                if (shouldSkip)
+                {
+                    if (triggerFlag == TriggerType.BeforeRequest)
+                    {
+                        Console.WriteLine("\t\t ShouldSkip=TRUE. {0:hh:mm:ss.fff} openSession: id={1} host={2}",
+                            DateTime.UtcNow, openSession.id, openSession.host);
+                    }
+                    this.behaviors[i].ExecuteSkipInitialSession(openSession);
+                }
+                else
+                {
+                    bool shouldCall = this.ShouldCallBehavior(this.behaviors[i], openSession, triggerFlag);
+                    if (shouldCall)
+                    {
+                        if (triggerFlag == TriggerType.BeforeRequest)
+                        {
+                            Console.WriteLine("\t\t ShouldCall=true. {0:hh:mm:ss.fff} openSession: id={1} host={2}",
+                                DateTime.UtcNow, openSession.id, openSession.host);
+                        }
+                        this.behaviors[i].Execute(openSession);
+                    }
+                    else
+                    {
+                        if (triggerFlag == TriggerType.BeforeRequest)
+                        {
+                            Console.WriteLine("\t\t ShouldCall=FALSE. {0:hh:mm:ss.fff} openSession: id={1} host={2}",
+                                DateTime.UtcNow, openSession.id, openSession.host);
+                        }
+                    }
                 }
             }
         }
@@ -199,6 +254,21 @@ namespace Microsoft.WindowsAzure.Test.Network
             return TriggerType.None != (proxyBehavior.TriggerFlags & triggerFlag)
                 && DateTime.Now < proxyBehavior.Options.Expiry
                 && 0 < proxyBehavior.Options.RemainingSessions
+                && proxyBehavior.Selector(openSession);
+        }
+
+        /// <summary>
+        /// Handles all the login about whether a behavior should be invoked initially.
+        /// </summary>
+        /// <param name="proxyBehavior"></param>
+        /// <param name="openSession"></param>
+        /// <param name="triggerFlag"></param>
+        /// <returns></returns>
+        private bool ShouldSkipInitialSession(ProxyBehavior proxyBehavior, Session openSession, TriggerType triggerFlag)
+        {
+            return TriggerType.None != (proxyBehavior.TriggerFlags & triggerFlag)
+                && DateTime.Now < proxyBehavior.Options.Expiry
+                && 0 < proxyBehavior.Options.SkipInitialSessions
                 && proxyBehavior.Selector(openSession);
         }
 

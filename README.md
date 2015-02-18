@@ -60,6 +60,24 @@ is built.
 
 To get started, clone the repo and build using `msbuild` or Visual Studio.
 
+# Tests
+A comprehensive suite of tests can be found under the Test folder. The tests themselves depend on the following
+
+- AzureStorageMangler (based on azure\azure-storage-sdk)
+- HttpMangler (based on azure\azure-storage-sdk)
+- Nunit framework 2.5.7
+
+Running unit tests
+
+1. Build the entire solution including Tests.csproj
+2. In the Test\bin folder, make sure the following dependencies are present (if not, copy these)
+
+   - System.Spatial" version="5.6.3"
+
+3. Copy Test\nunit\2.5.7\bin\net-2.0 into Test\bin
+4. Run nunit-console.exe Tests.dll to run all tests
+  
+
 ### NuGet
 
 At this time, the RTable library is only being released as a source download. To use 

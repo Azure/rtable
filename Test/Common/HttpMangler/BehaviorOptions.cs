@@ -44,6 +44,11 @@ namespace Microsoft.WindowsAzure.Test.Network
         private long remainingSessions;
 
         /// <summary>
+        /// The number of initial sessions in which the related behavior will NOT be applied.
+        /// </summary>
+        private long skipInitialSessions;
+
+        /// <summary>
         /// Initializes a new instance of the BehaviorOptions class.
         /// </summary>
         public BehaviorOptions()
@@ -62,15 +67,28 @@ namespace Microsoft.WindowsAzure.Test.Network
         }
 
         /// <summary>
+        /// Initializes a new instance of the BehaviorOptions class with a specified number
+        /// of sessions in which the behavior should be skipped initially, and then to be applied afterwards.
+        /// </summary>
+        /// <param name="maximumRemainingSessions"></param>
+        /// <param name="skipInitialSessions"></param>
+        public BehaviorOptions(long maximumRemainingSessions, long skipInitialSessions)
+            : this(expiry: DateTime.MaxValue, maximumRemainingSessions: maximumRemainingSessions, skipInitialSessions: skipInitialSessions)
+        {
+        }
+
+        /// <summary>
         /// Initializes a new instance of the BehaviorOptions class with with an expiry time and 
         /// a maximum number of sessions to which the behavior should be applied.
         /// </summary>
         /// <param name="expiry">The time at which the behavior should no longer be applied.</param>
         /// <param name="maximumRemainingSessions">The maximum number of sessions the behavior should be applied.</param>
-        public BehaviorOptions(DateTime expiry, long maximumRemainingSessions = long.MaxValue)
+        /// <param name="skipInitialSessions"></param>
+        public BehaviorOptions(DateTime expiry, long maximumRemainingSessions = long.MaxValue, long skipInitialSessions = 0)
         {
             this.remainingSessions = maximumRemainingSessions;
             this.expiry = expiry;
+            this.skipInitialSessions = skipInitialSessions;
         }
 
         /// <summary>
@@ -90,11 +108,27 @@ namespace Microsoft.WindowsAzure.Test.Network
         }
 
         /// <summary>
+        /// Gets the number of initial sessions to allow to go through without this behavior being applied.
+        /// </summary>
+        public long SkipInitialSessions
+        {
+            get { return this.skipInitialSessions; }
+        }
+
+        /// <summary>
         /// DecrementSessionCount notes that this behavior has been applied.
         /// </summary>
         public void DecrementSessionCount()
         {
             Interlocked.Decrement(ref this.remainingSessions);
+        }
+
+        /// <summary>
+        /// Decrement the count when an initial sessions is allowed to pass though unaffected by this behavior.
+        /// </summary>
+        public void DecrementSkipInitialSessionCount()
+        {
+            Interlocked.Decrement(ref this.skipInitialSessions);
         }
     }
 }

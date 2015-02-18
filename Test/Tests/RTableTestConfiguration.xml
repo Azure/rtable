@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<RTableTestConfiguration xmlns="http://tempuri.org/RTableTestConfiguration.xsd">
+  <StorageInformation>
+    <DomainName>core.windows.net</DomainName>
+    <AccountNames>
+      <AccountName>rtablebvt01</AccountName>
+      <AccountName>rtablebvt02</AccountName>    
+      <AccountName>rtablebvt03</AccountName>
+    </AccountNames>
+    <AccountKeys>
+      <AccountKey>zPAC6oeKSsb0zpnCGqDxkAhev/2UQodmuYqda+Vbon3zaNWbzngSOvgk08XwYSXILcAFklLIZ0aLREjVgSVDnw==</AccountKey>
+      <AccountKey>yPjBFJpBwd2ryO8YhB2qp2vCOyvZWaABTIzlQq8iK9NSFljVStjD+61ZbkxvSA5WAhqbgu62QeE3K9kIZBjVMw==</AccountKey>
+      <AccountKey>Q/w0SWDGDisyCTPcPJ7/SOE2ko5i7RtHkdAYyJCA92GG6f9YLBrevv2gvMO4HRbFBFIHPPl5tqRVtoa0Qk4xCg==</AccountKey>
+    </AccountKeys>
+  </StorageInformation>
+  <RTableInformation>
+    <ContainerName>rtableconfiguration</ContainerName>
+    <BlobName>config-test.txt</BlobName>
+    <RTableName>RTableTest</RTableName>
+    <ViewId>1</ViewId>
+  </RTableInformation>
+</RTableTestConfiguration>

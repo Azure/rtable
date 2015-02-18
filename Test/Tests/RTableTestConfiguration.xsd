@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<xs:schema id="RTableTestConfiguration"
+    targetNamespace="http://tempuri.org/RTableTestConfiguration.xsd"
+    elementFormDefault="qualified"
+    xmlns="http://tempuri.org/RTableTestConfiguration.xsd"
+    xmlns:mstns="http://tempuri.org/RTableTestConfiguration.xsd"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+>
+  <xs:element name="RTableTestConfiguration">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="StorageInformation">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="DomainName" type="xs:string" />
+              <xs:element name="AccountNames">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element maxOccurs="unbounded" name="AccountName" type="xs:string" />
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+              <xs:element name="AccountKeys">
+                <xs:complexType>
+                  <xs:sequence>
+                    <xs:element maxOccurs="unbounded" name="AccountKey" type="xs:string" />
+                  </xs:sequence>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+        <xs:element name="RTableInformation">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="ContainerName" type="xs:string" />
+              <xs:element name="BlobName" type="xs:string" />
+              <xs:element name="RTableName" type="xs:string" />
+              <xs:element name="_rtable_ViewId" type="xs:int" />
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

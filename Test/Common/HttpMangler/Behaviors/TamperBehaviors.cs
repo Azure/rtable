@@ -91,6 +91,18 @@ namespace Microsoft.WindowsAzure.Test.Network.Behaviors
         }
 
         /// <summary>
+        /// Returns a behavior which tampers with all requests which meet a specified criterion, but skip the specified number of initial sessions.
+        /// </summary>
+        /// <param name="tamperAction">An action specifying how to tamper with the request.</param>
+        /// <param name="skipInitialSessions">The behavior won't be applied for this many initial sessions.</param>
+        /// <param name="selector">The predicate controlling when to tamper with the request.</param>
+        /// <returns>The relevant behavior.</returns>
+        public static ProxyBehavior TamperAllRequestsIf(Action<Session> tamperAction, int skipInitialSessions, Func<Session, bool> selector)
+        {
+            return new TamperRequestBehavior(tamperAction, selector, new BehaviorOptions(maximumRemainingSessions: int.MaxValue, skipInitialSessions: skipInitialSessions));
+        }
+
+        /// <summary>
         /// TamperRequestsUntil returns a behavior which tampers with all requests until a certain time.
         /// </summary>
         /// <param name="tamperAction">An action specifying how to tamper with the request.</param>
