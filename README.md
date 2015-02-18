@@ -74,7 +74,7 @@ Running unit tests
 
    - System.Spatial" version="5.6.3"
 
-3. Copy Test\nunit\2.5.7\bin\net-2.0 into Test\bin
+3. Download nunit 2.5.7 and copy nunit\2.5.7\bin\net-2.0 into Test\bin
 4. Run nunit-console.exe Tests.dll to run all tests
   
 
