@@ -60,7 +60,7 @@ is built.
 
 To get started, clone the repo and build using `msbuild` or Visual Studio.
 
-# Tests
+### Tests
 A comprehensive suite of tests can be found under the Test folder. The tests themselves depend on the following
 
 - AzureStorageMangler (based on azure\azure-storage-sdk)
