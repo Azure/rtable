@@ -64,7 +64,6 @@ To build the tests successfully, the following dependencies need to be downloade
 
 - nunit.framework.dll (version 2.5.7) under Test\nunit\2.5.7\bin\net-2.0
 - FiddlerCore.dll under Test\Common\Dependencies
-- 
 
 ### Tests
 A comprehensive suite of tests can be found under the Test folder. The tests themselves depend on the following
