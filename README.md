@@ -60,6 +60,12 @@ is built.
 
 To get started, clone the repo and build using `msbuild` or Visual Studio.
 
+To build the tests successfully, the following dependencies need to be downloaded
+
+- nunit.framework.dll (version 2.5.7) under Test\nunit\2.5.7\bin\net-2.0
+- FiddlerCore.dll under Test\Common\Dependencies
+- 
+
 ### Tests
 A comprehensive suite of tests can be found under the Test folder. The tests themselves depend on the following
 
