@@ -14,7 +14,7 @@ storage while gaining disaster tolerance. The protocol is optimized for read-lat
 the read latency is same as regular Azure table. In addition, recovery actions, such as 
 re-introducing a replica, do not impact read or write availability. The protocol runs 
 entirely from client-side and does not require any external service. Customers control 
-the number and location of regions for replication.
+the number and location of regions for replication. For more detailed documentaton, refer to the docs folder.
 
 ### Pros
 
