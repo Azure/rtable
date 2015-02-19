@@ -9,7 +9,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzureStorageMangler", "Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HttpMangler", "Test\Common\HttpMangler\HttpMangler.csproj", "{CA607E8F-2906-4065-A1A9-4A3733F0CC31}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Test\Tests\Tests.csproj", "{86E095D8-ABDC-4CE8-A9DD-39BCFE445FC3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Microsoft.Azure.Toolkit.Replication.Test", "Test\Tests\Microsoft.Azure.Toolkit.Replication.Test.csproj", "{86E095D8-ABDC-4CE8-A9DD-39BCFE445FC3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -7,8 +7,8 @@
     <ProjectGuid>{86E095D8-ABDC-4CE8-A9DD-39BCFE445FC3}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Tests</RootNamespace>
-    <AssemblyName>Tests</AssemblyName>
+    <RootNamespace>Microsoft.Azure.Toolkit.Replication.Test</RootNamespace>
+    <AssemblyName>Microsoft.Azure.Toolkit.Replication.Test</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
