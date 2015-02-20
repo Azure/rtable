@@ -30,6 +30,10 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="FiddlerCore, Version=2.4.9.8, Culture=neutral, PublicKeyToken=67cb91587178ac5a, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\Common\Dependencies\FiddlerCoreAPI\FiddlerCore.dll</HintPath>
+    </Reference>
     <Reference Include="Nunit.Framework">
       <HintPath>..\nunit\2.5.7\bin\net-2.0\nunit.framework.dll</HintPath>
     </Reference>
@@ -49,13 +53,6 @@
     <Reference Include="System.Xml" />
     <Reference Include="System.ServiceModel" />
     <Reference Include="System.Runtime.Serialization" />
-    <Reference Include="System.Spatial, Version=5.6.3.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\packages\System.Spatial.5.6.3\lib\net40\System.Spatial.dll</HintPath>
-    </Reference>
-    <Reference Include="FiddlerCore">
-      <HintPath>..\Common\Dependencies\DotNet2\FiddlerCore.dll</HintPath>
-    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ConvertXStoreTableAPITests.cs" />

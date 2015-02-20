@@ -481,7 +481,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.ExecuteCreateRowAndValidate(entityPartitionKey, entityRowKey);
         }       
 
-        [Test(Description = "Tamper Batch operation at the Inner replica")]
+        // [Test(Description = "Tamper Batch operation at the Inner replica")]
         public void B00TamperBatchReplaceInnerTest()
         {
             int targetStorageAccount = 1;
@@ -525,7 +525,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 opTypes);
         }
 
-        [Test(Description = "Tamper Batch _rtable_Operation Replace at the Tail replica")]
+        // [Test(Description = "Tamper Batch _rtable_Operation Replace at the Tail replica")]
         public void C00TamperBatchReplaceTailTest()
         {
             int targetStorageAccount = this.actualStorageAccountsUsed.Count - 1;
@@ -570,7 +570,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         }
 
 
-        [Test(Description = "Tamper Batch operation at the Inner replica")]
+        // [Test(Description = "Tamper Batch operation at the Inner replica")]
         public void B00TamperBatchDeleteInnerTest()
         {
             int targetStorageAccount = 1;
@@ -615,7 +615,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         }
 
 
-        [Test(Description = "Tamper Batch operation at the Tail replica")]
+        // [Test(Description = "Tamper Batch operation at the Tail replica")]
         public void C00TamperBatchDeleteTailTest()
         {
             int targetStorageAccount = this.actualStorageAccountsUsed.Count - 1;
