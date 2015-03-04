@@ -1,4 +1,4 @@
-# Azure Replicated Table Library
+﻿# Azure Replicated Table Library
 
 __RTable__ ("Replicated Table") is a library that provides synchronous geo-replication 
 capability over the Azure Table service. The library is self-contained and has no service 
@@ -75,13 +75,8 @@ A comprehensive suite of tests can be found under the Test folder. The tests the
 Running unit tests
 
 1. Build the entire solution including Tests.csproj
-2. In the Test\bin folder, make sure the following dependencies are present (if not, copy these)
-
-   - System.Spatial" version="5.6.3"
-
-3. Download nunit 2.5.7 and copy nunit\2.5.7\bin\net-2.0 into Test\bin
-4. Run nunit-console.exe Microsoft.Azure.Toolkit.Replication.Test.dll to run all tests
-  
+2. Download nunit 2.5.7 and copy nunit\2.5.7\bin\net-2.0 into Test\bin
+3. Run nunit-console.exe Microsoft.Azure.Toolkit.Replication.Test.dll to run all tests
 
 ### NuGet
 

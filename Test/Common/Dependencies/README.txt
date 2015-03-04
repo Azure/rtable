@@ -1,4 +1,3 @@
-Please download FiddlerCore @ http://www.fiddler2.com/Fiddler/Core/
-
-FiddlerCore.dll needs to be placed in .\DotNet2
-FiddlerCore4.dll needs to be placed in .\DotNet4
+1. Please download FiddlerCore @ http://www.fiddler2.com/Fiddler/Core/
+2. Install it on local machine.
+3. Copy the root of the installation folder here as FiddlerCoreAPI.
