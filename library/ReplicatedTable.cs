@@ -878,7 +878,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // We read a committed value. return it after virtualizing the ETag
                 retrievedResult.Etag = currentRow._rtable_Version.ToString();
-                IReplicatedTableEntity row = (IReplicatedTableEntity)retrievedResult.Result;
+                IReplicatedTableEntity row = GetIReplicatedTableEntityFromRetrievedResult(retrievedResult);
                 row.ETag = retrievedResult.Etag;
 
                 return retrievedResult;

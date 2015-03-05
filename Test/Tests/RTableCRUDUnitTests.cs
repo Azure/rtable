@@ -226,9 +226,15 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
             Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
 
+            //Non-generic retrieve 
+            operation = TableOperation.Retrieve(firstName, lastName);
+            TableResult retrievedResult = this.repTable.Execute(operation);
+            Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+            Assert.IsTrue(retrievedResult.Result is DynamicTableEntity, "Expected entity to be of type DynamicTableEntity");
+            
             // Retrieve entity
             operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-            TableResult retrievedResult = this.repTable.Execute(operation);
+            retrievedResult = this.repTable.Execute(operation);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null"); 
             CustomerEntity customer = (CustomerEntity)retrievedResult.Result;
 
