@@ -230,7 +230,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             operation = TableOperation.Retrieve(firstName, lastName);
             TableResult retrievedResult = this.repTable.Execute(operation);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
-            Assert.IsTrue(retrievedResult.Result is DynamicTableEntity, "Expected entity to be of type DynamicTableEntity");
+            Assert.IsTrue(retrievedResult.Result is IReplicatedTableEntity, "Expected entity to be of type IReplicatedTableEntity");
             
             // Retrieve entity
             operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
