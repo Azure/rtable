@@ -336,7 +336,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                         return null;
                     }
 
-                    IReplicatedTableEntity currentRow = (IReplicatedTableEntity)(retrievedResult.Result);
+                    IReplicatedTableEntity currentRow = ConvertToIReplicatedTableEntity(retrievedResult);
 
                     if (checkETag == true)
                     {
@@ -658,7 +658,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
                 else if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK)
                 {
-                    IReplicatedTableEntity currentRow = (IReplicatedTableEntity)(retrievedResult.Result);
+                    IReplicatedTableEntity currentRow = ConvertToIReplicatedTableEntity(retrievedResult);
 
                     if (currentRow._rtable_RowLock == true)
                     {
@@ -851,7 +851,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
                 else
                 {
-                    throw new Exception("Illegal entity type used in ReplicatedTable. Use TableOperation.Retrieve<T> with proper entity type T. ");
+                    throw new Exception(
+                        "Illegal entity type used in ReplicatedTable.");
                 }
 
                 if (index != tailIndex && currentRow._rtable_RowLock)
@@ -869,7 +870,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // We read a committed value. return it after virtualizing the ETag
                 retrievedResult.Etag = currentRow._rtable_Version.ToString();
-                IReplicatedTableEntity row = (IReplicatedTableEntity)retrievedResult.Result;
+                IReplicatedTableEntity row = ConvertToIReplicatedTableEntity(retrievedResult);
                 row.ETag = retrievedResult.Etag;
 
                 return retrievedResult;
@@ -1254,7 +1255,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return retrievedResult;
             }
 
-            IReplicatedTableEntity readRow = (IReplicatedTableEntity) retrievedResult.Result;
+            IReplicatedTableEntity readRow = ConvertToIReplicatedTableEntity(retrievedResult);
             // Retrieve from the head
             TableResult result = null;
 
@@ -1352,7 +1353,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             // then check consistency of viewId between the currentView and existing entity.
             if (retrievedResult != null)
             {
-                IReplicatedTableEntity readRow = (IReplicatedTableEntity)(retrievedResult.Result);
+                IReplicatedTableEntity readRow = ConvertToIReplicatedTableEntity(retrievedResult);
                 if (readRow != null && this.CurrentView != null && this.CurrentView.ViewId < readRow._rtable_ViewId)
                 {
                     throw new ReplicatedTableStaleViewException(
@@ -1363,6 +1364,29 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             return retrievedResult;
+        }
+
+        private IReplicatedTableEntity ConvertToIReplicatedTableEntity(TableResult retrievedResult)
+        {
+            IReplicatedTableEntity readRow = null;
+
+            //If the non-generic TableOperation.Retrive() is used, the returned result is of DynamicTableEntity type
+            if (retrievedResult.Result is DynamicTableEntity)
+            {
+                //Convert to an equivalent DynamicReplicatedTableEntity
+                DynamicTableEntity tableEntity = (DynamicTableEntity) retrievedResult.Result;
+                readRow = new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag,
+                    tableEntity.Properties);
+            }
+                //If the generic TableOperation.Retrive<T>() is used, the returned result is of IReplicatedTableEntity type
+            else if (retrievedResult.Result is IReplicatedTableEntity)
+            {
+                readRow = (IReplicatedTableEntity) retrievedResult.Result;
+            }
+
+            retrievedResult.Result = readRow;
+
+            return readRow;
         }
 
         //
@@ -2001,10 +2025,10 @@ namespace Microsoft.Azure.Toolkit.Replication
                 };
             }
 
-            DynamicReplicatedTableEntity writeViewEntity = null;
+            IReplicatedTableEntity writeViewEntity = null;
             if (writeHeadResult.HttpStatusCode == (int)HttpStatusCode.OK && writeHeadResult.Result != null)
             {
-                writeViewEntity = (DynamicReplicatedTableEntity)writeHeadResult.Result;
+                writeViewEntity = (IReplicatedTableEntity)writeHeadResult.Result;
                 if (writeViewEntity._rtable_ViewId >= CurrentView.GetReplicaInfo(CurrentView.WriteHeadIndex).ViewInWhichAddedToChain)
                 {
                     // nothing to repair in this case.
@@ -2033,7 +2057,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return readHeadResult;
             }
 
-            IReplicatedTableEntity readHeadEntity = (IReplicatedTableEntity)readHeadResult.Result;
+            IReplicatedTableEntity readHeadEntity = ConvertToIReplicatedTableEntity(readHeadResult);
             bool readHeadLocked = readHeadEntity._rtable_RowLock;
             bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + _replicatedTableConfigurationService.LockTimeout >
                                         DateTime.UtcNow);
