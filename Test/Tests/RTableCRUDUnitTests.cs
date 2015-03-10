@@ -209,6 +209,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             string email = "email01@company.com";
             string phone = "1-800-123-0001";
 
+            string dynamicFirstName = "DynFirstName01";
+            string dynamicLastName = "DynLastName01";
+            string dynamicEmail = "dynemail01@company.com";
+            string dynamicPhone = "1-800-123-0002";
+
+
             // Insert entity
             CustomerEntity newCustomer = new CustomerEntity(firstName, lastName);
             newCustomer.Email = email;
@@ -237,7 +243,34 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(readRow.Properties.ContainsKey("PhoneNumber"), "DynamicRTableEntity returned didnt contain PhoneNumber");
             Assert.IsTrue(readRow.Properties.Count == 9, "DynamicRTableEntity returned contained diff number of properties");
                        
-            
+            ////Dynamic insert entity
+            DynamicReplicatedTableEntity newDynamicCustomer = new DynamicReplicatedTableEntity(dynamicFirstName, dynamicLastName);
+            newDynamicCustomer.Properties["Email"] = EntityProperty.CreateEntityPropertyFromObject(dynamicEmail);
+            newDynamicCustomer.Properties["PhoneNumber"] = EntityProperty.CreateEntityPropertyFromObject(dynamicPhone);
+
+            operation = TableOperation.Insert(newDynamicCustomer);
+            result = repTable.Execute(operation);
+            Assert.AreNotEqual(null, result, "result = null");
+            row = (DynamicReplicatedTableEntity)result.Result;
+            Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
+            Assert.AreNotEqual(null, result.Result, "result.Result = null");
+            Assert.AreEqual("1", result.Etag, "result.Etag mismatch");
+            Assert.AreEqual(false, row._rtable_RowLock, "row._rtable_RowLock mismatch");
+            Assert.AreEqual(1, row._rtable_Version, "row._rtable_Version mismatch");
+            Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
+            Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
+
+            //Non-generic retrieve for dynamic entity
+            operation = TableOperation.Retrieve(dynamicFirstName, dynamicLastName);
+            retrievedResult = this.repTable.Execute(operation);
+            Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+            Assert.IsTrue(retrievedResult.Result is IReplicatedTableEntity, "Expected entity to be of type IReplicatedTableEntity");
+            readRow = retrievedResult.Result as DynamicReplicatedTableEntity;
+            Assert.IsTrue(readRow.ETag == "0", "Returned etag is not zero");
+            Assert.IsTrue(readRow.Properties.ContainsKey("Email"), "DynamicRTableEntity returned didnt contain Email");
+            Assert.IsTrue(readRow.Properties.ContainsKey("PhoneNumber"), "DynamicRTableEntity returned didnt contain PhoneNumber");
+            Assert.IsTrue(readRow.Properties.Count == 9, "DynamicRTableEntity returned contained diff number of properties");
+          
             // Retrieve entity
             operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
             retrievedResult = this.repTable.Execute(operation);
