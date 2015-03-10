@@ -1377,8 +1377,10 @@ namespace Microsoft.Azure.Toolkit.Replication
                 DynamicTableEntity tableEntity = (DynamicTableEntity) retrievedResult.Result;
                 readRow = new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag,
                     tableEntity.Properties);
+
+                readRow.ETag = readRow._rtable_Version.ToString();
             }
-                //If the generic TableOperation.Retrive<T>() is used, the returned result is of IReplicatedTableEntity type
+            //If the generic TableOperation.Retrive<T>() is used, the returned result is of IReplicatedTableEntity type
             else if (retrievedResult.Result is IReplicatedTableEntity)
             {
                 readRow = (IReplicatedTableEntity) retrievedResult.Result;

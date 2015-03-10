@@ -231,6 +231,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             TableResult retrievedResult = this.repTable.Execute(operation);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
             Assert.IsTrue(retrievedResult.Result is IReplicatedTableEntity, "Expected entity to be of type IReplicatedTableEntity");
+            DynamicReplicatedTableEntity readRow = retrievedResult.Result as DynamicReplicatedTableEntity;
+            Assert.IsTrue(readRow.ETag == "0", "Returned etag is not zero");
+            Assert.IsTrue(readRow.Properties.ContainsKey("Email"), "DynamicRTableEntity returned didnt contain Email");
+            Assert.IsTrue(readRow.Properties.ContainsKey("PhoneNumber"), "DynamicRTableEntity returned didnt contain PhoneNumber");
+            Assert.IsTrue(readRow.Properties.Count == 9, "DynamicRTableEntity returned contained diff number of properties");
+                       
             
             // Retrieve entity
             operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
