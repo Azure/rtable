@@ -427,6 +427,66 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(sendEnt["DateTimeN"], retrievedEntity["DateTimeN"], "[DateTimeN] mismatch");
         }
 
+        [Test(Description = "TableOperation Replace(Etag=* API")]
+        public void RTableReplaceWithStarEtagSync()
+        {
+            // Insert entity
+            string firstName = "FirstName03_star";
+            string lastName = "LastName03_star";
+            string email = "email03@company.com";
+            string phone = "1-800-123-0003";
+
+            CustomerEntity newCustomer = new CustomerEntity(firstName, lastName);
+            newCustomer.Email = email;
+            newCustomer.PhoneNumber = phone;
+
+            TableOperation operation = TableOperation.Insert(newCustomer);
+            TableResult result = repTable.Execute(operation);
+            Assert.AreNotEqual(null, result, "result = null");
+            ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
+
+            Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
+            Assert.AreNotEqual(null, result.Result, "result.Result = null");
+            Assert.AreEqual("1", result.Etag, "result.Etag mismatch");
+            Assert.AreEqual(false, row._rtable_RowLock, "row._rtable_RowLock mismatch");
+            Assert.AreEqual(1, row._rtable_Version, "row._rtable_Version mismatch");
+            Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
+            Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
+
+            // Replace entity
+            Console.WriteLine("Calling TableOperation.Replace(newCustomer)...");
+            email = "email03b@company.com";
+            phone = "1-800-456-0003";
+            newCustomer = new CustomerEntity(firstName, lastName);
+            newCustomer.Email = email;
+            newCustomer.PhoneNumber = phone;
+            newCustomer.ETag = "*";
+            operation = TableOperation.Replace(newCustomer);
+            result = repTable.Execute(operation);
+            Assert.AreNotEqual(null, result, "result = null");
+
+            Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
+            Assert.AreNotEqual(null, result.Result, "result.Result = null");
+
+            // Retrieve Entity
+            Console.WriteLine("Calling TableOperation.Retrieve<CustomerEntity>(firstName, lastName)...");
+            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
+            TableResult retrievedResult = repTable.Execute(operation);
+            Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+
+            CustomerEntity customer = (CustomerEntity)retrievedResult.Result;
+
+            Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+            Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
+            Assert.AreEqual("2", retrievedResult.Etag, "retrievedResult.Etag mismatch");
+            Assert.AreEqual(false, customer._rtable_RowLock, "customer._rtable_RowLock mismatch");
+            Assert.AreEqual(2, customer._rtable_Version, "customer._rtable_Version mismatch");
+            Assert.AreEqual(false, customer._rtable_Tombstone, "customer._rtable_Tombstone mismatch");
+            Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
+            Assert.AreEqual(newCustomer.PhoneNumber, customer.PhoneNumber, "customer.PhoneNumber mismatch");
+            Assert.AreEqual(newCustomer.Email, customer.Email, "customer.Email mismatch");            
+        }
+
         [Test(Description = "TableOperation Replace API")]
         public void RTableReplaceSync()
         {
@@ -484,7 +544,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(false, customer._rtable_Tombstone, "customer._rtable_Tombstone mismatch");
             Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
             Assert.AreEqual(newCustomer.PhoneNumber, customer.PhoneNumber, "customer.PhoneNumber mismatch");
-            Assert.AreEqual(newCustomer.Email, customer.Email, "customer.Email mismatch");            
+            Assert.AreEqual(newCustomer.Email, customer.Email, "customer.Email mismatch");
         }
 
         [Test(Description = "TableOperation Delete")]
@@ -523,12 +583,65 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
             Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
 
-
-
             // Delete operation
             Console.WriteLine("Calling TableOperation.Delete(newCustomer)...");
             newCustomer = new CustomerEntity(firstName, lastName);
             newCustomer.ETag = result.Etag;
+            operation = TableOperation.Delete(newCustomer);
+            TableResult deleteResult = repTable.Execute(operation);
+
+            Assert.AreNotEqual(null, deleteResult, "deleteResult = null");
+            Assert.AreEqual((int)HttpStatusCode.NoContent, deleteResult.HttpStatusCode, "deleteResult.HttpStatusCode mismatch");
+            Assert.IsNotNull(deleteResult.Result, "deleteResult.Result = null");
+
+            // Retrieve
+            Console.WriteLine("Calling TableOperation.Retrieve() after Delete() was called...");
+            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
+            TableResult retrievedResult2 = repTable.Execute(operation);
+            Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult2.HttpStatusCode, "retrievedResult2.HttpStatusCode mismatch");
+            Assert.IsNull(retrievedResult2.Result, "retrievedResult2.Result != null");
+        }
+
+        [Test(Description = "TableOperation Delete(Etag=*)")]
+        public void RTableDeleteWithStarEtagSync()
+        {
+            string firstName = "FirstName04";
+            string lastName = "LastName04";
+            string email = "email04@company.com";
+            string phone = "1-800-123-0004";
+
+            // Insert entity
+            CustomerEntity newCustomer = new CustomerEntity(firstName, lastName);
+            newCustomer.Email = email;
+            newCustomer.PhoneNumber = phone;
+
+            TableOperation operation = TableOperation.InsertOrReplace(newCustomer);
+            TableResult result = repTable.Execute(operation);
+            Assert.AreNotEqual(null, result, "result = null");
+
+            ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
+
+            Assert.AreNotEqual(result, null);
+            Assert.AreNotEqual(result.HttpStatusCode, 503);
+            Assert.AreNotEqual(result.Result, null);
+            Assert.AreEqual(result.Etag, "1");
+            Assert.AreEqual(row._rtable_RowLock, false);
+            Assert.AreEqual(row._rtable_Version, 1);
+            Assert.AreEqual(row._rtable_Tombstone, false);
+            Assert.AreEqual(row._rtable_ViewId, this.rtableTestConfiguration.RTableInformation.ViewId);
+
+            Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
+            Assert.AreNotEqual(null, result.Result, "result.Result = null");
+            Assert.AreEqual("1", result.Etag, "result.Etag mismatch");
+            Assert.AreEqual(false, row._rtable_RowLock, "row._rtable_RowLock mismatch");
+            Assert.AreEqual(1, row._rtable_Version, "row._rtable_Version mismatch");
+            Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
+            Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
+
+            // Delete operation
+            Console.WriteLine("Calling TableOperation.Delete(newCustomer)...");
+            newCustomer = new CustomerEntity(firstName, lastName);
+            newCustomer.ETag = "*";
             operation = TableOperation.Delete(newCustomer);
             TableResult deleteResult = repTable.Execute(operation);
 

@@ -1018,7 +1018,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             TableResult result;
 
-            bool checkETag = (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace));
+            bool checkETag = false;
+            if (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace) && 
+                row.ETag != "*")
+            {
+                checkETag = true;
+            }
 
             // If it's called by the delete operation do not set the tombstone
             if (row._rtable_Operation != GetTableOperation(TableOperationType.Delete))
