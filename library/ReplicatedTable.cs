@@ -1067,7 +1067,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             CloudTableClient tableClient = CurrentView[0];
-            row.ETag = retrievedResult.Etag;
+            row.ETag = (row.ETag != "*") ? retrievedResult.Etag : row.ETag;
             row._rtable_RowLock = true;
             row._rtable_LockAcquisition = DateTime.UtcNow;
             row._rtable_Version = currentRow._rtable_Version + 1;
@@ -1380,10 +1380,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 //Convert to an equivalent DynamicReplicatedTableEntity
                 DynamicTableEntity tableEntity = (DynamicTableEntity) retrievedResult.Result;
-                readRow = new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag,
-                    tableEntity.Properties);
-
-                readRow.ETag = readRow._rtable_Version.ToString();
+                readRow = new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag, tableEntity.Properties);
+                readRow.ReadEntity(tableEntity.Properties, null);
             }
             //If the generic TableOperation.Retrive<T>() is used, the returned result is of IReplicatedTableEntity type
             else if (retrievedResult.Result is IReplicatedTableEntity)
