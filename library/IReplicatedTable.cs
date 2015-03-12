@@ -42,6 +42,8 @@ namespace Microsoft.Azure.Toolkit.Replication
         TableResult InsertOrReplace(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
         TableResult FlushAndRetrieve(IReplicatedTableEntity row, TableRequestOptions requestOptions = null, OperationContext operationContext = null, bool virtualizeEtag = true);
         IEnumerable<TElement> ExecuteQuery<TElement>(TableQuery<TElement> query, TableRequestOptions requestOptions = null, OperationContext operationContext = null) where TElement : ITableEntity, new();
+        TableQuery<TElement> CreateQuery<TElement>()
+            where TElement : ITableEntity, new();
         TableResult RepairRow(string partitionKey, string rowKey, IReplicatedTableEntity existingRow);
     }
 }

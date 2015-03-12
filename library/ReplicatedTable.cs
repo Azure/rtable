@@ -1332,6 +1332,24 @@ namespace Microsoft.Azure.Toolkit.Replication
             return rows;
         }
 
+        public TableQuery<TElement> CreateQuery<TElement>()
+                where TElement : ITableEntity, new()
+        {
+            TableQuery<TElement> query = new TableQuery<TElement>();
+
+            try
+            {
+                CloudTable tail = GetTailTableClient().GetTableReference(TableName);
+                query = tail.CreateQuery<TElement>();
+            }
+            catch (Exception e)
+            {
+                ReplicatedTableLogger.LogError("Error in CreateQuery: caught exception {0}", e);
+            }
+
+            return query;
+        }
+        
         //
         // RetrieveFromReplica: Retrieve row from a specific replica
         // The caller has to make sure that the argument "operation" is of type TableOperationType.Retrieve. 
