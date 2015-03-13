@@ -16,6 +16,10 @@ re-introducing a replica, do not impact read or write availability. The protocol
 entirely from client-side and does not require any external service. Customers control 
 the number and location of regions for replication. For more detailed documentaton, refer to the docs folder.
 
+Latest: See a talk on RTable at Facebook's Networking@Scale
+
+https://www.youtube.com/watch?v=ktXYnSvHbZ4&feature=share
+
 ### Pros
 
 - Synchronous geo-replication over Azure tables to enable zero RPO availability and 
