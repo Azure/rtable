@@ -91,10 +91,14 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 ReplicatedTableLogger.LogVerbose("Replica: {0}", entry.Item2.BaseUri.ToString());
                 CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
-                if (ctable.CreateIfNotExists() == false)
+                if (!ctable.Exists())
                 {
-                    return false;
+                    if (ctable.CreateIfNotExists() == false)
+                    {
+                        return false;
+                    }
                 }
+
                 replicasCreated++;
             }
 
