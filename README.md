@@ -80,7 +80,8 @@ Running unit tests
 
 1. Build the entire solution including Tests.csproj
 2. Download nunit 2.5.7 and copy nunit\2.5.7\bin\net-2.0 into Test\bin
-3. Run nunit-console.exe Microsoft.Azure.Toolkit.Replication.Test.dll to run all tests
+3. Update the RTableTestConfiguration.xml to update the storage account names and keys (replace the ******). You need three storage accounts.
+4. Run nunit-console.exe Microsoft.Azure.Toolkit.Replication.Test.dll to run all tests
 
 ### NuGet
 
