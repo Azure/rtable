@@ -11,7 +11,7 @@ RTable provides synchronous geo-replication for Azure tables, thereby enabling
 zero-RPO availability and disaster recovery in the event of Azure table failures. Clients 
 continue to benefit from the amazing scale, lower cost and manageability of Azure 
 storage while gaining disaster tolerance. The protocol is optimized for read-latency – 
-twhich is the same as for a regular Azure table read. In addition, recovery actions, such as 
+which is the same as for a regular Azure table read. In addition, recovery actions, such as 
 re-introducing a replica, do not impact read or write availability. The protocol runs 
 entirely from client-side and does not require any external service. Customers control 
 the number and location of regions for replication. For more detailed documentaton, refer to the docs folder.
