@@ -2221,10 +2221,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             int tailIndex = currentReadView.TailIndex;
-            if (tailIndex != 0)
-            {
-                throw new ApplicationException("ConvertXStoreTable() API currently only supports one Replica.");
-            }
 
             DateTime startTime = DateTime.UtcNow;
             ReplicatedTableLogger.LogInformational("ConvertXStoreTable() started {0}", startTime);
