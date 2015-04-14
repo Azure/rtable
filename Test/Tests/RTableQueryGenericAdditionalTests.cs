@@ -254,11 +254,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         #region Helpers
 
-        private static void ExecuteQueryAndAssertResults(CloudTable table, string filter, int expectedResults)
+        private void ExecuteQueryAndAssertResults(CloudTable table, string filter, int expectedResults)
         {
             Assert.AreEqual(expectedResults, table.ExecuteQuery(new TableQuery<ComplexEntity>().Where(filter)).Count());
+            Assert.AreEqual(expectedResults, this.repTable.ExecuteQuery(new TableQuery<ComplexEntity>().Where(filter)).Count());
         }
-
+                
         //private static BaseEntity GenerateRandomEntity(string pk)
         //{
         //    BaseEntity ent = new BaseEntity();

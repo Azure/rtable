@@ -558,7 +558,92 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 localRTable.DeleteIfExists();
             }
         }
-        
+
+
+        [Test(Description = "Test to validate query without partition key")]
+        public void TableQueryableCreateQueryNoPartitionKey()
+        {
+            Thread.Sleep(10000);
+
+            string tableName = this.GenerateRandomTableName();
+            ReplicatedTable localRTable = new ReplicatedTable(tableName, this.configurationService);
+            localRTable.CreateIfNotExists();
+            RTableWrapperForSampleRTableEntity localRTableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(localRTable);
+
+            CloudTableClient tableClient = localRTable.GetTailTableClient();
+            CloudTable table = tableClient.GetTableReference(localRTable.TableName);
+
+            string pk = "0";
+            try
+            {
+                try
+                {
+                    TableBatchOperation batch = new TableBatchOperation();
+
+                    for (int j = 0; j < 10; j++)
+                    {
+                        BaseEntity ent = GenerateRandomEntity(pk);
+                        ent.RowKey = string.Format("{0:0000}", j);
+                        batch.Insert(ent);
+                    }
+
+                    localRTable.ExecuteBatch(batch);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Exception during test case init {0}", ex.ToString());
+                    throw;
+                }
+
+                try
+                {
+                    pk = "1";
+                    TableBatchOperation batch = new TableBatchOperation();
+
+                    for (int j = 0; j < 10; j++)
+                    {
+                        BaseEntity ent = GenerateRandomEntity(pk);
+                        ent.RowKey = string.Format("{0:0000}", j);
+                        batch.Insert(ent);
+                    }
+
+                    localRTable.ExecuteBatch(batch);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Exception during test case init {0}", ex.ToString());
+                    throw;
+                }
+
+                IQueryable<BaseEntity> tableQuery = table.CreateQuery<BaseEntity>();
+                IQueryable<BaseEntity> rtableQuery = localRTable.CreateQuery<BaseEntity>();
+
+                var list = tableQuery.AsEnumerable();
+
+                int tableCount = 0;
+                int rtableCount = 0;
+                foreach (BaseEntity ent in list)
+                {
+                    tableCount++;
+                }
+                foreach (BaseEntity ent in rtableQuery.ToList())
+                {
+                    rtableCount++;
+                }
+
+                Assert.IsTrue(tableCount == rtableCount, "Query counts are different");
+                Assert.IsTrue(tableCount == 20, "Query counts are different");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Error during query processing: {0}", e.ToString());
+            }
+            finally
+            {
+                localRTable.DeleteIfExists();
+            }
+        }
+      
 
         #endregion Query Test Methods
         
