@@ -9,12 +9,16 @@ scenarios on Azure.
 
 RTable provides synchronous geo-replication for Azure tables, thereby enabling 
 zero-RPO availability and disaster recovery in the event of Azure table failures. Clients 
-continue to benefit from the amazing scale, lower cost and manageability of Azure Azure 
+continue to benefit from the amazing scale, lower cost and manageability of Azure 
 storage while gaining disaster tolerance. The protocol is optimized for read-latency – 
-the read latency is same as regular Azure table. In addition, recovery actions, such as 
+which is the same as for a regular Azure table read. In addition, recovery actions, such as 
 re-introducing a replica, do not impact read or write availability. The protocol runs 
 entirely from client-side and does not require any external service. Customers control 
 the number and location of regions for replication. For more detailed documentaton, refer to the docs folder.
+
+Latest: See a talk on RTable at Facebook's Networking@Scale
+
+https://www.youtube.com/watch?v=ktXYnSvHbZ4&feature=share
 
 ### Pros
 
@@ -76,7 +80,8 @@ Running unit tests
 
 1. Build the entire solution including Tests.csproj
 2. Download nunit 2.5.7 and copy nunit\2.5.7\bin\net-2.0 into Test\bin
-3. Run nunit-console.exe Microsoft.Azure.Toolkit.Replication.Test.dll to run all tests
+3. Update the RTableTestConfiguration.xml to update the storage account names and keys (replace the ******). You need three storage accounts.
+4. Run nunit-console.exe Microsoft.Azure.Toolkit.Replication.Test.dll to run all tests
 
 ### NuGet
 

@@ -43,6 +43,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
         }
 
+        public InitDynamicReplicatedTableEntity(string partitionKey, string rowKey, string etag, IDictionary<string, EntityProperty> properties)
+            : base(partitionKey, rowKey, etag, properties)
+        {
+        }
+
         public override void ReadEntity(IDictionary<string, EntityProperty> properties, OperationContext operationContext)
         {
             Dictionary<string, EntityProperty> prop = new Dictionary<string, EntityProperty>(properties);

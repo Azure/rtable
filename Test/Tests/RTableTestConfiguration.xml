@@ -3,14 +3,14 @@
   <StorageInformation>
     <DomainName>core.windows.net</DomainName>
     <AccountNames>
-      <AccountName>rtablebvt01</AccountName>
-      <AccountName>rtablebvt02</AccountName>    
-      <AccountName>rtablebvt03</AccountName>
+      <AccountName>*********</AccountName>
+      <AccountName>*********</AccountName>    
+      <AccountName>*********</AccountName>
     </AccountNames>
     <AccountKeys>
-      <AccountKey>zPAC6oeKSsb0zpnCGqDxkAhev/2UQodmuYqda+Vbon3zaNWbzngSOvgk08XwYSXILcAFklLIZ0aLREjVgSVDnw==</AccountKey>
-      <AccountKey>yPjBFJpBwd2ryO8YhB2qp2vCOyvZWaABTIzlQq8iK9NSFljVStjD+61ZbkxvSA5WAhqbgu62QeE3K9kIZBjVMw==</AccountKey>
-      <AccountKey>Q/w0SWDGDisyCTPcPJ7/SOE2ko5i7RtHkdAYyJCA92GG6f9YLBrevv2gvMO4HRbFBFIHPPl5tqRVtoa0Qk4xCg==</AccountKey>
+      <AccountKey>z*********</AccountKey>
+      <AccountKey>*********</AccountKey>
+      <AccountKey>*********</AccountKey>
     </AccountKeys>
   </StorageInformation>
   <RTableInformation>

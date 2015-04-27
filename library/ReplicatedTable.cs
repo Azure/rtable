@@ -91,10 +91,14 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 ReplicatedTableLogger.LogVerbose("Replica: {0}", entry.Item2.BaseUri.ToString());
                 CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
-                if (ctable.CreateIfNotExists() == false)
+                if (!ctable.Exists())
                 {
-                    return false;
+                    if (ctable.CreateIfNotExists() == false)
+                    {
+                        return false;
+                    }
                 }
+
                 replicasCreated++;
             }
 
@@ -1018,7 +1022,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             TableResult result;
 
-            bool checkETag = (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace));
+            bool checkETag = false;
+            if (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace) && 
+                row.ETag != "*")
+            {
+                checkETag = true;
+            }
 
             // If it's called by the delete operation do not set the tombstone
             if (row._rtable_Operation != GetTableOperation(TableOperationType.Delete))
@@ -1062,7 +1071,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             CloudTableClient tableClient = CurrentView[0];
-            row.ETag = retrievedResult.Etag;
+            row.ETag = (row.ETag != "*") ? retrievedResult.Etag : row.ETag;
             row._rtable_RowLock = true;
             row._rtable_LockAcquisition = DateTime.UtcNow;
             row._rtable_Version = currentRow._rtable_Version + 1;
@@ -1327,6 +1336,24 @@ namespace Microsoft.Azure.Toolkit.Replication
             return rows;
         }
 
+        public TableQuery<TElement> CreateQuery<TElement>()
+                where TElement : ITableEntity, new()
+        {
+            TableQuery<TElement> query = new TableQuery<TElement>();
+
+            try
+            {
+                CloudTable tail = GetTailTableClient().GetTableReference(TableName);
+                query = tail.CreateQuery<TElement>();
+            }
+            catch (Exception e)
+            {
+                ReplicatedTableLogger.LogError("Error in CreateQuery: caught exception {0}", e);
+            }
+
+            return query;
+        }
+        
         //
         // RetrieveFromReplica: Retrieve row from a specific replica
         // The caller has to make sure that the argument "operation" is of type TableOperationType.Retrieve. 
@@ -1375,10 +1402,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 //Convert to an equivalent DynamicReplicatedTableEntity
                 DynamicTableEntity tableEntity = (DynamicTableEntity) retrievedResult.Result;
-                readRow = new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag,
-                    tableEntity.Properties);
+                readRow = new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag, tableEntity.Properties);
+                readRow.ReadEntity(tableEntity.Properties, null);
             }
-                //If the generic TableOperation.Retrive<T>() is used, the returned result is of IReplicatedTableEntity type
+            //If the generic TableOperation.Retrive<T>() is used, the returned result is of IReplicatedTableEntity type
             else if (retrievedResult.Result is IReplicatedTableEntity)
             {
                 readRow = (IReplicatedTableEntity) retrievedResult.Result;
@@ -2194,10 +2221,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             int tailIndex = currentReadView.TailIndex;
-            if (tailIndex != 0)
-            {
-                throw new ApplicationException("ConvertXStoreTable() API currently only supports one Replica.");
-            }
 
             DateTime startTime = DateTime.UtcNow;
             ReplicatedTableLogger.LogInformational("ConvertXStoreTable() started {0}", startTime);
