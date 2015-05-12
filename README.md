@@ -45,43 +45,28 @@ The RTable protocol provides strong consistency and as such is best suited for a
 
 ## Getting Started with RTable
 
-### Dependencies
+### Building source code
 
-The RTable library has these service dependencies:
+To get started, clone the repo and build using `msbuild` or Visual Studio.
 
-- Azure storage service
-
-The library has these build dependencies (NuGet packages):
+The RTable library has the following build dependencies (NuGet packages):
 
 - Azure storage library: `WindowsAzure.Storage.4.3.0` (and its own dependencies)
 - JSON.NET: `Newtonsoft.Json.5.0.8`
 - Configuration: `Microsoft.WindowsAzure.ConfigurationManager.1.8.0.0`
+- NUnit Framework
+- FiddlerCore
 
-The dependent packages will be downloaded using NuGet the first time the project 
-is built.
-
-### Source
-
-To get started, clone the repo and build using `msbuild` or Visual Studio.
-
-To build the tests successfully, the following dependencies need to be downloaded
-
-- nunit.framework.dll (version 2.5.7) under Test\nunit\2.5.7\bin\net-2.0
-- FiddlerCore.dll under Test\Common\Dependencies
+The dependent packages will be automatically downloaded using NuGet.
 
 ### Tests
-A comprehensive suite of tests can be found under the Test folder. The tests themselves depend on the following
-
-- AzureStorageMangler (based on azure\azure-storage-sdk)
-- HttpMangler (based on azure\azure-storage-sdk)
-- Nunit framework 2.5.7
-
-Running unit tests
+A comprehensive suite of tests can be found under the Test folder. To run unit tests:
 
 1. Build the entire solution including Tests.csproj
-2. Download nunit 2.5.7 and copy nunit\2.5.7\bin\net-2.0 into Test\bin
+2. Go to folder: test\bin
 3. Update the RTableTestConfiguration.xml to update the storage account names and keys (replace the ******). You need three storage accounts.
-4. Run nunit-console.exe Microsoft.Azure.Toolkit.Replication.Test.dll to run all tests
+4. Download nunit.Runners package
+5. Run nunit-console.exe test\bin\Microsoft.Azure.Toolkit.Replication.Test.dll to run all tests
 
 ### NuGet
 
