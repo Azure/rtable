@@ -30,6 +30,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Collections.Generic;
     using System.Net;
     using System.Threading;
+    using Fiddler;
 
     /// <summary>
     /// Base class for RTable tests that use HttpMangler.
