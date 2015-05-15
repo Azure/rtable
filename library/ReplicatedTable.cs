@@ -87,6 +87,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             // Create individual table replicas if they are not created already 
+            replicasCreated = 0;
             foreach (var entry in this.CurrentView.Chain)
             {
                 ReplicatedTableLogger.LogVerbose("Replica: {0}", entry.Item2.BaseUri.ToString());
@@ -97,12 +98,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                     {
                         return false;
                     }
-                }
 
-                replicasCreated++;
+                    replicasCreated++;
+                }
             }
 
-            return true;
+            return (replicasCreated > 0);
         }
 
         // Check if a table (and its replicas) exist.

@@ -841,6 +841,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(baseEntity.Properties["prop1"], retrievedEntity.Properties["prop1"], "Properties[prop1] mismatch");
             Assert.AreEqual(mergeEntity.Properties["prop2"], retrievedEntity.Properties["prop2"], "Properties[prop2] mismatch");
             Assert.AreEqual(mergeEntity2.Properties["prop3"], retrievedEntity.Properties["prop3"], "Properties[prop3] mismatch");
+
+
+            // InitDynamicReplicatedTableEntity Insert
+            currentTable = this.repTable;
+            IDictionary<string, EntityProperty> properties = new Dictionary<string, EntityProperty>();
+            properties.Add("Name", EntityProperty.GeneratePropertyForString("Cisco-ASR-1006"));
+            properties.Add("Description", EntityProperty.GeneratePropertyForString("Cisco ASR 1006 Router"));
+            properties.Add("MaxSubInterfaces", EntityProperty.GeneratePropertyForInt(1000));
+            properties.Add("MaxTunnelInterfaces", EntityProperty.GeneratePropertyForInt(4000));
+            properties.Add("MaxVrfs", EntityProperty.GeneratePropertyForInt(4000));
+            properties.Add("MaxBfdSessions", EntityProperty.GeneratePropertyForInt(4000));
+
+            InitDynamicReplicatedTableEntity initEntity = new InitDynamicReplicatedTableEntity("0", "devicetype__Cisco-ASR-1006", null, properties);
+            TableOperation insert = TableOperation.Insert(initEntity);
+            result = currentTable.Execute(insert);
+            Assert.IsTrue(result.HttpStatusCode == (int)HttpStatusCode.NoContent);
+
         }
 
         #endregion Table Operations Test Methods
