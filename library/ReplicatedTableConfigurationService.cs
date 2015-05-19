@@ -87,6 +87,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             this.quorumSize = (this.blobs.Count / 2) + 1;
+            RefreshReadAndWriteViewsFromBlobs(null);
         }
 
         public TimeSpan LockTimeout
@@ -151,19 +152,16 @@ namespace Microsoft.Azure.Toolkit.Replication
             });
 
             //Invalidate the lastViewRefreshTime so that updated views get returned
-            this.lastViewRefreshTime = DateTime.MinValue;
+            RefreshReadAndWriteViewsFromBlobs(null);
         }
 
         public View GetReadView()
         {
             lock (this)
             {
-                //Even though we have periodic renewal, we still need to check if we need a renewal at this point. This 
-                //is to prevent us from returning a stale view if for some reason the periodic renewal was delayed (we are not a real time
-                //OS! ) 
-                if (this.DoesViewNeedRefresh())
+                if (DoesViewNeedRefresh())
                 {
-                    RefreshReadAndWriteViewsFromBlobs(null);
+                    return new View();
                 }
 
                 return this.lastRenewedReadView;
@@ -174,12 +172,9 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             lock (this)
             {
-                //Even though we have periodic renewal, we still need to check if we need a renewal at this point. This 
-                //is to prevent us from returning a stale view if for some reason the periodic renewal was delayed (we are not a real time
-                //OS! ) 
-                if (this.DoesViewNeedRefresh())
+                if (DoesViewNeedRefresh())
                 {
-                    RefreshReadAndWriteViewsFromBlobs(null);
+                    return new View();
                 }
 
                 return this.lastRenewedWriteView;
@@ -188,69 +183,78 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         private void RefreshReadAndWriteViewsFromBlobs(object arg)
         {
+            View newReadView = new View();
+            View newWriteView = new View();
+
+            DateTime refreshStartTime = DateTime.UtcNow;
+            bool convertXStoreTableMode = false;
+            Dictionary<long, List<CloudBlockBlob>> viewResult = new Dictionary<long, List<CloudBlockBlob>>();
+
+            foreach (var blob in this.blobs)
+            {
+                ReplicatedTableConfigurationStore configurationStore;
+                if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
+                {
+                    continue;
+                }
+
+                if (configurationStore.ViewId <= 0)
+                {
+                    ReplicatedTableLogger.LogInformational(
+                        "ViewId={0} is invalid. Must be >= 1. Skipping this blob {1}.",
+                        configurationStore.ViewId,
+                        blob.Value.Uri);
+                    continue;
+                }
+
+                List<CloudBlockBlob> viewBlobs;
+                if (!viewResult.TryGetValue(configurationStore.ViewId, out viewBlobs))
+                {
+                    viewBlobs = new List<CloudBlockBlob>();
+                    viewResult.Add(configurationStore.ViewId, viewBlobs);
+                }
+
+                viewBlobs.Add(blob.Value);
+
+                if (viewBlobs.Count >= this.quorumSize)
+                {
+                    newReadView.ViewId = newWriteView.ViewId = configurationStore.ViewId;
+                    for (int i = 0; i < configurationStore.ReplicaChain.Count; i++)
+                    {
+                        ReplicaInfo replica = configurationStore.ReplicaChain[i];
+                        CloudTableClient tableClient = GetTableClientForReplica(replica);
+                        if (replica != null && tableClient != null)
+                        {
+                            //Update the write view always
+                            newWriteView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica,
+                                tableClient));
+
+                            //Update the read view only for replicas part of the view
+                            if (i >= configurationStore.ReadViewHeadIndex)
+                            {
+                                newReadView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica,
+                                    tableClient));
+                            }
+
+                            convertXStoreTableMode = configurationStore.ConvertXStoreTableMode;
+                        }
+                    }
+
+                    newWriteView.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
+
+                    break;
+                }
+            }
+
             lock (this)
             {
-                this.lastRenewedReadView = new View();
-                this.lastRenewedWriteView = new View();
-
-                DateTime refreshStartTime = DateTime.UtcNow;
-
-                Dictionary<long, List<CloudBlockBlob>> viewResult = new Dictionary<long, List<CloudBlockBlob>>();
-
-                foreach (var blob in this.blobs)
+                if (!newReadView.IsEmpty && !newWriteView.IsEmpty)
                 {
-                    ReplicatedTableConfigurationStore configurationStore;
-                    if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
-                    {
-                        continue;
-                    }
+                    this.lastViewRefreshTime = refreshStartTime;
+                    this.ConvertXStoreTableMode = convertXStoreTableMode;
 
-                    if (configurationStore.ViewId <= 0)
-                    {
-                        ReplicatedTableLogger.LogInformational("ViewId={0} is invalid. Must be >= 1. Skipping this blob {1}.",
-                            configurationStore.ViewId, 
-                            blob.Value.Uri);
-                        continue;
-                    }
-
-                    List<CloudBlockBlob> viewBlobs;
-                    if (!viewResult.TryGetValue(configurationStore.ViewId, out viewBlobs))
-                    {
-                        viewBlobs = new List<CloudBlockBlob>();
-                        viewResult.Add(configurationStore.ViewId, viewBlobs);
-                    }
-
-                    viewBlobs.Add(blob.Value);
-
-                    if (viewBlobs.Count >= this.quorumSize)
-                    {
-                        this.lastRenewedReadView.ViewId = this.lastRenewedWriteView.ViewId = configurationStore.ViewId;
-                        for (int i = 0; i < configurationStore.ReplicaChain.Count; i++)
-                        {
-                            ReplicaInfo replica = configurationStore.ReplicaChain[i];
-                            CloudTableClient tableClient = GetTableClientForReplica(replica);
-                            if (replica != null && tableClient != null)
-                            {
-                                //Update the write view always
-                                this.lastRenewedWriteView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
-
-                                //Update the read view only for replicas part of the view
-                                if (i >= configurationStore.ReadViewHeadIndex)
-                                {
-                                    this.lastRenewedReadView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
-                                }
-
-                                //Note the time when the view was updated
-                                this.lastViewRefreshTime = refreshStartTime;
-
-                                this.ConvertXStoreTableMode = configurationStore.ConvertXStoreTableMode;
-                            }
-                        }
-
-                        this.lastRenewedWriteView.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
-
-                        break;
-                    }
+                    this.lastRenewedReadView = newReadView;
+                    this.lastRenewedWriteView = newWriteView;
                 }
             }
         }
@@ -260,20 +264,14 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// </summary>
         public bool IsViewStable()
         {
-            int viewStableCount = 0;
-            foreach (var blob in this.blobs)
-            {
-                ReplicatedTableConfigurationStore configurationStore;
-                if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
-                {
-                    continue;
-                }
+            View view = this.GetWriteView();
 
-                if (configurationStore.ReadViewHeadIndex == 0)
-                    viewStableCount++;
+            if (view.IsEmpty)
+            {
+                return false;
             }
 
-            return viewStableCount >= this.quorumSize;
+            return view.IsStable;
         }
 
         private CloudTableClient GetTableClientForReplica(ReplicaInfo replica)

@@ -25,6 +25,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System;
     using System.Collections.Generic;
     using System.Net;
+    using System.Threading;
     using Microsoft.Azure.Toolkit.Replication;
     using Microsoft.WindowsAzure.Storage.Table;
     
@@ -116,11 +117,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             //Add the new replica at the head
             replicas.Insert(0, newReplica);
-                
+
             this.configurationService.UpdateConfiguration(replicas, 1);
 
             // validate all state
-            Assert.IsFalse(this.configurationService.IsViewStable());
+            Assert.IsFalse(this.configurationService.IsViewStable(), "View = {0}", this.configurationService.GetWriteView().IsStable);
             View readView = this.configurationService.GetReadView();
             View writeView = this.configurationService.GetWriteView();
             long viewIdAfterFirstUpdate = writeView.ViewId;
