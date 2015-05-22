@@ -88,6 +88,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// </summary>
         private const int TestLockTimeoutInSeconds = 5;
 
+        private int leaseDuration = 0;
+        private int clockFactor = 0;
+        private int minimumLeaseRenewalInterval = 0;
+        private int lockTimeoutInSeconds = 0;
+
         /// <summary>
         /// Read the test configuration from "RTableTestConfiguration.xml"
         /// </summary>
@@ -157,6 +162,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 }
             }
 
+            this.UpdateConfigurationConstants();
+
             // Upload RTable configuration to blob
             int viewId = this.rtableTestConfiguration.RTableInformation.ViewId;
             if (!string.IsNullOrEmpty(viewIdString))
@@ -188,6 +195,27 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
+        private void UpdateConfigurationConstants()
+        {
+            this.leaseDuration = Constants.LeaseDurationInSec;
+            this.clockFactor = Constants.ClockFactorInSec;
+            this.minimumLeaseRenewalInterval = Constants.MinimumLeaseRenewalInterval;
+            this.lockTimeoutInSeconds = Constants.LockTimeoutInSeconds;
+
+            Constants.LeaseDurationInSec = 5;
+            Constants.ClockFactorInSec = 1;
+            Constants.MinimumLeaseRenewalInterval = 1;
+            Constants.LockTimeoutInSeconds = 5;
+        }
+
+        private void RestoreConfigurationConstants()
+        {
+            Constants.LeaseDurationInSec = this.leaseDuration;
+            Constants.ClockFactorInSec = this.clockFactor;
+            Constants.MinimumLeaseRenewalInterval = this.minimumLeaseRenewalInterval;
+            Constants.LockTimeoutInSeconds = this.lockTimeoutInSeconds;
+        }
+
         /// <summary>
         /// Generate a random table name by appending a timestamp and Guid to the RTableName specified in the xml config.
         /// </summary>
@@ -217,7 +245,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             this.DeleteConfigurationBlob();
             this.configurationService.Dispose();
-            this.repTable.DeleteIfExists();            
+            this.repTable.DeleteIfExists();
+            this.RestoreConfigurationConstants();
         }
 
         /// <summary>
@@ -268,8 +297,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.repTable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
             this.rtableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(this.repTable);
 
-            Console.WriteLine("Sleeping {0} seconds for new viewId to take effect...", Constants.LeaseDurationInSec);
-            Thread.Sleep(Constants.LeaseDurationInSec * 1000);
+            while (this.configurationService.GetWriteView().ViewId != updatedViewId)
+            {
+                Console.WriteLine("Sleeping {0} seconds for new viewId to take effect...", Constants.LeaseDurationInSec/2);
+                Thread.Sleep((Constants.LeaseDurationInSec/2)*1000);
+            }
         }
 
         /// <summary>

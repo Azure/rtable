@@ -19,6 +19,11 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Data.OData.Query.SemanticAst;
+
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
@@ -26,7 +31,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.Storage.Blob;
 
-    class CloudBlobHelpers
+    public class CloudBlobHelpers
     {
         public static CloudBlockBlob GetBlockBlob(string configurationStorageConnectionString, string configurationLocation)
         {
@@ -81,10 +86,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             return containerName;
         }
 
-        public static bool TryReadBlob<T>(CloudBlockBlob blob, out T configurationStore)
+        public static bool TryReadBlob<T>(CloudBlockBlob blob, out T configurationStore, out string eTag)
             where T : class
         {
             configurationStore = default(T);
+            eTag = null;
             try
             {
                 string content = blob.DownloadText();
@@ -95,6 +101,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 string blobContent = content;
                 configurationStore = JsonStore<T>.Deserialize(blobContent);
+                eTag = blob.Properties.ETag;
                 return true;
             }
             catch (Exception e)
@@ -102,6 +109,61 @@ namespace Microsoft.Azure.Toolkit.Replication
                 ReplicatedTableLogger.LogError("Error reading blob: {0}. Exception: {1}", 
                     blob.Uri, 
                     e.Message);
+            }
+
+            return false;
+        }
+
+        public static bool TryReadBlobQuorum<T>(List<CloudBlockBlob> blobs, out T value,
+            out List<string> eTags) where T : class
+        {
+            eTags = null;
+            value = default(T);
+
+            int numberOfBlobs = blobs.Count;
+
+            string[] eTagsArray = new string[numberOfBlobs];
+            T[] valuesArray = new T[numberOfBlobs];
+
+            // read from all the blobs in parallel
+            Parallel.For(0, numberOfBlobs, index =>
+            {
+                T currentValue;
+                string currentETag;
+
+                if (CloudBlobHelpers.TryReadBlob<T>(blobs[index], out currentValue, out currentETag))
+                {
+                    valuesArray[index] = currentValue;
+                    eTagsArray[index] = currentETag;
+                }
+            });
+
+            // find the quorum value
+            for (int index = 0; index < (numberOfBlobs / 2) + 1; index++)
+            {
+                int matchCount = 1;
+
+                // optimization to skip over the value if it is the same as the previous one we checked for quorum
+                if (index > 0 && valuesArray[index - 1] == valuesArray[index])
+                {
+                    continue;
+                }
+
+                for (int innerLoop = index + 1; innerLoop < numberOfBlobs; innerLoop++)
+                {
+                    if (valuesArray[index] == valuesArray[innerLoop])
+                    {
+                        matchCount++;
+                    }
+                }
+
+                if (matchCount >= (numberOfBlobs / 2) + 1)
+                {
+                    // we found our quorum value
+                    value = valuesArray[index];
+                    eTags = eTagsArray.ToList();
+                    return true;
+                }
             }
 
             return false;

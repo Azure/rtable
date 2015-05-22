@@ -19,6 +19,8 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+using System.Linq;
+
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
@@ -44,6 +46,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         private View lastRenewedWriteView;
 
         private PeriodicTimer viewRefreshTimer;
+        private TimeSpan leaseDuration;
         private bool disposed = false;
 
 
@@ -57,10 +60,34 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.lastRenewedReadView = new View();
             this.lastRenewedWriteView = new View();
             this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? Constants.LockTimeoutInSeconds : lockTimeoutInSeconds);
+            LeaseDuration = TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec);
             this.Initialize();
+        }
 
-            this.viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, 
-                                                      TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec));
+        private TimeSpan LeaseDuration
+        {
+            get { return leaseDuration; }
+            set
+            {
+                leaseDuration = value;
+                UpdateTimer(Math.Max(((int) leaseDuration.TotalSeconds/2 - Constants.MinimumLeaseRenewalInterval),
+                    Constants.MinimumLeaseRenewalInterval));
+            }
+        }
+
+        private void UpdateTimer(int timerIntervalInSeconds)
+        {
+            if (viewRefreshTimer != null)
+            {
+                if ((int)viewRefreshTimer.Period.TotalSeconds == timerIntervalInSeconds)
+                {
+                    return;
+                }
+
+                viewRefreshTimer.Stop();
+            }
+
+            viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, TimeSpan.FromSeconds(timerIntervalInSeconds));
         }
 
         ~ReplicatedTableConfigurationService()
@@ -106,7 +133,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 ReplicatedTableConfigurationStore configurationStore = null;
                 long newViewId = 0;
-                if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
+                string eTag;
+                if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore, out eTag))
                 {
                     //This is the first time we are uploading the config
                     configurationStore = new ReplicatedTableConfigurationStore();
@@ -159,7 +187,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             lock (this)
             {
-                if (DoesViewNeedRefresh())
+                if (HasViewExpired)
                 {
                     return new View();
                 }
@@ -172,7 +200,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             lock (this)
             {
-                if (DoesViewNeedRefresh())
+                if (HasViewExpired)
                 {
                     return new View();
                 }
@@ -190,61 +218,45 @@ namespace Microsoft.Azure.Toolkit.Replication
             bool convertXStoreTableMode = false;
             Dictionary<long, List<CloudBlockBlob>> viewResult = new Dictionary<long, List<CloudBlockBlob>>();
 
-            foreach (var blob in this.blobs)
+            ReplicatedTableConfigurationStore configurationStore;
+            List<string> eTags;
+            if (!CloudBlobHelpers.TryReadBlobQuorum(this.blobs.Values.ToList(), out configurationStore, out eTags))
             {
-                ReplicatedTableConfigurationStore configurationStore;
-                if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
-                {
-                    continue;
-                }
+                Console.WriteLine("Unable to refresh view");
+                ReplicatedTableLogger.LogError("Unable to refresh view.");
+                return;
+            }
 
-                if (configurationStore.ViewId <= 0)
-                {
-                    ReplicatedTableLogger.LogInformational(
-                        "ViewId={0} is invalid. Must be >= 1. Skipping this blob {1}.",
-                        configurationStore.ViewId,
-                        blob.Value.Uri);
-                    continue;
-                }
 
-                List<CloudBlockBlob> viewBlobs;
-                if (!viewResult.TryGetValue(configurationStore.ViewId, out viewBlobs))
-                {
-                    viewBlobs = new List<CloudBlockBlob>();
-                    viewResult.Add(configurationStore.ViewId, viewBlobs);
-                }
+            if (configurationStore.ViewId <= 0)
+            {
+                ReplicatedTableLogger.LogError("ViewId={0} is invalid. Must be >= 1.", configurationStore.ViewId);
+                return;
+            }
 
-                viewBlobs.Add(blob.Value);
-
-                if (viewBlobs.Count >= this.quorumSize)
+            newReadView.ViewId = newWriteView.ViewId = configurationStore.ViewId;
+            for (int i = 0; i < configurationStore.ReplicaChain.Count; i++)
+            {
+                ReplicaInfo replica = configurationStore.ReplicaChain[i];
+                CloudTableClient tableClient = GetTableClientForReplica(replica);
+                if (replica != null && tableClient != null)
                 {
-                    newReadView.ViewId = newWriteView.ViewId = configurationStore.ViewId;
-                    for (int i = 0; i < configurationStore.ReplicaChain.Count; i++)
+                    //Update the write view always
+                    newWriteView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica,
+                        tableClient));
+
+                    //Update the read view only for replicas part of the view
+                    if (i >= configurationStore.ReadViewHeadIndex)
                     {
-                        ReplicaInfo replica = configurationStore.ReplicaChain[i];
-                        CloudTableClient tableClient = GetTableClientForReplica(replica);
-                        if (replica != null && tableClient != null)
-                        {
-                            //Update the write view always
-                            newWriteView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica,
-                                tableClient));
-
-                            //Update the read view only for replicas part of the view
-                            if (i >= configurationStore.ReadViewHeadIndex)
-                            {
-                                newReadView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica,
-                                    tableClient));
-                            }
-
-                            convertXStoreTableMode = configurationStore.ConvertXStoreTableMode;
-                        }
+                        newReadView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica,
+                            tableClient));
                     }
 
-                    newWriteView.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
-
-                    break;
+                    convertXStoreTableMode = configurationStore.ConvertXStoreTableMode;
                 }
             }
+
+            newWriteView.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
 
             lock (this)
             {
@@ -255,6 +267,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                     this.lastRenewedReadView = newReadView;
                     this.lastRenewedWriteView = newWriteView;
+
+                    LeaseDuration = TimeSpan.FromSeconds(configurationStore.LeaseDuration);
                 }
             }
         }
@@ -323,6 +337,19 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             this.disposed = true;
+        }
+
+        public bool HasViewExpired
+        {
+            get
+            {
+                if (DateTime.UtcNow - lastViewRefreshTime > LeaseDuration)
+                {
+                    return true;
+                }
+
+                return false;
+            }
         }
     }
 }

@@ -34,12 +34,12 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// </summary>
         public static int ClockFactorInSec = 5;
 
-        public static int LeaseRenewalExpirationWatermark = 5;
+        public static int MinimumLeaseRenewalInterval = 5;
 
         /// <summary>
         /// When LeaseRenewalIntervalInSec has expired since we last renewed the lease, a new renewal is needed
         /// </summary>
-        public static int LeaseRenewalIntervalInSec = LeaseDurationInSec - LeaseRenewalExpirationWatermark;
+        public static int LeaseRenewalIntervalInSec = LeaseDurationInSec / 2;
 
         public static string ConfigurationStoreUpdatingText =
             "The configuration store is in the process of being updated...";
@@ -51,6 +51,6 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <summary>
         /// When an entity is locked by a client and that client did not unlock the entity, other clients are free to unlock it afer this much time has elasped.
         /// </summary>
-        public const int LockTimeoutInSeconds = 60;
+        public static int LockTimeoutInSeconds = 60;
     }
 }

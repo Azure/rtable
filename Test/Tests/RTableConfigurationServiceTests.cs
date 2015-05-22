@@ -32,10 +32,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     [TestFixture]
     public class RTableConfigurationServiceTests : RTableLibraryTestBase
     {
-        private int leaseDuration = 0;
-        private int clockFactor = 0;
-        private int leaseExpirationWatermark = 0;
-
         //For each test method, we create new tables
         [SetUp]
         public void TestFixtureSetup()
@@ -44,33 +40,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             string tableName = this.GenerateRandomTableName();
             this.SetupRTableEnv(true, tableName);
-
-            this.UpdateConfigurationConstants();
         }
 
         [TearDown]
         public void TestFixtureTearDown()
         {
             this.DeleteAllRtableResources();
-            this.RestoreConfigurationConstants();
-        }
-
-        private void UpdateConfigurationConstants()
-        {
-            this.leaseDuration = Constants.LeaseDurationInSec;
-            this.clockFactor = Constants.ClockFactorInSec;
-            this.leaseExpirationWatermark = Constants.LeaseRenewalExpirationWatermark;
-
-            Constants.LeaseDurationInSec = 5;
-            Constants.ClockFactorInSec = 1;
-            Constants.LeaseRenewalExpirationWatermark = 1;
-        }
-
-        private void RestoreConfigurationConstants()
-        {
-            Constants.LeaseDurationInSec = this.leaseDuration;
-            Constants.ClockFactorInSec = this.clockFactor;
-            Constants.LeaseRenewalExpirationWatermark = this.leaseExpirationWatermark;
         }
 
         //
@@ -117,6 +92,64 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             //Add the new replica at the head
             replicas.Insert(0, newReplica);
+
+            this.configurationService.UpdateConfiguration(replicas, 1);
+
+            // validate all state
+            Assert.IsFalse(this.configurationService.IsViewStable(), "View = {0}", this.configurationService.GetWriteView().IsStable);
+            View readView = this.configurationService.GetReadView();
+            View writeView = this.configurationService.GetWriteView();
+            long viewIdAfterFirstUpdate = writeView.ViewId;
+            Assert.IsTrue(readView != writeView);
+
+            int headIndex = 0;
+            long readViewHeadViewId = readView.GetReplicaInfo(headIndex).ViewInWhichAddedToChain;
+            Assert.IsTrue(writeView.GetReplicaInfo(headIndex).ViewInWhichAddedToChain == readViewHeadViewId + 1);
+
+            //Now, make the read and write views the same
+            this.configurationService.UpdateConfiguration(replicas, 0);
+            // validate all state
+            Assert.IsTrue(this.configurationService.IsViewStable());
+            readView = this.configurationService.GetReadView();
+            writeView = this.configurationService.GetWriteView();
+            Assert.IsTrue(readView == writeView);
+            Assert.IsTrue(readView.ViewId == viewIdAfterFirstUpdate + 1);
+        }
+
+        [Test(Description = "Validate that quorum view wins")]
+        public void QuorumViewTest()
+        {
+            Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
+            View v = this.configurationService.GetWriteView();
+            int index = v.Chain.Count - 1;
+            string accountName = v.GetReplicaInfo(index).StorageAccountName;
+            string accountKey = v.GetReplicaInfo(index).StorageAccountKey;
+
+            Assert.IsTrue(v.Chain.Count >= 3, "Replica chain only has {0} accounts", v.Chain.Count);
+
+            List<ReplicaInfo> replicas = new List<ReplicaInfo>();
+            for (int i = 0; i <= index; i++)
+            {
+                replicas.Add(v.Chain[i].Item1);
+            }
+
+            //Just add the last replica again at the head to simulate a new replica addition
+            ReplicaInfo newReplica = new ReplicaInfo()
+            {
+                StorageAccountName = accountName,
+                StorageAccountKey = accountKey
+            };
+
+            //Add the new replica at the head
+            replicas.Insert(0, newReplica);
+
+            //
+            // create a new config service with only one replica
+            // add the new view only to that one
+            // check that the majority view has not changed
+            // add the same replica to all the blobs
+            // now check that the majority view has changed
+            //
 
             this.configurationService.UpdateConfiguration(replicas, 1);
 
