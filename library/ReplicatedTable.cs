@@ -72,6 +72,20 @@ namespace Microsoft.Azure.Toolkit.Replication
             TableName = name;
         }
 
+        private void ValidateTxnView(View txnView)
+        {
+            if (txnView.IsEmpty)
+            {
+                throw new ReplicatedTableStaleViewException("Empty view.");
+            }
+
+            if (CurrentView.ViewId != txnView.ViewId)
+            {
+                throw new ReplicatedTableStaleViewException(string.Format("View id changed from {0} to {1}", CurrentView.ViewId,
+                    txnView));
+            }
+        }
+
         // Create ReplicatedTable replicas if they do not exist.
         // Returns: true if it creates all replicas as defined in the configuration service
         //        : false if it cannot create all replicas or if the config file has zero replicas
@@ -80,30 +94,28 @@ namespace Microsoft.Azure.Toolkit.Replication
             OperationContext operationContext = null)
         {
             ReplicatedTableLogger.LogVerbose("CreateIfNotExists");
+            View txnView = CurrentView;
 
-            if (CurrentView.Chain.Count == 0)
-            {
-                return false;
-            }
+            ValidateTxnView(txnView);
 
             // Create individual table replicas if they are not created already 
-            replicasCreated = 0;
-            foreach (var entry in this.CurrentView.Chain)
+            int tablesCreated = 0;
+            foreach (var entry in txnView.Chain)
             {
-                ReplicatedTableLogger.LogVerbose("Replica: {0}", entry.Item2.BaseUri.ToString());
+                ReplicatedTableLogger.LogVerbose("Creating table {0} on replica: {1}", entry.Item2.BaseUri.ToString());
                 CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
                 if (!ctable.Exists())
                 {
-                    if (ctable.CreateIfNotExists() == false)
+                    if (ctable.CreateIfNotExists())
                     {
-                        return false;
+                        tablesCreated++;
                     }
-
-                    replicasCreated++;
                 }
             }
 
-            return (replicasCreated > 0);
+            ValidateTxnView(txnView);
+
+            return (tablesCreated > 0);
         }
 
         // Check if a table (and its replicas) exist.
@@ -111,13 +123,12 @@ namespace Microsoft.Azure.Toolkit.Replication
         //        : false if any replica doesnt exist        
         public bool Exists()
         {
-            if (CurrentView.Chain.Count == 0)
-            {
-                return false;
-            }
+            View txnView = CurrentView;
+
+            ValidateTxnView(txnView);
 
             // Return false if individual tables do not exist 
-            foreach (var entry in this.CurrentView.Chain)
+            foreach (var entry in txnView.Chain)
             {
                 CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
                 if (ctable.Exists() == false)
@@ -136,27 +147,24 @@ namespace Microsoft.Azure.Toolkit.Replication
         // It sets the number of replicas deleted for the caller to check.
         public bool DeleteIfExists()
         {
+            View txnView = CurrentView;
+
+            ValidateTxnView(txnView);
+
             replicasDeleted = 0;
 
-            if (CurrentView.Chain.Count == 0)
-            {
-                return false;
-            }
-
             // Create individual table replicas if they are not created already 
-            foreach (var entry in this.CurrentView.Chain)
+            foreach (var entry in txnView.Chain)
             {
                 CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
-                if (ctable.DeleteIfExists() == false)
+                if (ctable.DeleteIfExists())
                 {
-                    return false;
+                    replicasDeleted++;
                 }
-                replicasDeleted++;
             }
 
-            return true;
+            return (replicasDeleted > 0);
         }
-
 
         //
         // Validate the views
@@ -191,27 +199,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             return true;
-        }
-
-
-        //
-        // Validate and return appropriate view for given an operation. 
-        // 
-        private View ValidateAndFetchView(TableOperationType opTypeValue)
-        {
-
-            if ((opTypeValue == TableOperationType.Retrieve) || (_replicatedTableConfigurationService.IsViewStable() == true))
-            {
-                // Return read view if the operation is retrieve or if the view is stable
-                return _replicatedTableConfigurationService.GetReadView();
-            }
-            else if (ValidateViews() == true)
-            {
-                // Validate the write view and return it
-                return _replicatedTableConfigurationService.GetWriteView();
-            }
-            else
-                return null;
         }
 
         private TableOperationType GetOpType(TableOperation operation)
@@ -2210,8 +2197,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             skippedCount = 0;
             failedCount = 0;
 
-            View currentReadView = this.ValidateAndFetchView(TableOperationType.Retrieve);
-            if (currentReadView == null)
+            View currentView = CurrentView;
+            if (currentView == null)
             {
                 throw new ApplicationException("Unable to load the current read view");
             }
@@ -2221,12 +2208,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new InvalidOperationException("ConvertXStoreTable() API is NOT supported when ReplicatedTable is NOT in ConvertXStoreTableMode.");
             }
 
-            int tailIndex = currentReadView.TailIndex;
+            int tailIndex = currentView.TailIndex;
 
             DateTime startTime = DateTime.UtcNow;
             ReplicatedTableLogger.LogInformational("ConvertXStoreTable() started {0}", startTime);
 
-            CloudTableClient tailTableClient = currentReadView[tailIndex];
+            CloudTableClient tailTableClient = currentView[tailIndex];
             CloudTable tailTable = tailTableClient.GetTableReference(this.TableName);
 
             IQueryable<InitDynamicReplicatedTableEntity> query =
@@ -2246,7 +2233,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                         skippedCount++;
                         continue;
                     }
-                    entity._rtable_ViewId = currentReadView.ViewId;
+                    entity._rtable_ViewId = currentView.ViewId;
                     entity._rtable_Version = 1;
                     TableOperation top = TableOperation.Replace(entity);
                     try
