@@ -56,7 +56,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     useHttps,
                     viewIdString,
                     actualStorageAccountsToBeUsed,
-                    convertXStoreTableMode);
+                    convertXStoreTableMode,
+                    1);
                 Assert.AreEqual(1, this.actualStorageAccountsUsed.Count, "Only one stoarge account should be used at this point.");
 
                 Console.WriteLine("Inserting entities to the Tail Replica...");
@@ -206,7 +207,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     useHttps,
                     viewIdString,
                     actualStorageAccountsToBeUsed,
-                    convertXStoreTableMode);
+                    convertXStoreTableMode,
+                    1);
                 Assert.AreEqual(2, this.actualStorageAccountsUsed.Count, "Two stoarge accounts should be used at this point.");
 
                 Console.WriteLine("Inserting entities to the RTable...");

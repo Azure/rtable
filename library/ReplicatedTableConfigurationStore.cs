@@ -28,7 +28,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Runtime.Serialization;
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
-    public class ReplicatedTableConfigurationStore : IEquatable<ReplicatedTableConfigurationStore>
+    public class ReplicatedTableConfigurationStore
     {
         public ReplicatedTableConfigurationStore()
         {
@@ -56,8 +56,14 @@ namespace Microsoft.Azure.Toolkit.Replication
         [DataMember(IsRequired = true)]
         public DateTime Timestamp { get; set; }
 
-        public bool Equals(ReplicatedTableConfigurationStore other)
+        public override int GetHashCode()
         {
+            return base.GetHashCode();
+        }
+
+        public override bool Equals(object obj)
+        {
+            ReplicatedTableConfigurationStore other = obj as ReplicatedTableConfigurationStore;
             if (other == null)
             {
                 return false;

@@ -127,12 +127,25 @@ namespace Microsoft.Azure.Toolkit.Replication
             get; set;
         }
 
-        public void UpdateConfiguration(List<ReplicaInfo> replicaChain, int readViewHeadIndex, bool convertXStoreTableMode = false)
+        public void UpdateConfiguration(List<ReplicaInfo> replicaChain, int readViewHeadIndex, bool convertXStoreTableMode = false, long viewId = 0)
         {
+            View currentView = GetWriteView();
+
+            if (viewId == 0)
+            {
+                if (!currentView.IsEmpty)
+                {
+                    viewId = currentView.ViewId + 1;
+                }
+                else
+                {
+                    viewId = 1;
+                }
+            }
+
             Parallel.ForEach(this.blobs, blob =>
             {
                 ReplicatedTableConfigurationStore configurationStore = null;
-                long newViewId = 0;
                 string eTag;
                 if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore, out eTag))
                 {
@@ -140,15 +153,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                     configurationStore = new ReplicatedTableConfigurationStore();
                 }
 
-                newViewId = configurationStore.ViewId + 1;
-
                 configurationStore.LeaseDuration = Constants.LeaseDurationInSec;
                 configurationStore.Timestamp = DateTime.UtcNow;
                 configurationStore.ReplicaChain = replicaChain;
                 configurationStore.ReadViewHeadIndex = readViewHeadIndex;
                 configurationStore.ConvertXStoreTableMode = convertXStoreTableMode;
 
-                configurationStore.ViewId = newViewId;
+                configurationStore.ViewId = viewId;
 
                 //If the read view head index is not 0, this means we are introducing 1 or more replicas at the head. For 
                 //each such replica, update the view id in which it was added to the write view of the chain
@@ -156,7 +167,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     for (int i = 0; i < readViewHeadIndex; i++)
                     {
-                        replicaChain[i].ViewInWhichAddedToChain = newViewId;
+                        replicaChain[i].ViewInWhichAddedToChain = viewId;
                     }
                 }
 

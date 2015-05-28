@@ -121,27 +121,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
             View v = this.configurationService.GetWriteView();
-            int index = v.Chain.Count - 1;
-            string accountName = v.GetReplicaInfo(index).StorageAccountName;
-            string accountKey = v.GetReplicaInfo(index).StorageAccountKey;
 
             Assert.IsTrue(v.Chain.Count >= 3, "Replica chain only has {0} accounts", v.Chain.Count);
-
-            List<ReplicaInfo> replicas = new List<ReplicaInfo>();
-            for (int i = 0; i <= index; i++)
-            {
-                replicas.Add(v.Chain[i].Item1);
-            }
-
-            //Just add the last replica again at the head to simulate a new replica addition
-            ReplicaInfo newReplica = new ReplicaInfo()
-            {
-                StorageAccountName = accountName,
-                StorageAccountKey = accountKey
-            };
-
-            //Add the new replica at the head
-            replicas.Insert(0, newReplica);
 
             //
             // create a new config service with only one replica
@@ -150,28 +131,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // add the same replica to all the blobs
             // now check that the majority view has changed
             //
-
-            this.configurationService.UpdateConfiguration(replicas, 1);
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 1, false, 0, 0, false);
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 1, false, 0, 1, true);
 
             // validate all state
-            Assert.IsFalse(this.configurationService.IsViewStable(), "View = {0}", this.configurationService.GetWriteView().IsStable);
-            View readView = this.configurationService.GetReadView();
-            View writeView = this.configurationService.GetWriteView();
-            long viewIdAfterFirstUpdate = writeView.ViewId;
-            Assert.IsTrue(readView != writeView);
+            Assert.IsTrue(this.configurationService.GetWriteView().ViewId == v.ViewId + 1,
+                "View did not get updated = {0}", this.configurationService.GetWriteView());
 
-            int headIndex = 0;
-            long readViewHeadViewId = readView.GetReplicaInfo(headIndex).ViewInWhichAddedToChain;
-            Assert.IsTrue(writeView.GetReplicaInfo(headIndex).ViewInWhichAddedToChain == readViewHeadViewId + 1);
+            // now update the view on one of the blobs so that all three blobs have different views.
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 2, false, 0, 0, false);
 
-            //Now, make the read and write views the same
-            this.configurationService.UpdateConfiguration(replicas, 0);
-            // validate all state
-            Assert.IsTrue(this.configurationService.IsViewStable());
-            readView = this.configurationService.GetReadView();
-            writeView = this.configurationService.GetWriteView();
-            Assert.IsTrue(readView == writeView);
-            Assert.IsTrue(readView.ViewId == viewIdAfterFirstUpdate + 1);
+            // ensure that viewId does not change
+            Thread.Sleep(Constants.LeaseDurationInSec * 1000);
+            Assert.IsTrue(this.configurationService.GetWriteView().IsEmpty, "View should be empty");
+
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 2, false, 0, 2, true);
+            Assert.IsTrue(this.configurationService.GetWriteView().ViewId == v.ViewId + 2,
+                "View did not get updated to +2 = {0}", this.configurationService.GetWriteView());
         }
 
         [Test(Description = "TableOperation Repair Row API")]

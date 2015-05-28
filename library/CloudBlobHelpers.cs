@@ -133,6 +133,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 if (CloudBlobHelpers.TryReadBlob<T>(blobs[index], out currentValue, out currentETag))
                 {
+                    ReplicatedTableConfigurationStore s = currentValue as ReplicatedTableConfigurationStore;
                     valuesArray[index] = currentValue;
                     eTagsArray[index] = currentETag;
                 }
@@ -151,7 +152,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 for (int innerLoop = index + 1; innerLoop < numberOfBlobs; innerLoop++)
                 {
-                    if (valuesArray[index] == valuesArray[innerLoop])
+                    if (valuesArray[index].Equals(valuesArray[innerLoop]))
                     {
                         matchCount++;
                     }
