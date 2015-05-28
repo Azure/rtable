@@ -10,4 +10,3 @@ Microsoft.Azure.Toolkit.Replication.Test.RTableQueryableTests
 Microsoft.Azure.Toolkit.Replication.Test.RTableQueryGenericAdditionalTests
 Microsoft.Azure.Toolkit.Replication.Test.RTableQueryGenericTests
 Microsoft.Azure.Toolkit.Replication.Test.RTableStressTests
-Microsoft.Azure.Toolkit.Replication.Test.RTableViewIdTests
