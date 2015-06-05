@@ -622,6 +622,71 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.ReadFromIndividualAccountsDirectly(entityPartitionKey, entityRowKey, checkStorageAccountsConsistent);            
         }
 
+        public static Action<Session> DelayResponse = session =>
+        {
+            Thread.Sleep(10000);
+        };
+
+        /// <summary>
+        /// Helper function to set up an original entity and then run the **Throttle** Behavior against the specified storage account.
+        /// </summary>
+        /// <param name="entityPartitionKey"></param>
+        /// <param name="entityRowKey"></param>
+        /// <param name="targetStorageAccount">Specify which storage account to tamper with. 0 = Head; Count-1 = Tail</param>
+        /// <param name="targetApi">Will call this RTable API while HttpMangler is enabled</param>
+        /// <param name="targetApiExpectedToFail">True means the targetAPi is expected to fail when HttpMangler is enabled</param>
+        /// <param name="checkOriginalEntityUnchanged">True means verify that the original entity (via GetRow()) is unchanged after this function.</param>
+        /// <param name="checkStorageAccountsConsistent">True means verify that the individual storage accounts are consistent.</param>
+        /// <param name="skipInitialSessions">Skip this many initial sessions. (Let them go through without being tampered)</param>
+        protected void SetupAndRunDelayTableBehavior(
+            string entityPartitionKey,
+            string entityRowKey,
+            int targetStorageAccount,
+            TargetRTableWrapperApi<SampleRTableEntity> targetApi,
+            bool targetApiExpectedToFail,
+            bool checkOriginalEntityUnchanged,
+            bool checkStorageAccountsConsistent,
+            out DateTime httpManglerStartTime,
+            int skipInitialSessions = 0)
+        {
+            Assert.IsTrue(0 <= targetStorageAccount && targetStorageAccount < this.actualStorageAccountsUsed.Count,
+                    "SetupAndRunDelayTableBehavior() is called with out-of-range targetStorageAccount={0}", targetStorageAccount);
+            int index = this.actualStorageAccountsUsed[targetStorageAccount];
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[index];
+            Console.WriteLine("SetupAndRunDelayTableBehavior(): accountNameToTamper={0} skipInitialSessions={1}",
+                accountNameToTamper, skipInitialSessions);
+
+            // Throttle behavior
+            ProxyBehavior[] behaviors = new[]
+            {
+                TamperBehaviors.TamperAllResponsesIf(
+                        DelayResponse,
+                        AzureStorageSelectors.TableTraffic().IfUrlContains(repTable.TableName))
+            };
+
+            //
+            // Arrange and Act:
+            //
+            SampleRTableEntity originalEntity = this.SetupAndRunHttpManglerBehaviorHelper(
+                                                        entityPartitionKey,
+                                                        entityRowKey,
+                                                        behaviors,
+                                                        targetApi,
+                                                        targetApiExpectedToFail,
+                                                        out httpManglerStartTime);
+
+            //
+            // Assert: 
+            //      
+            if (checkOriginalEntityUnchanged)
+            {
+                // Validate originalEntity remain unchanged.
+                this.ExecuteReadRowAndValidate(entityPartitionKey, entityRowKey, originalEntity);
+            }
+
+            // For debug purposes: read from the Head and Tail accounts, and check for consistency
+            this.ReadFromIndividualAccountsDirectly(entityPartitionKey, entityRowKey, checkStorageAccountsConsistent);
+        }
 
         /// <summary>
         /// Helper function to delete the entity with the specified "partitionKey" and "rowKey" from the 

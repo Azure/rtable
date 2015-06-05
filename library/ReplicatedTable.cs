@@ -164,41 +164,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             return (replicasDeleted > 0);
         }
 
-        //
-        // Validate the views
-        // 
-        private bool ValidateViews()
-        {
-            // Always replicas should be added (1) before the tail replica and (2) after the head replica if there are more than 2 replicas.
-            View readView = _replicatedTableConfigurationService.GetReadView();
-            View writeView = _replicatedTableConfigurationService.GetWriteView();
-
-            // 0. If there is no write view or read view, return false
-            if (writeView == null || readView == null)
-            {
-                return false;
-            }
-
-            // 1. If either view has no elements in it, then return false.
-            if (writeView.Chain.Count == 0 ||
-                readView.Chain.Count == 0)
-            {
-                return false;
-            }
-
-            // 2. Write view set size should be greater than or equal to the read view set size and the tail replicas should match
-            int writeTailIndex = writeView.Chain.Count - 1;
-            int readTailIndex = readView.Chain.Count - 1;
-            if ((writeTailIndex <= readTailIndex) ||
-                (writeView[writeTailIndex].BaseUri.AbsoluteUri.Equals(
-                    readView[readTailIndex].BaseUri.AbsoluteUri) == false))
-            {
-                return false;
-            }
-
-            return true;
-        }
-
         private TableOperationType GetOpType(TableOperation operation)
         {
 
@@ -812,7 +777,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             while (true)
             {
                 retrievedResult = RetrieveFromReplica(txnView, index, operation, requestOptions, operationContext);
-
                 if (retrievedResult == null)
                 {
                     //If we attempted at the read head and still failed, we just fail the request
@@ -916,7 +880,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             if (retrievedResult == null)
             {
-                retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
+                retrievedResult = FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, false);
             }
 
             if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
@@ -953,8 +917,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                 row._rtable_ViewId = txnView.ViewId;
 
                 // Lock the head first by inserting the row
-                if (((result = UpdateOrDeleteRow(tableClient, row)) == null) ||
-                    (result.HttpStatusCode != (int) HttpStatusCode.NoContent))
+                result = UpdateOrDeleteRow(tableClient, row);
+                ValidateTxnView(txnView);
+                if ((result == null) || (result.HttpStatusCode != (int) HttpStatusCode.NoContent))
                 {
                     ReplicatedTableLogger.LogError("Merge: Failed to lock the head. ");
                     return new TableResult()
@@ -1092,8 +1057,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             row._rtable_ViewId = txnView.ViewId;
 
             // Lock the head first by inserting the row
-            if (((result = UpdateOrDeleteRow(tableClient, row)) == null) ||
-                (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
+            result = UpdateOrDeleteRow(tableClient, row);
+            ValidateTxnView(txnView);
+            if ((result == null) || (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
             {
                 ReplicatedTableLogger.LogError("Insert: Failed to lock the head. ");
                 return new TableResult()
@@ -1172,7 +1138,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             tsRow._rtable_Operation = GetTableOperation(TableOperationType.Insert);
 
             // Lock the head first by inserting the row
-            if ((result = InsertRow(headTableClient, tsRow)) == null)
+            result = InsertRow(headTableClient, tsRow);
+            ValidateTxnView(txnView);
+            if (result == null)
             {
                 ReplicatedTableLogger.LogError("Insert: Failed to insert at the head.");
                 return null;
@@ -1409,6 +1377,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             try
             {
                 retrievedResult = table.Execute(operation, requestOptions, operationContext);
+                ValidateTxnView(txnView);
             }
             catch (Exception e)
             {
@@ -1552,25 +1521,29 @@ namespace Microsoft.Azure.Toolkit.Replication
             // Read the row before updating it
             CloudTableClient tableClient = txnView[index];
             TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
+            TableResult result; 
 
             // If the Etag is supplied, this is an update or delete based on existing eTag
             // no need to retrieve
             if (Etag != null)
             {
                 row.ETag = Etag;
-                return UpdateOrDeleteRow(tableClient, row);
+                result = UpdateOrDeleteRow(tableClient, row);
+                ValidateTxnView(txnView);
+                return result;
             }
 
             if (row._rtable_RowLock == true && row._rtable_Operation == GetTableOperation(TableOperationType.Insert))
             {
                 // if the operation is insert and it is in the prepare phase, just insert the data
-                return InsertRow(tableClient, row);
+                result = InsertRow(tableClient, row);
+                ValidateTxnView(txnView);
+                return result;
             }
 
             // TODO: this read seems redundant. remove it.
             // If Etag is not supplied, retrieve the row first before writing
             TableResult retrievedResult = RetrieveFromReplica(txnView, index, operation, requestOptions, operationContext);
-
             if (retrievedResult == null)
             {
                 // If retrieve fails for some reason then return "service unavailable - 503 " error code
@@ -1584,7 +1557,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 // Row is present, overwrite the row
                 row.ETag = retrievedResult.Etag;
-                return UpdateOrDeleteRow(tableClient, row);
+                result = UpdateOrDeleteRow(tableClient, row);
+                ValidateTxnView(txnView);
+                return result;
             }
 
             if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.NotFound || retrievedResult.Result == null)
@@ -1599,8 +1574,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
 
                 // non-delete operation: Row is not present, create the row and return the result
-                TableResult result;
-                if (((result = InsertRow(tableClient, row)) == null) ||
+                result = InsertRow(tableClient, row);
+                ValidateTxnView(txnView);
+                if ((result == null) ||
                     (result.HttpStatusCode != (int)HttpStatusCode.NoContent) || (result.Result == null))
                 {
                     ReplicatedTableLogger.LogError(
@@ -1901,10 +1877,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 return ReconfigurationStatus.SUCCESS;
             }
-            if (!this.ValidateViews())
-            {
-                return ReconfigurationStatus.FAULTY_WRITE_VIEW;
-            }
 
             View txnView = CurrentView;
             ValidateTxnView(txnView);
@@ -2125,6 +2097,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                     // delete row from the write view
                     result = UpdateOrDeleteRow(txnView[txnView.WriteHeadIndex], writeViewEntity);
+                    ValidateTxnView(txnView);
                     ReplicatedTableLogger.LogWarning("RepairRow: attempt to delete from write head returned: {0}", result.HttpStatusCode);
                     return result;
                 }
@@ -2148,6 +2121,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             readHeadEntity._rtable_Operation = GetTableOperation(TableOperationType.Replace);
 
             result = UpdateOrDeleteRow(txnView[txnView.ReadHeadIndex], readHeadEntity);
+            ValidateTxnView(txnView);
             if (result == null)
             {
                 ReplicatedTableLogger.LogError("RepairRow: failed to take lock on read head.");
@@ -2192,11 +2166,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                 readHeadEntity._rtable_RowLock = false;
                 readHeadEntity.ETag = readHeadEtag;
                 result = UpdateOrDeleteRow(txnView[txnView.ReadHeadIndex], readHeadEntity);
+                ValidateTxnView(txnView);
                 if (result == null)
                 {
                     ReplicatedTableLogger.LogError("RepairRow: failed to unlock read view.");
                     return null;
                 }
+
 
                 if (result.HttpStatusCode != (int)HttpStatusCode.OK &&
                     result.HttpStatusCode != (int)HttpStatusCode.NoContent)
@@ -2210,6 +2186,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 readHeadEntity._rtable_RowLock = false;
                 readHeadEntity.ETag = writeHeadEtagForCommit;
                 result = UpdateOrDeleteRow(txnView[txnView.WriteHeadIndex], readHeadEntity);
+                ValidateTxnView(txnView);
 
                 if (result == null)
                 {

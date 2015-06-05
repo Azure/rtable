@@ -122,6 +122,7 @@
     <Compile Include="TableEntities\SampleXStoreEntity.cs" />
     <Compile Include="TestHelper.cs" />
     <Compile Include="ThrottlingTests.cs" />
+    <Compile Include="ViewChangeTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />
