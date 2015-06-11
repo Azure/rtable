@@ -453,7 +453,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 {
                     TamperBehaviors.TamperAllRequestsIf(
                         Actions.ThrottleTableRequest,
-                        AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper))
+                        AzureStorageSelectors.TableTraffic().IfHostNameContains("accountNameToTamper"+"."))
                 };
 
             //
