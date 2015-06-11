@@ -52,5 +52,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// When an entity is locked by a client and that client did not unlock the entity, other clients are free to unlock it afer this much time has elasped.
         /// </summary>
         public static int LockTimeoutInSeconds = 60;
+
+        public static string CloudStorageAccountTemplate = "DefaultEndpointsProtocol={0};AccountName={1};AccountKey={2}";
     }
 }

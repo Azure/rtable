@@ -81,15 +81,21 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 return false;
             }
-            
+
             if (view1.Chain.Count != view2.Chain.Count)
+            {
                 return false;
+            }
 
             if (view1.ViewId != view2.ViewId)
+            {
                 return false;
+            }
 
             if (view1.ReadHeadIndex != view2.ReadHeadIndex)
+            {
                 return false;
+            }
 
             for (int i = 0; i < view1.Chain.Count; i++)
             {

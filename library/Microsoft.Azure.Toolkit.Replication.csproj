@@ -75,9 +75,13 @@
     <Compile Include="ConfigurationStoreLocationInfo.cs" />
     <Compile Include="DynamicReplicatedTableEntity.cs" />
     <Compile Include="IReplicatedTable.cs" />
+    <Compile Include="IReplicatedTableConfigurationParser.cs" />
     <Compile Include="IReplicatedTableEntity.cs" />
     <Compile Include="JsonStore.cs" />
     <Compile Include="ReconfigurationStatus.cs" />
+    <Compile Include="ReplicatedTableChainAndTableConfigurationStore.cs" />
+    <Compile Include="ReplicatedTableConfigurationManager.cs" />
+    <Compile Include="ReplicatedTableConfigurationStoreParser.cs" />
     <Compile Include="ReplicatedTableLogger.cs" />
     <Compile Include="PeriodicTimer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -89,6 +93,8 @@
     <Compile Include="ReplicatedTableConfigurationService.cs" />
     <Compile Include="ReplicatedTableConfigurationStore.cs" />
     <Compile Include="ReplicatedTableEventSource.cs" />
+    <Compile Include="RTableConfiguredTable.cs" />
+    <Compile Include="RTableChainViews.cs" />
     <Compile Include="View.cs" />
   </ItemGroup>
   <ItemGroup>

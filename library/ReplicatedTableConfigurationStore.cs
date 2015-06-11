@@ -19,8 +19,6 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-using System.Text;
-
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
@@ -75,6 +73,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             return false;
+        }
+
+        public string ToJson()
+        {
+            return JsonStore<ReplicatedTableConfigurationStore>.Serialize(this);
         }
     }
 }
