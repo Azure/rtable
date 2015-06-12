@@ -28,7 +28,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     {
         /// <summary>
         /// Parses the RTable configuration blobs.
-        /// Returns the list of chains, the list of configured tables and the lease duration.
+        /// Returns the list of views, the list of configured tables and the lease duration.
         /// If null is returned, then the value of tableConfigList/leaseDuration are not relevant.
         /// </summary>
         /// <param name="blobs"></param>
@@ -36,11 +36,10 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="tableConfigList"></param>
         /// <param name="leaseDuration"></param>
         /// <returns></returns>
-        List<RTableChainViews> ParseBlob(
-                                        List<CloudBlockBlob> blobs,
-                                        bool useHttps,
-                                        out List<RTableConfiguredTable> tableConfigList,
-                                        out int leaseDuration
-                                        );
+        List<View> ParseBlob(
+                        List<CloudBlockBlob> blobs,
+                        bool useHttps,
+                        out List<RTableConfiguredTable> tableConfigList,
+                        out int leaseDuration);
     }
 }

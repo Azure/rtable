@@ -30,9 +30,9 @@ namespace Microsoft.Azure.Toolkit.Replication
         public string TableName { get; set; }
 
         [DataMember(IsRequired = true)]
-        public string ChainName { get; set; }
+        public string ViewName { get; set; }
 
         [DataMember(IsRequired = true)]
-        public bool ConvertXStoreTableMode { get; set; }
+        public bool ConvertToRTable { get; set; }
     }
 }

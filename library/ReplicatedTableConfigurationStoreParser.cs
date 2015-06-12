@@ -23,19 +23,17 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
-    using System.Threading;
-    using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Blob;
     using Microsoft.WindowsAzure.Storage.Table;
 
     internal class ReplicatedTableConfigurationStoreParser : IReplicatedTableConfigurationParser
     {
-        public const string DefaultChainName = "DefaultChainName";
+        public const string DefaultViewName = "DefaultViewName";
         public const string AllTables = "AllTables";
 
         /// <summary>
         /// Parses the RTable configuration blobs.
-        /// Returns the list of chains, the list of configured tables and the lease duration.
+        /// Returns the list of views, the list of configured tables and the lease duration.
         /// If null is returned, then the value of tableConfigList/leaseDuration are not relevant.
         /// </summary>
         /// <param name="blobs"></param>
@@ -43,12 +41,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="tableConfigList"></param>
         /// <param name="leaseDuration"></param>
         /// <returns></returns>
-        public List<RTableChainViews> ParseBlob(
-                                                List<CloudBlockBlob> blobs,
-                                                bool useHttps,
-                                                out List<RTableConfiguredTable> tableConfigList,
-                                                out int leaseDuration
-                                                )
+        public List<View> ParseBlob(
+                                List<CloudBlockBlob> blobs,
+                                bool useHttps,
+                                out List<RTableConfiguredTable> tableConfigList,
+                                out int leaseDuration)
         {
             tableConfigList = null;
             leaseDuration = 0;
@@ -68,38 +65,29 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return null;
             }
 
-            var chain = new RTableChainViews(DefaultChainName)
+            var view = new View(DefaultViewName)
             {
                 RefreshTime = DateTime.UtcNow
             };
 
-            for (int i = 0; i < configurationStore.ReplicaChain.Count; i++)
+            foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
             {
-                ReplicaInfo replica = configurationStore.ReplicaChain[i];
-                CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica,
-                    useHttps);
+                CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica, useHttps);
 
                 if (replica != null && tableClient != null)
                 {
-                    //Update the write view always
-                    chain.WriteView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
-
-                    //Update the read view only for replicas part of the view
-                    if (i >= configurationStore.ReadViewHeadIndex)
-                    {
-                        chain.ReadView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
-                    }
+                    view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
                 }
             }
 
-            if (chain.ReadView.IsEmpty || chain.WriteView.IsEmpty)
+            if (view.IsEmpty)
             {
                 return null;
             }
 
             // - chain:
-            chain.ReadView.ViewId = chain.WriteView.ViewId = configurationStore.ViewId;
-            chain.WriteView.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
+            view.ViewId = configurationStore.ViewId;
+            view.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
 
             // - configured table:
             tableConfigList = new List<RTableConfiguredTable>
@@ -107,15 +95,15 @@ namespace Microsoft.Azure.Toolkit.Replication
                 new RTableConfiguredTable
                 {
                     TableName = AllTables,
-                    ChainName = DefaultChainName,
-                    ConvertXStoreTableMode = configurationStore.ConvertXStoreTableMode,
+                    ViewName = DefaultViewName,
+                    ConvertToRTable = configurationStore.ConvertXStoreTableMode,
                 }
             };
 
             // - lease duration
             leaseDuration = configurationStore.LeaseDuration;
 
-            return new List<RTableChainViews> {chain};
+            return new List<View> { view };
         }
     }
 }

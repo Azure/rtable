@@ -27,10 +27,16 @@ namespace Microsoft.Azure.Toolkit.Replication
 
     public class View
     {
-        public View()
+        public View(string name )
         {
+            this.Name = name;
+            this.RefreshTime = DateTime.MinValue;
             this.Chain = new List<Tuple<ReplicaInfo, CloudTableClient>>();
         }
+
+        public string Name { get; private set; }
+
+        public DateTime RefreshTime { get; set; }
 
         public long ViewId { get; set; }
 
@@ -74,6 +80,16 @@ namespace Microsoft.Azure.Toolkit.Replication
             get { return Chain.Count == 0; }
         }
 
+        public bool IsExpired(TimeSpan leaseDuration)
+        {
+            if (DateTime.UtcNow - RefreshTime > leaseDuration)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         public static bool operator ==(View view1, View view2)
         {
             if ( object.ReferenceEquals(view1, null) ||
@@ -81,6 +97,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 return false;
             }
+
+            if ( ! string.Equals(view1.Name, view2.Name, StringComparison.OrdinalIgnoreCase) )
+            {
+                return false;
+            }
+
 
             if (view1.Chain.Count != view2.Chain.Count)
             {

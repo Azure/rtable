@@ -79,7 +79,7 @@
     <Compile Include="IReplicatedTableEntity.cs" />
     <Compile Include="JsonStore.cs" />
     <Compile Include="ReconfigurationStatus.cs" />
-    <Compile Include="ReplicatedTableChainAndTableConfigurationStore.cs" />
+    <Compile Include="ReplicatedTableConfiguration.cs" />
     <Compile Include="ReplicatedTableConfigurationManager.cs" />
     <Compile Include="ReplicatedTableConfigurationStoreParser.cs" />
     <Compile Include="ReplicatedTableLogger.cs" />
@@ -94,7 +94,6 @@
     <Compile Include="ReplicatedTableConfigurationStore.cs" />
     <Compile Include="ReplicatedTableEventSource.cs" />
     <Compile Include="RTableConfiguredTable.cs" />
-    <Compile Include="RTableChainViews.cs" />
     <Compile Include="View.cs" />
   </ItemGroup>
   <ItemGroup>

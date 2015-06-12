@@ -36,7 +36,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         private bool useHttps;
         private Dictionary<string, CloudBlockBlob> blobs = new Dictionary<string, CloudBlockBlob>();
         private readonly IReplicatedTableConfigurationParser blobParser;
-        private Dictionary<string, RTableChainViews> chainsMap = new Dictionary<string, RTableChainViews>();
+        private Dictionary<string, View> viewMap = new Dictionary<string, View>();
         private Dictionary<string, RTableConfiguredTable> tableMap = new Dictionary<string, RTableConfiguredTable>();
 
         internal protected ReplicatedTableConfigurationManager(List<ConfigurationStoreLocationInfo> blobLocations, bool useHttps, int lockTimeoutInSeconds, IReplicatedTableConfigurationParser blobParser)
@@ -98,25 +98,25 @@ namespace Microsoft.Azure.Toolkit.Replication
             List<RTableConfiguredTable> tableConfigList;
             int leaseDuration;
 
-            List<RTableChainViews> chains = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.useHttps, out tableConfigList, out leaseDuration);
-            if (chains == null)
+            List<View> views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.useHttps, out tableConfigList, out leaseDuration);
+            if (views == null)
             {
                 return;
             }
 
             lock (this)
             {
-                // - Update list of chains
-                this.chainsMap.Clear();
+                // - Update list of views
+                this.viewMap.Clear();
 
-                foreach (var chain in chains)
+                foreach (var view in views)
                 {
-                    if (chain == null || string.IsNullOrEmpty(chain.Name))
+                    if (view == null || string.IsNullOrEmpty(view.Name))
                     {
                         continue;
                     }
 
-                    this.chainsMap.Add(chain.Name, chain);
+                    this.viewMap.Add(view.Name, view);
                 }
 
                 // - Update list of configured tables
@@ -172,64 +172,32 @@ namespace Microsoft.Azure.Toolkit.Replication
 
 
         /*
-         * Chains functions:
+         * Views functions:
          */
-        private RTableChainViews FindChain(string chainName)
+        internal protected View GetView(string viewName)
         {
             lock (this)
             {
-                if (string.IsNullOrEmpty(chainName) || !this.chainsMap.ContainsKey(chainName))
+                if (string.IsNullOrEmpty(viewName) || !this.viewMap.ContainsKey(viewName))
                 {
-                    return null;
+                    return new View(viewName);
                 }
 
-                return this.chainsMap[chainName];
+                View view = this.viewMap[viewName];
+                return view.IsExpired(LeaseDuration) ? new View(viewName) : view;
             }
         }
 
-        internal protected View GetReadView(string chainName)
+        internal protected bool IsViewExpired(string viewName)
         {
-            var chain = FindChain(chainName);
-            if (chain == null)
-            {
-                return new View();
-            }
-
-            return chain.IsExpired(LeaseDuration) ? new View() : chain.ReadView;
+            var view = GetView(viewName);
+            return view.IsExpired(LeaseDuration);
         }
 
-        internal protected View GetWriteView(string chainName)
+        internal protected bool IsViewStable(string viewName)
         {
-            var chain = FindChain(chainName);
-            if (chain == null)
-            {
-                return new View();
-            }
-
-            return chain.IsExpired(LeaseDuration) ? new View() : chain.WriteView;
-        }
-
-        internal protected bool IsChainExpired(string chainName)
-        {
-            var chain = FindChain(chainName);
-            if (chain == null)
-            {
-                return true;
-            }
-
-            return chain.IsExpired(LeaseDuration);
-        }
-
-        internal protected bool IsChainStable(string chainName)
-        {
-            View view = GetWriteView(chainName);
-
-            if (view.IsEmpty)
-            {
-                return false;
-            }
-
-            return view.IsStable;
+            View view = GetView(viewName);
+            return !view.IsEmpty && view.IsStable;
         }
 
 

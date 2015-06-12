@@ -27,23 +27,23 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Runtime.Serialization;
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
-    public class ReplicatedTableChainAndTableConfigurationStore
+    public class ReplicatedTableConfiguration
     {
         [DataMember(IsRequired = true, Order = 0)]
-        private Dictionary<string, ReplicatedTableConfigurationStore> chainMap = new Dictionary<string, ReplicatedTableConfigurationStore>();
+        private Dictionary<string, ReplicatedTableConfigurationStore> viewMap = new Dictionary<string, ReplicatedTableConfigurationStore>();
 
         [DataMember(IsRequired = true, Order = 1)]
         private List<RTableConfiguredTable> tableList = new List<RTableConfiguredTable>();
 
 
         /*
-         * Chain APIs:
+         * View APIs:
          */
-        public void SetChain(string chainName, ReplicatedTableConfigurationStore config)
+        public void SetView(string viewName, ReplicatedTableConfigurationStore config)
         {
-            if (string.IsNullOrEmpty(chainName))
+            if (string.IsNullOrEmpty(viewName))
             {
-                throw new ArgumentNullException("chainName");
+                throw new ArgumentNullException("viewName");
             }
 
             if (config == null)
@@ -51,37 +51,37 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("config");
             }
 
-            chainMap.Remove(chainName);
-            chainMap.Add(chainName, config);
+            viewMap.Remove(viewName);
+            viewMap.Add(viewName, config);
         }
 
-        public ReplicatedTableConfigurationStore GetChain(string chainName)
+        public ReplicatedTableConfigurationStore GetView(string viewName)
         {
-            if (string.IsNullOrEmpty(chainName))
+            if (string.IsNullOrEmpty(viewName))
             {
                 return null;
             }
 
-            return !chainMap.ContainsKey(chainName) ? null : chainMap[chainName];
+            return !viewMap.ContainsKey(viewName) ? null : viewMap[viewName];
         }
 
-        public void RemoveChain(string chainName)
+        public void RemoveView(string viewName)
         {
-            if (GetChain(chainName) == null)
+            if (GetView(viewName) == null)
             {
                 return;
             }
 
-            RTableConfiguredTable table = tableList.Find(e => chainName.Equals(e.ChainName, StringComparison.OrdinalIgnoreCase));
+            RTableConfiguredTable table = tableList.Find(e => viewName.Equals(e.ViewName, StringComparison.OrdinalIgnoreCase));
             if (table != null)
             {
-                var msg = string.Format("Chain:\'{0}\' is referenced by table:\'{1}\'! First, delete the table then the chain.",
-                                        chainName,
+                var msg = string.Format("View:\'{0}\' is referenced by table:\'{1}\'! First, delete the table then the view.",
+                                        viewName,
                                         table.TableName);
                 throw new Exception(msg);
             }
 
-            chainMap.Remove(chainName);
+            viewMap.Remove(viewName);
         }
 
         /*
@@ -100,8 +100,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("TableName");
             }
 
-            // If pointing a chain, then the chain must exist ?
-            ThrowIfChainIsMissing(config);
+            // If pointing a view, then the view must exist ?
+            ThrowIfViewIsMissing(config);
 
             tableList.RemoveAll(e => tableName.Equals(e.TableName, StringComparison.OrdinalIgnoreCase));
             tableList.Add(config);
@@ -127,21 +127,21 @@ namespace Microsoft.Azure.Toolkit.Replication
             tableList.RemoveAll(e => tableName.Equals(e.TableName, StringComparison.OrdinalIgnoreCase));
         }
 
-        private void ThrowIfChainIsMissing(RTableConfiguredTable config)
+        private void ThrowIfViewIsMissing(RTableConfiguredTable config)
         {
-            if (string.IsNullOrEmpty(config.ChainName))
+            if (string.IsNullOrEmpty(config.ViewName))
             {
                 return;
             }
 
-            if (GetChain(config.ChainName) != null)
+            if (GetView(config.ViewName) != null)
             {
                 return;
             }
 
-            var msg = string.Format("Table:\'{0}\' refers a missing chain:\'{1}\'! First, create the chain and then configure the table.",
+            var msg = string.Format("Table:\'{0}\' refers a missing view:\'{1}\'! First, create the view and then configure the table.",
                                     config.TableName,
-                                    config.ChainName);
+                                    config.ViewName);
             throw new Exception(msg);
         }
 
@@ -151,22 +151,22 @@ namespace Microsoft.Azure.Toolkit.Replication
         internal protected void ValidateAndFixConfig()
         {
             /*
-             * 1 - Chains validation
+             * 1 - Views validation
              */
-            // - Enforce chainMap not null
-            if (chainMap == null)
+            // - Enforce viewMap not null
+            if (viewMap == null)
             {
-                chainMap = new Dictionary<string, ReplicatedTableConfigurationStore>();
+                viewMap = new Dictionary<string, ReplicatedTableConfigurationStore>();
             }
             else
             {
-                //- Enforce chainName not empty
-                chainMap.Remove("");
+                //- Enforce viewName not empty
+                viewMap.Remove("");
 
                 // - Enforce config not null
-                foreach (var key in chainMap.Keys.ToList().Where(key => chainMap[key] == null))
+                foreach (var key in viewMap.Keys.ToList().Where(key => viewMap[key] == null))
                 {
-                    chainMap.Remove(key);
+                    viewMap.Remove(key);
                 }
             }
 
@@ -196,10 +196,10 @@ namespace Microsoft.Azure.Toolkit.Replication
                     throw new Exception(msg);
                 }
 
-                // - Enforce tables refering existing chains
+                // - Enforce tables refering existing views
                 tableList.TrueForAll(cfg =>
                 {
-                    ThrowIfChainIsMissing(cfg);
+                    ThrowIfViewIsMissing(cfg);
                     return true;
                 });
             }
@@ -207,17 +207,17 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public string ToJson()
         {
-            return JsonStore<ReplicatedTableChainAndTableConfigurationStore>.Serialize(this);
+            return JsonStore<ReplicatedTableConfiguration>.Serialize(this);
         }
 
-        public static ReplicatedTableChainAndTableConfigurationStore FromJson(string json)
+        public static ReplicatedTableConfiguration FromJson(string json)
         {
             if (string.IsNullOrEmpty(json))
             {
-                return new ReplicatedTableChainAndTableConfigurationStore();
+                return new ReplicatedTableConfiguration();
             }
 
-            var config = JsonStore<ReplicatedTableChainAndTableConfigurationStore>.Deserialize(json);
+            var config = JsonStore<ReplicatedTableConfiguration>.Deserialize(json);
             config.ValidateAndFixConfig();
 
             return config;

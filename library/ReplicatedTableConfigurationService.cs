@@ -53,25 +53,25 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public View GetReadView()
         {
-            return this.configManager.GetReadView(ReplicatedTableConfigurationStoreParser.DefaultChainName);
+            return this.configManager.GetView(ReplicatedTableConfigurationStoreParser.DefaultViewName);
         }
 
         public View GetWriteView()
         {
-            return this.configManager.GetWriteView(ReplicatedTableConfigurationStoreParser.DefaultChainName);
+            return this.configManager.GetView(ReplicatedTableConfigurationStoreParser.DefaultViewName);
         }
 
         public bool HasViewExpired
         {
             get
             {
-                return this.configManager.IsChainExpired(ReplicatedTableConfigurationStoreParser.DefaultChainName);
+                return this.configManager.IsViewExpired(ReplicatedTableConfigurationStoreParser.DefaultViewName);
             }
         }
 
         public bool IsViewStable()
         {
-            return this.configManager.IsChainStable(ReplicatedTableConfigurationStoreParser.DefaultChainName);
+            return this.configManager.IsViewStable(ReplicatedTableConfigurationStoreParser.DefaultViewName);
         }
 
         public bool ConvertXStoreTableMode
@@ -79,7 +79,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             get
             {
                 RTableConfiguredTable config = this.configManager.FindConfiguredTable(ReplicatedTableConfigurationStoreParser.AllTables);
-                return config != null && config.ConvertXStoreTableMode;
+                return config != null && config.ConvertToRTable;
             }
         }
 
