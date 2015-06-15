@@ -93,17 +93,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //Add the new replica at the head
             replicas.Insert(0, newReplica);
 
-            this.configurationService.UpdateConfiguration(replicas, 1);
+            int readViewHeadIndex = 1;
+            this.configurationService.UpdateConfiguration(replicas, readViewHeadIndex);
 
             // validate all state
             Assert.IsFalse(this.configurationService.IsViewStable(), "View = {0}", this.configurationService.GetWriteView().IsStable);
             View readView = this.configurationService.GetReadView();
             View writeView = this.configurationService.GetWriteView();
             long viewIdAfterFirstUpdate = writeView.ViewId;
-            Assert.IsTrue(readView != writeView);
+
+            // Actually, both read and write views point to the same view
+            Assert.IsTrue(readView == writeView);
 
             int headIndex = 0;
-            long readViewHeadViewId = readView.GetReplicaInfo(headIndex).ViewInWhichAddedToChain;
+            long readViewHeadViewId = readView.GetReplicaInfo(readViewHeadIndex).ViewInWhichAddedToChain;
             Assert.IsTrue(writeView.GetReplicaInfo(headIndex).ViewInWhichAddedToChain == readViewHeadViewId + 1);
 
             //Now, make the read and write views the same

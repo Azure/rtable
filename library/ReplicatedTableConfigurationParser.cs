@@ -23,14 +23,11 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using Microsoft.WindowsAzure.Storage.Blob;
-    using Microsoft.WindowsAzure.Storage.Table;
 
-    internal class ReplicatedTableConfigurationStoreParser : IReplicatedTableConfigurationParser
+    internal class ReplicatedTableConfigurationParser : IReplicatedTableConfigurationParser
     {
-        public const string DefaultViewName = "DefaultViewName";
-        public const string AllTables = "AllTables";
-
         /// <summary>
         /// Parses the RTable configuration blobs.
         /// Returns the list of views, the list of configured tables and the lease duration.
@@ -50,36 +47,50 @@ namespace Microsoft.Azure.Toolkit.Replication
             tableConfigList = null;
             leaseDuration = 0;
 
-            ReplicatedTableConfigurationStore configurationStore;
+            ReplicatedTableConfiguration configuration;
             List<string> eTags;
 
             ReplicatedTableConfigurationReadResult result = CloudBlobHelpers.TryReadBlobQuorum(
                                                                     blobs,
-                                                                    out configurationStore,
+                                                                    out configuration,
                                                                     out eTags,
-                                                                    JsonStore<ReplicatedTableConfigurationStore>.Deserialize);
+                                                                    ReplicatedTableConfiguration.FromJson);
             if (result != ReplicatedTableConfigurationReadResult.Success)
             {
-                ReplicatedTableLogger.LogError("Unable to refresh view, result={0}", result);
+                ReplicatedTableLogger.LogError("Unable to refresh views, result={0}", result);
                 return null;
             }
 
 
             /**
-             * View:
+             * Views:
              */
-            var view = new View(DefaultViewName, configurationStore, useHttps)
-            {
-                RefreshTime = DateTime.UtcNow
-            };
+            var viewList = new List<View>();
 
-            if (view.ViewId <= 0)
+            foreach (var entry in configuration.viewMap)
             {
-                ReplicatedTableLogger.LogError("ViewId={0} is invalid. Must be >= 1.", view.ViewId);
-                return null;
+                ReplicatedTableConfigurationStore configurationStore = entry.Value;
+
+                var view = new View(entry.Key, configurationStore, useHttps)
+                {
+                    RefreshTime = DateTime.UtcNow,
+                };
+
+                if (view.ViewId <= 0)
+                {
+                    ReplicatedTableLogger.LogError("ViewId={0} of  ViewName={1} is invalid. Must be >= 1.", view.ViewId, view.Name);
+                    continue;
+                }
+
+                if (view.IsEmpty)
+                {
+                    continue;
+                }
+
+                viewList.Add(view);
             }
 
-            if (view.IsEmpty)
+            if (!viewList.Any())
             {
                 return null;
             }
@@ -88,21 +99,13 @@ namespace Microsoft.Azure.Toolkit.Replication
             /**
              * Tables:
              */
-            tableConfigList = new List<ReplicatedTableConfiguredTable>
-            {
-                new ReplicatedTableConfiguredTable
-                {
-                    TableName = AllTables,
-                    ViewName = DefaultViewName,
-                    ConvertToRTable = configurationStore.ConvertXStoreTableMode,
-                }
-            };
+            tableConfigList = configuration.tableList.ToList();
 
 
             // - lease duration
-            leaseDuration = configurationStore.LeaseDuration;
+            leaseDuration = configuration.LeaseDuration;
 
-            return new List<View> { view };
+            return viewList;
         }
     }
 }

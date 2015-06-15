@@ -81,6 +81,8 @@
     <Compile Include="ReconfigurationStatus.cs" />
     <Compile Include="ReplicatedTableConfiguration.cs" />
     <Compile Include="ReplicatedTableConfigurationManager.cs" />
+    <Compile Include="ReplicatedTableConfigurationParser.cs" />
+    <Compile Include="ReplicatedTableConfigurationServiceV2.cs" />
     <Compile Include="ReplicatedTableConfigurationStoreParser.cs" />
     <Compile Include="ReplicatedTableLogger.cs" />
     <Compile Include="PeriodicTimer.cs" />
@@ -93,7 +95,7 @@
     <Compile Include="ReplicatedTableConfigurationService.cs" />
     <Compile Include="ReplicatedTableConfigurationStore.cs" />
     <Compile Include="ReplicatedTableEventSource.cs" />
-    <Compile Include="RTableConfiguredTable.cs" />
+    <Compile Include="ReplicatedTableConfiguredTable.cs" />
     <Compile Include="View.cs" />
   </ItemGroup>
   <ItemGroup>

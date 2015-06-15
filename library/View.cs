@@ -27,11 +27,32 @@ namespace Microsoft.Azure.Toolkit.Replication
 
     public class View
     {
-        public View(string name )
+        public View(string name)
+            :this(name, null, false)
+        {
+        }
+
+        public View(string name, ReplicatedTableConfigurationStore configurationStore, bool useHttps)
         {
             this.Name = name;
             this.RefreshTime = DateTime.MinValue;
             this.Chain = new List<Tuple<ReplicaInfo, CloudTableClient>>();
+
+            if (configurationStore != null)
+            {
+                this.ViewId = configurationStore.ViewId;
+                this.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
+
+                foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
+                {
+                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica, useHttps);
+
+                    if (replica != null && tableClient != null)
+                    {
+                        this.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                    }
+                }
+            }
         }
 
         public string Name { get; private set; }
@@ -102,7 +123,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 return false;
             }
-
 
             if (view1.Chain.Count != view2.Chain.Count)
             {

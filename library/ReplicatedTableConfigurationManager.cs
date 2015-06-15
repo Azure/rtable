@@ -37,7 +37,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         private Dictionary<string, CloudBlockBlob> blobs = new Dictionary<string, CloudBlockBlob>();
         private readonly IReplicatedTableConfigurationParser blobParser;
         private Dictionary<string, View> viewMap = new Dictionary<string, View>();
-        private Dictionary<string, RTableConfiguredTable> tableMap = new Dictionary<string, RTableConfiguredTable>();
+        private Dictionary<string, ReplicatedTableConfiguredTable> tableMap = new Dictionary<string, ReplicatedTableConfiguredTable>();
 
         internal protected ReplicatedTableConfigurationManager(List<ConfigurationStoreLocationInfo> blobLocations, bool useHttps, int lockTimeoutInSeconds, IReplicatedTableConfigurationParser blobParser)
         {
@@ -95,7 +95,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         private void RefreshReadAndWriteViewsFromBlobs(object arg)
         {
-            List<RTableConfiguredTable> tableConfigList;
+            List<ReplicatedTableConfiguredTable> tableConfigList;
             int leaseDuration;
 
             List<View> views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.useHttps, out tableConfigList, out leaseDuration);
@@ -204,7 +204,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Configured tables functions:
          */
-        internal protected RTableConfiguredTable FindConfiguredTable(string tableName)
+        internal protected ReplicatedTableConfiguredTable FindConfiguredTable(string tableName)
         {
             lock (this)
             {

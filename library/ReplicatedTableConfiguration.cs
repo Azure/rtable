@@ -30,11 +30,21 @@ namespace Microsoft.Azure.Toolkit.Replication
     public class ReplicatedTableConfiguration
     {
         [DataMember(IsRequired = true, Order = 0)]
-        private Dictionary<string, ReplicatedTableConfigurationStore> viewMap = new Dictionary<string, ReplicatedTableConfigurationStore>();
+        internal protected Dictionary<string, ReplicatedTableConfigurationStore> viewMap = new Dictionary<string, ReplicatedTableConfigurationStore>();
 
         [DataMember(IsRequired = true, Order = 1)]
-        private List<RTableConfiguredTable> tableList = new List<RTableConfiguredTable>();
+        internal protected List<ReplicatedTableConfiguredTable> tableList = new List<ReplicatedTableConfiguredTable>();
 
+        [DataMember(IsRequired = true, Order = 2)]
+        public int LeaseDuration { get; set; }
+
+        [DataMember(IsRequired = true, Order = 3)]
+        internal protected Guid ETag { get; set; }
+
+        public ReplicatedTableConfiguration()
+        {
+            ETag = Guid.NewGuid();
+        }
 
         /*
          * View APIs:
@@ -72,7 +82,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return;
             }
 
-            RTableConfiguredTable table = tableList.Find(e => viewName.Equals(e.ViewName, StringComparison.OrdinalIgnoreCase));
+            ReplicatedTableConfiguredTable table = tableList.Find(e => viewName.Equals(e.ViewName, StringComparison.OrdinalIgnoreCase));
             if (table != null)
             {
                 var msg = string.Format("View:\'{0}\' is referenced by table:\'{1}\'! First, delete the table then the view.",
@@ -87,7 +97,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Configured tables APIs:
          */
-        public void SetTable(RTableConfiguredTable config)
+        public void SetTable(ReplicatedTableConfiguredTable config)
         {
             if (config == null)
             {
@@ -107,7 +117,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             tableList.Add(config);
         }
 
-        public RTableConfiguredTable GetTable(string tableName)
+        public ReplicatedTableConfiguredTable GetTable(string tableName)
         {
             if (string.IsNullOrEmpty(tableName))
             {
@@ -127,7 +137,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             tableList.RemoveAll(e => tableName.Equals(e.TableName, StringComparison.OrdinalIgnoreCase));
         }
 
-        private void ThrowIfViewIsMissing(RTableConfiguredTable config)
+        private void ThrowIfViewIsMissing(ReplicatedTableConfiguredTable config)
         {
             if (string.IsNullOrEmpty(config.ViewName))
             {
@@ -148,6 +158,22 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Helpers ...
          */
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
+        }
+
+        public override bool Equals(object obj)
+        {
+            ReplicatedTableConfiguration other = obj as ReplicatedTableConfiguration;
+            if (other == null)
+            {
+                return false;
+            }
+
+            return ETag == other.ETag;
+        }
+
         internal protected void ValidateAndFixConfig()
         {
             /*
@@ -178,7 +204,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             // - Enforce tableList not null
             if (tableList == null)
             {
-                tableList = new List<RTableConfiguredTable>();
+                tableList = new List<ReplicatedTableConfiguredTable>();
             }
             else
             {

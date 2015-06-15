@@ -39,7 +39,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         List<View> ParseBlob(
                         List<CloudBlockBlob> blobs,
                         bool useHttps,
-                        out List<RTableConfiguredTable> tableConfigList,
+                        out List<ReplicatedTableConfiguredTable> tableConfigList,
                         out int leaseDuration);
     }
 }

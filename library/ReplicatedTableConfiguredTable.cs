@@ -24,7 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Runtime.Serialization;
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
-    public class RTableConfiguredTable
+    public class ReplicatedTableConfiguredTable
     {
         [DataMember(IsRequired = true)]
         public string TableName { get; set; }

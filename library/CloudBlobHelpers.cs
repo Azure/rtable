@@ -19,17 +19,35 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Microsoft.Data.OData.Query.SemanticAst;
-
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Net;
+    using System.Threading.Tasks;
     using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.Storage.Blob;
+
+    public enum ReadBlobResult
+    {
+        NotFound,
+        UpdateInProgress,
+        StorageException,
+        Exception,
+        Success,
+    }
+
+    public enum ReplicatedTableConfigurationReadResult
+    {
+        NotFound,
+        UpdateInProgress,
+        Exception,
+        NullOrLowSuccessRate,
+        Success,
+        QuorumNotPossible,
+    }
 
     public class CloudBlobHelpers
     {
@@ -86,23 +104,38 @@ namespace Microsoft.Azure.Toolkit.Replication
             return containerName;
         }
 
-        public static bool TryReadBlob<T>(CloudBlockBlob blob, out T configurationStore, out string eTag)
+        public static ReadBlobResult TryReadBlob<T>(CloudBlockBlob blob, out T configuration, out string eTag, Func<string, T> ParseBlobFunc)
             where T : class
         {
-            configurationStore = default(T);
+            configuration = default(T);
             eTag = null;
+
             try
             {
                 string content = blob.DownloadText();
                 if (content == Constants.ConfigurationStoreUpdatingText)
                 {
-                    return false;
+                    return ReadBlobResult.UpdateInProgress;
                 }
 
-                string blobContent = content;
-                configurationStore = JsonStore<T>.Deserialize(blobContent);
+                configuration = ParseBlobFunc(content);
                 eTag = blob.Properties.ETag;
-                return true;
+
+                return ReadBlobResult.Success;
+            }
+            catch (StorageException e)
+            {
+                ReplicatedTableLogger.LogError("Error reading blob: {0}. StorageException: {1}",
+                    blob.Uri,
+                    e.Message);
+
+                if (e.RequestInformation != null &&
+                    e.RequestInformation.HttpStatusCode == (int)HttpStatusCode.NotFound)
+                {
+                    return ReadBlobResult.NotFound;
+                }
+
+                return ReadBlobResult.StorageException;
             }
             catch (Exception e)
             {
@@ -111,19 +144,21 @@ namespace Microsoft.Azure.Toolkit.Replication
                     e.Message);
             }
 
-            return false;
+            return ReadBlobResult.Exception;
         }
 
-        public static bool TryReadBlobQuorum<T>(List<CloudBlockBlob> blobs, out T value,
-            out List<string> eTags) where T : class
+        public static ReplicatedTableConfigurationReadResult TryReadBlobQuorum<T>(List<CloudBlockBlob> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
+            where T : class
         {
             eTags = null;
             value = default(T);
 
             int numberOfBlobs = blobs.Count;
+            int quorum = (numberOfBlobs/2) + 1;
 
             string[] eTagsArray = new string[numberOfBlobs];
             T[] valuesArray = new T[numberOfBlobs];
+            var resultArray = new ReadBlobResult[numberOfBlobs];
 
             // read from all the blobs in parallel
             Parallel.For(0, numberOfBlobs, index =>
@@ -131,17 +166,50 @@ namespace Microsoft.Azure.Toolkit.Replication
                 T currentValue;
                 string currentETag;
 
-                if (CloudBlobHelpers.TryReadBlob<T>(blobs[index], out currentValue, out currentETag))
+                resultArray[index] = TryReadBlob(blobs[index], out currentValue, out currentETag, ParseBlobFunc);
+                if (resultArray[index] == ReadBlobResult.Success)
                 {
-                    ReplicatedTableConfigurationStore s = currentValue as ReplicatedTableConfigurationStore;
                     valuesArray[index] = currentValue;
                     eTagsArray[index] = currentETag;
                 }
             });
 
-            // find the quorum value
-            for (int index = 0; index < (numberOfBlobs / 2) + 1; index++)
+            /*
+             * What majority is saying ?
+             */
+
+            // - NotFound
+            if (resultArray.Count(res => res == ReadBlobResult.NotFound) >= quorum)
             {
+                return ReplicatedTableConfigurationReadResult.NotFound;
+            }
+
+            // - UpdateInProgress
+            if (resultArray.Count(res => res == ReadBlobResult.UpdateInProgress) >= quorum)
+            {
+                return ReplicatedTableConfigurationReadResult.UpdateInProgress;
+            }
+
+            // - Either StorageException or Exception
+            if (resultArray.Count(res => res == ReadBlobResult.StorageException || res == ReadBlobResult.Exception) >= quorum)
+            {
+                return ReplicatedTableConfigurationReadResult.Exception;
+            }
+
+            // - 0 <= Sucess < Quorum
+            if (resultArray.Count(res => res == ReadBlobResult.Success) < quorum)
+            {
+                return ReplicatedTableConfigurationReadResult.NullOrLowSuccessRate;
+            }
+
+            // - Find the quorum value
+            for (int index = 0; index < quorum; index++)
+            {
+                if (valuesArray[index] == null)
+                {
+                    continue;
+                }
+
                 int matchCount = 1;
 
                 // optimization to skip over the value if it is the same as the previous one we checked for quorum
@@ -158,20 +226,20 @@ namespace Microsoft.Azure.Toolkit.Replication
                     }
                 }
 
-                if (matchCount >= (numberOfBlobs / 2) + 1)
+                if (matchCount >= quorum)
                 {
                     // we found our quorum value
                     value = valuesArray[index];
                     eTags = eTagsArray.ToList();
-                    return true;
+                    return ReplicatedTableConfigurationReadResult.Success;
                 }
             }
 
-            return false;
+            // - Quorum not posible
+            return ReplicatedTableConfigurationReadResult.QuorumNotPossible;
         }
 
-        public static bool TryCreateCloudTableClient(string storageAccountConnectionString,
-            out CloudTableClient cloudTableClient)
+        public static bool TryCreateCloudTableClient(string storageAccountConnectionString, out CloudTableClient cloudTableClient)
         {
             cloudTableClient = null;
 
