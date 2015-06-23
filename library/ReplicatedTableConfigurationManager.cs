@@ -81,17 +81,20 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             int timerIntervalInSeconds = Math.Max(((int)LeaseDuration.TotalSeconds / 2 - Constants.MinimumLeaseRenewalInterval), Constants.MinimumLeaseRenewalInterval);
 
-            if (viewRefreshTimer != null)
+            lock (this)
             {
-                if ((int)viewRefreshTimer.Period.TotalSeconds == timerIntervalInSeconds)
+                if (viewRefreshTimer != null)
                 {
-                    return;
+                    if ((int) viewRefreshTimer.Period.TotalSeconds == timerIntervalInSeconds)
+                    {
+                        return;
+                    }
+
+                    viewRefreshTimer.Stop();
                 }
 
-                viewRefreshTimer.Stop();
+                viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, TimeSpan.FromSeconds(timerIntervalInSeconds));
             }
-
-            viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, TimeSpan.FromSeconds(timerIntervalInSeconds));
         }
 
         private void RefreshReadAndWriteViewsFromBlobs(object arg)
