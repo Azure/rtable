@@ -39,7 +39,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         Success,
     }
 
-    public enum ReplicatedTableConfigurationReadResult
+    public enum QuorumReadResult
     {
         NotFound,
         UpdateInProgress,
@@ -147,7 +147,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return ReadBlobResult.Exception;
         }
 
-        public static ReplicatedTableConfigurationReadResult TryReadBlobQuorum<T>(List<CloudBlockBlob> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
+        public static QuorumReadResult TryReadBlobQuorum<T>(List<CloudBlockBlob> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
             where T : class
         {
             eTags = null;
@@ -181,25 +181,25 @@ namespace Microsoft.Azure.Toolkit.Replication
             // - NotFound
             if (resultArray.Count(res => res == ReadBlobResult.NotFound) >= quorum)
             {
-                return ReplicatedTableConfigurationReadResult.NotFound;
+                return QuorumReadResult.NotFound;
             }
 
             // - UpdateInProgress
             if (resultArray.Count(res => res == ReadBlobResult.UpdateInProgress) >= quorum)
             {
-                return ReplicatedTableConfigurationReadResult.UpdateInProgress;
+                return QuorumReadResult.UpdateInProgress;
             }
 
             // - Either StorageException or Exception
             if (resultArray.Count(res => res == ReadBlobResult.StorageException || res == ReadBlobResult.Exception) >= quorum)
             {
-                return ReplicatedTableConfigurationReadResult.Exception;
+                return QuorumReadResult.Exception;
             }
 
             // - 0 <= Sucess < Quorum
             if (resultArray.Count(res => res == ReadBlobResult.Success) < quorum)
             {
-                return ReplicatedTableConfigurationReadResult.NullOrLowSuccessRate;
+                return QuorumReadResult.NullOrLowSuccessRate;
             }
 
             // - Find the quorum value
@@ -231,12 +231,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                     // we found our quorum value
                     value = valuesArray[index];
                     eTags = eTagsArray.ToList();
-                    return ReplicatedTableConfigurationReadResult.Success;
+                    return QuorumReadResult.Success;
                 }
             }
 
             // - Quorum not posible
-            return ReplicatedTableConfigurationReadResult.QuorumNotPossible;
+            return QuorumReadResult.QuorumNotPossible;
         }
 
         public static bool TryCreateCloudTableClient(string storageAccountConnectionString, out CloudTableClient cloudTableClient)

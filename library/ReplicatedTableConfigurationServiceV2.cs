@@ -23,6 +23,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
+    using System.Threading.Tasks;
 
     public class ReplicatedTableConfigurationServiceV2 : IDisposable
     {
@@ -40,18 +41,18 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.Dispose(false);
         }
 
-        public ReplicatedTableConfigurationReadResult RetrieveConfiguration(out ReplicatedTableConfiguration configuration)
+        public QuorumReadResult RetrieveConfiguration(out ReplicatedTableConfiguration configuration)
         {
             List<string> eTags;
 
-            ReplicatedTableConfigurationReadResult
+            QuorumReadResult
             result = CloudBlobHelpers.TryReadBlobQuorum(
                                                 this.configManager.GetBlobs(),
                                                 out configuration,
                                                 out eTags,
                                                 ReplicatedTableConfiguration.FromJson);
 
-            if (result != ReplicatedTableConfigurationReadResult.Success)
+            if (result != QuorumReadResult.Success)
             {
                 ReplicatedTableLogger.LogError("Failed to read configuration, result={0}", result);
             }
@@ -69,6 +70,25 @@ namespace Microsoft.Azure.Toolkit.Replication
             //TODO: ...
 
             this.configManager.Invalidate();
+        }
+
+        public bool IsConfiguredTable(string tableName)
+        {
+            ReplicatedTableConfiguredTable config = this.configManager.FindConfiguredTable(tableName);
+
+            // Neither explicit config, nor default config
+            if (config == null)
+            {
+                return false;
+            }
+
+            // Placeholder config i.e. a config with No View
+            if (string.IsNullOrEmpty(config.ViewName))
+            {
+                return false;
+            }
+
+            return true;
         }
 
         public void Dispose()

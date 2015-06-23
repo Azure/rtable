@@ -38,6 +38,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         private readonly IReplicatedTableConfigurationParser blobParser;
         private Dictionary<string, View> viewMap = new Dictionary<string, View>();
         private Dictionary<string, ReplicatedTableConfiguredTable> tableMap = new Dictionary<string, ReplicatedTableConfiguredTable>();
+        private ReplicatedTableConfiguredTable defaultConfiguredRule = null;
 
         internal protected ReplicatedTableConfigurationManager(List<ConfigurationStoreLocationInfo> blobLocations, bool useHttps, int lockTimeoutInSeconds, IReplicatedTableConfigurationParser blobParser)
         {
@@ -121,6 +122,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // - Update list of configured tables
                 this.tableMap.Clear();
+                defaultConfiguredRule = null;
 
                 if (tableConfigList != null)
                 {
@@ -132,6 +134,11 @@ namespace Microsoft.Azure.Toolkit.Replication
                         }
 
                         this.tableMap.Add(tableConfig.TableName, tableConfig);
+
+                        if (tableConfig.UseAsDefault)
+                        {
+                            defaultConfiguredRule = tableConfig;
+                        }
                     }
                 }
 
@@ -210,13 +217,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 if (string.IsNullOrEmpty(tableName) || !this.tableMap.ContainsKey(tableName))
                 {
-                    return null;
+                    return defaultConfiguredRule;
                 }
 
                 return this.tableMap[tableName];
             }
         }
-
 
         /*
          * Class functions:

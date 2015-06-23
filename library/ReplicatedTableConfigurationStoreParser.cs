@@ -53,12 +53,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             ReplicatedTableConfigurationStore configurationStore;
             List<string> eTags;
 
-            ReplicatedTableConfigurationReadResult result = CloudBlobHelpers.TryReadBlobQuorum(
+            QuorumReadResult result = CloudBlobHelpers.TryReadBlobQuorum(
                                                                     blobs,
                                                                     out configurationStore,
                                                                     out eTags,
                                                                     JsonStore<ReplicatedTableConfigurationStore>.Deserialize);
-            if (result != ReplicatedTableConfigurationReadResult.Success)
+            if (result != QuorumReadResult.Success)
             {
                 ReplicatedTableLogger.LogError("Unable to refresh view, result={0}", result);
                 return null;

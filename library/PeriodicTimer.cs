@@ -70,7 +70,14 @@ namespace Microsoft.Azure.Toolkit.Replication
         public void InternalCallback(object state)
         {
             Callback(State);
-            timer.Change(Period, TimeSpan.Zero);
+
+            try
+            {
+                timer.Change(Period, TimeSpan.Zero);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
         }
 
         public void Stop()

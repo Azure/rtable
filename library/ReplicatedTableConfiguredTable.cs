@@ -34,5 +34,12 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         [DataMember(IsRequired = true)]
         public bool ConvertToRTable { get; set; }
+
+        /// <summary>
+        /// If true, this config is used as default for other tables.
+        /// In that case, TableName doesn't necessarly map to a real table name, can be generic name such "*" ...
+        /// </summary>
+        [DataMember(IsRequired = true)]
+        public bool UseAsDefault { get; set; }
     }
 }

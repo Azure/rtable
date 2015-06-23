@@ -113,6 +113,16 @@ namespace Microsoft.Azure.Toolkit.Replication
             // If pointing a view, then the view must exist ?
             ThrowIfViewIsMissing(config);
 
+            if (config.UseAsDefault == true)
+            {
+                // Allow only *one* default config => override previous, if any
+                ReplicatedTableConfiguredTable found = tableList.Find(e => e.UseAsDefault == true);
+                if (found != null)
+                {
+                    found.UseAsDefault = false;
+                }
+            }
+
             tableList.RemoveAll(e => tableName.Equals(e.TableName, StringComparison.OrdinalIgnoreCase));
             tableList.Add(config);
         }
@@ -228,6 +238,14 @@ namespace Microsoft.Azure.Toolkit.Replication
                     ThrowIfViewIsMissing(cfg);
                     return true;
                 });
+
+                // - Enforce no more than 1 default configured table (rule)
+                if (tableList.Count(cfg => cfg.UseAsDefault) > 1)
+                {
+                    var msg = string.Format("Can't have more than 1 configured table as a default!");
+                    throw new Exception(msg);
+                }
+
             }
         }
 
