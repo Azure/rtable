@@ -39,11 +39,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         public int LeaseDuration { get; set; }
 
         [DataMember(IsRequired = true, Order = 3)]
-        internal protected Guid ETag { get; set; }
+        internal protected Guid Id { get; set; }
 
         public ReplicatedTableConfiguration()
         {
-            ETag = Guid.NewGuid();
+            Id = Guid.NewGuid();
         }
 
         /*
@@ -181,7 +181,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return false;
             }
 
-            return ETag == other.ETag;
+            return Id == other.Id;
         }
 
         internal protected void ValidateAndFixConfig()
@@ -249,6 +249,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
+        public override string ToString()
+        {
+            return ToJson();
+        }
+
         public string ToJson()
         {
             return JsonStore<ReplicatedTableConfiguration>.Serialize(this);
@@ -265,6 +270,30 @@ namespace Microsoft.Azure.Toolkit.Replication
             config.ValidateAndFixConfig();
 
             return config;
+        }
+
+        public static ReplicatedTableConfiguration MakeCopy(ReplicatedTableConfiguration config)
+        {
+            if (config == null)
+            {
+                return null;
+            }
+
+            var str = config.ToJson();
+            return JsonStore<ReplicatedTableConfiguration>.Deserialize(str);
+        }
+
+        public static ReplicatedTableConfiguration GenerateNewConfigId(ReplicatedTableConfiguration config)
+        {
+            if (config == null)
+            {
+                throw new ArgumentNullException("config");
+            }
+
+            var copy = MakeCopy(config);
+            copy.Id = Guid.NewGuid();
+
+            return copy;
         }
     }
 }

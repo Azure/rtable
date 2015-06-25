@@ -50,6 +50,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.Initialize();
 
             this.blobParser = blobParser;
+
+            /* IMPORTANT:
+             * It is wrong to get a call-back before Constructor finishes !
+             * For that, Timer has to be DISABLED initially.
+             */
+            viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, null, TimeSpan.FromMilliseconds(-1), TimeSpan.FromSeconds(TimerIntervalInSeconds));
         }
 
         private void Initialize()
@@ -77,22 +83,26 @@ namespace Microsoft.Azure.Toolkit.Replication
             set;
         }
 
+        private int TimerIntervalInSeconds
+        {
+            get
+            {
+                return Math.Max(((int)LeaseDuration.TotalSeconds / 2 - Constants.MinimumLeaseRenewalInterval), Constants.MinimumLeaseRenewalInterval);
+            }
+        }
+
         private void UpdateTimer()
         {
-            int timerIntervalInSeconds = Math.Max(((int)LeaseDuration.TotalSeconds / 2 - Constants.MinimumLeaseRenewalInterval), Constants.MinimumLeaseRenewalInterval);
+            int timerIntervalInSeconds = TimerIntervalInSeconds;
 
             lock (this)
             {
-                if (viewRefreshTimer != null)
+                if ((int) viewRefreshTimer.Period.TotalSeconds == timerIntervalInSeconds)
                 {
-                    if ((int) viewRefreshTimer.Period.TotalSeconds == timerIntervalInSeconds)
-                    {
-                        return;
-                    }
-
-                    viewRefreshTimer.Stop();
+                    return;
                 }
 
+                viewRefreshTimer.Stop();
                 viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, TimeSpan.FromSeconds(timerIntervalInSeconds));
             }
         }
@@ -155,7 +165,11 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         internal protected void StartMonitor()
         {
-            UpdateTimer();
+            /* IMPORTANT:
+             * start periodic timer now
+             */
+            this.viewRefreshTimer.Start();
+
             RefreshReadAndWriteViewsFromBlobs(null);
         }
 
@@ -244,25 +258,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             return tableClient;
-        }
-
-        static internal protected void WriteConfigToBlob(CloudBlockBlob blob, string content)
-        {
-            try
-            {
-                //Step 1: Delete the current configuration
-                blob.UploadText(Constants.ConfigurationStoreUpdatingText);
-
-                //Step 2: Wait for L + CF to make sure no pending transaction working on old views
-                Thread.Sleep(TimeSpan.FromSeconds(Constants.LeaseDurationInSec + Constants.ClockFactorInSec));
-
-                //Step 3: Update new config
-                blob.UploadText(content);
-            }
-            catch (StorageException e)
-            {
-                ReplicatedTableLogger.LogError("Updating the blob: {0} failed. Exception: {1}", blob, e.Message);
-            }
         }
     }
 }

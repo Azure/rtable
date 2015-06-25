@@ -25,6 +25,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Collections.Generic;
     using System.Linq;
     using System.Net;
+    using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Table;
@@ -32,7 +33,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
     public enum ReadBlobResult
     {
-        NotFound,
+        NotFound = 0, // Must start at 0
         UpdateInProgress,
         StorageException,
         Exception,
@@ -46,7 +47,18 @@ namespace Microsoft.Azure.Toolkit.Replication
         Exception,
         NullOrLowSuccessRate,
         Success,
-        QuorumNotPossible,
+        BlobsNotInSyncOrTransitioning,
+    }
+
+    public enum QuorumWriteResult
+    {
+        Conflict_UpdateInProgress,
+        ReadFailure_Exceptions,
+        ReadFailure_NoQuorum,
+        Conflict_BlobHasChanged,
+        ReadFailure_BlobsNotInSyncOrTransitioning,
+        Success,
+        QuorumWriteFailure,
     }
 
     public class CloudBlobHelpers
@@ -147,18 +159,14 @@ namespace Microsoft.Azure.Toolkit.Replication
             return ReadBlobResult.Exception;
         }
 
-        public static QuorumReadResult TryReadBlobQuorum<T>(List<CloudBlockBlob> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
-            where T : class
+        public static List<ReadBlobResult> TryReadAllBlobs<T>(List<CloudBlockBlob> blobs, out List<T> values, out List<string> eTags, Func<string, T> ParseBlobFunc)
+                    where T : class
         {
-            eTags = null;
-            value = default(T);
-
             int numberOfBlobs = blobs.Count;
-            int quorum = (numberOfBlobs/2) + 1;
 
-            string[] eTagsArray = new string[numberOfBlobs];
             T[] valuesArray = new T[numberOfBlobs];
-            var resultArray = new ReadBlobResult[numberOfBlobs];
+            string[] eTagsArray = new string[numberOfBlobs];
+            ReadBlobResult[] resultArray = new ReadBlobResult[numberOfBlobs];
 
             // read from all the blobs in parallel
             Parallel.For(0, numberOfBlobs, index =>
@@ -167,40 +175,78 @@ namespace Microsoft.Azure.Toolkit.Replication
                 string currentETag;
 
                 resultArray[index] = TryReadBlob(blobs[index], out currentValue, out currentETag, ParseBlobFunc);
-                if (resultArray[index] == ReadBlobResult.Success)
-                {
-                    valuesArray[index] = currentValue;
-                    eTagsArray[index] = currentETag;
-                }
+                valuesArray[index] = currentValue;
+                eTagsArray[index] = currentETag;
             });
 
-            /*
-             * What majority is saying ?
-             */
+            values = valuesArray.ToList();
+            eTags = eTagsArray.ToList();
+
+            return resultArray.ToList();
+        }
+
+        public static QuorumReadResult TryReadBlobQuorum<T>(List<CloudBlockBlob> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
+            where T : class
+        {
+            value = default(T);
+            eTags = null;
+
+            // Fetch all blobs ...
+            List<T> valuesArray;
+            List<string> eTagsArray;
+            List<ReadBlobResult> resultArray = TryReadAllBlobs(blobs, out valuesArray, out eTagsArray, ParseBlobFunc);
+
+            // Find majority ...
+            int quorumIndex;
+            QuorumReadResult majority = FindMajority(resultArray, valuesArray, out quorumIndex);
+
+            if (majority == QuorumReadResult.Success)
+            {
+                value = valuesArray[quorumIndex];
+                eTags = eTagsArray;
+            }
+
+            return majority;
+        }
+
+        private static QuorumReadResult FindMajority<T>(List<ReadBlobResult> resultArray, List<T> valuesArray, out int quorumIndex)
+            where T : class
+        {
+            quorumIndex = -1;
+
+            int numberOfBlobs = resultArray.Count;
+            int quorum = (numberOfBlobs / 2) + 1;
+
+            int[] counters = new int[Enum.GetNames(typeof(ReadBlobResult)).Length];
+            foreach (var result in resultArray)
+            {
+                counters[(int)result]++;
+            }
 
             // - NotFound
-            if (resultArray.Count(res => res == ReadBlobResult.NotFound) >= quorum)
+            if (counters[(int)ReadBlobResult.NotFound] >= quorum)
             {
                 return QuorumReadResult.NotFound;
             }
 
             // - UpdateInProgress
-            if (resultArray.Count(res => res == ReadBlobResult.UpdateInProgress) >= quorum)
+            if (counters[(int)ReadBlobResult.UpdateInProgress] >= quorum)
             {
                 return QuorumReadResult.UpdateInProgress;
             }
 
             // - Either StorageException or Exception
-            if (resultArray.Count(res => res == ReadBlobResult.StorageException || res == ReadBlobResult.Exception) >= quorum)
+            if (counters[(int)ReadBlobResult.StorageException] + counters[(int)ReadBlobResult.Exception] >= quorum)
             {
                 return QuorumReadResult.Exception;
             }
 
             // - 0 <= Sucess < Quorum
-            if (resultArray.Count(res => res == ReadBlobResult.Success) < quorum)
+            if (counters[(int)ReadBlobResult.Success] < quorum)
             {
                 return QuorumReadResult.NullOrLowSuccessRate;
             }
+
 
             // - Find the quorum value
             for (int index = 0; index < quorum; index++)
@@ -229,14 +275,133 @@ namespace Microsoft.Azure.Toolkit.Replication
                 if (matchCount >= quorum)
                 {
                     // we found our quorum value
-                    value = valuesArray[index];
-                    eTags = eTagsArray.ToList();
+                    quorumIndex = index;
                     return QuorumReadResult.Success;
                 }
             }
 
             // - Quorum not posible
-            return QuorumReadResult.QuorumNotPossible;
+            return QuorumReadResult.BlobsNotInSyncOrTransitioning;
+        }
+
+        public static QuorumWriteResult TryWriteBlobQuorum<T>(List<CloudBlockBlob> blobs, T configuration, Func<string, T> ParseBlobFunc, Func<T, T, bool> ConfigIdComparer, Func<T, T> GenerateConfigId)
+            where T : class
+        {
+            // Fetch all blobs ...
+            List<T> valuesArray;
+            List<string> eTagsArray;
+            List<ReadBlobResult> resultArray = TryReadAllBlobs(blobs, out valuesArray, out eTagsArray, ParseBlobFunc);
+
+            // Find majority ...
+            int quorumIndex;
+            QuorumReadResult majority = FindMajority(resultArray, valuesArray, out quorumIndex);
+
+            switch (majority)
+            {
+                case QuorumReadResult.NotFound:
+                    // Create blobs ...
+                    break;
+
+                case QuorumReadResult.UpdateInProgress:
+                    return QuorumWriteResult.Conflict_UpdateInProgress;
+
+                case QuorumReadResult.Exception:
+                    return QuorumWriteResult.ReadFailure_Exceptions;
+
+                case QuorumReadResult.NullOrLowSuccessRate:
+                    return QuorumWriteResult.ReadFailure_NoQuorum;
+
+                case QuorumReadResult.Success:
+                    // Blob has changed since ...
+                    if (ConfigIdComparer(valuesArray[quorumIndex], configuration) == false)
+                    {
+                        return QuorumWriteResult.Conflict_BlobHasChanged;
+                    }
+
+                    // Update blobs ...
+                    break;
+
+                case QuorumReadResult.BlobsNotInSyncOrTransitioning:
+                    return QuorumWriteResult.ReadFailure_BlobsNotInSyncOrTransitioning;
+
+                default:
+                {
+                    var msg = string.Format("Unexpected value majority=\'{0}\' ", majority);
+                    throw new Exception(msg);
+                }
+            }
+
+            // Generate a new Id for the copy of the input configuration
+            T newConfiguration = GenerateConfigId(configuration);
+            string content = newConfiguration.ToString();
+
+            // Update blobs ...
+            int numberOfBlobs = blobs.Count;
+            bool[] writeResultArray = new bool[numberOfBlobs];
+
+            Parallel.For(0, numberOfBlobs, index =>
+            {
+                T currentValue = valuesArray[index];
+                string currentETag = eTagsArray[index];
+
+                if (currentValue == null)
+                {
+                    currentETag = null;
+                }
+                else if (!ConfigIdComparer(currentValue, configuration))
+                {
+                    currentETag = "*";
+                }
+
+                writeResultArray[index] = TryWriteBlob(blobs[index], content, currentETag);
+            });
+
+            int successRate = writeResultArray.Count(e => e == true);
+            if (successRate == numberOfBlobs)
+            {
+                return QuorumWriteResult.Success;
+            }
+
+            return QuorumWriteResult.QuorumWriteFailure;
+        }
+
+        public static bool TryWriteBlob(CloudBlockBlob blob, string content, string eTag)
+        {
+            try
+            {
+                AccessCondition condition = string.IsNullOrEmpty(eTag)
+                                                ? AccessCondition.GenerateEmptyCondition()
+                                                : AccessCondition.GenerateIfMatchCondition(eTag);
+
+                blob.UploadText(content, accessCondition: condition);
+
+                return true;
+            }
+            catch (StorageException e)
+            {
+                ReplicatedTableLogger.LogError("Updating the blob: {0} failed. Exception: {1}", blob, e.Message);
+            }
+
+            return false;
+        }
+
+        public static void TryWriteBlob(CloudBlockBlob blob, string content)
+        {
+            try
+            {
+                //Step 1: Delete the current configuration
+                blob.UploadText(Constants.ConfigurationStoreUpdatingText);
+
+                //Step 2: Wait for L + CF to make sure no pending transaction working on old views
+                Thread.Sleep(TimeSpan.FromSeconds(Constants.LeaseDurationInSec + Constants.ClockFactorInSec));
+
+                //Step 3: Update new config
+                blob.UploadText(content);
+            }
+            catch (StorageException e)
+            {
+                ReplicatedTableLogger.LogError("Updating the blob: {0} failed. Exception: {1}", blob, e.Message);
+            }
         }
 
         public static bool TryCreateCloudTableClient(string storageAccountConnectionString, out CloudTableClient cloudTableClient)

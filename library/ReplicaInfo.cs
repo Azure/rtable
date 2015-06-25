@@ -22,7 +22,13 @@
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System.Runtime.Serialization;
-    
+
+    public enum ReplicaStatus
+    {
+        Off,
+        On
+    }
+
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
     public class ReplicaInfo
     {
@@ -36,9 +42,13 @@ namespace Microsoft.Azure.Toolkit.Replication
         [DataMember(IsRequired = true)]
         public long ViewInWhichAddedToChain { get; set; }
 
+        [DataMember(IsRequired = true)]
+        public ReplicaStatus Status { get; set; }
+
         public ReplicaInfo()
         {
             this.ViewInWhichAddedToChain = 1;
+            this.Status = ReplicaStatus.On;
         }
 
         public override string ToString()

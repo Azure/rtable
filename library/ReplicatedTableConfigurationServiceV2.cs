@@ -60,16 +60,69 @@ namespace Microsoft.Azure.Toolkit.Replication
             return result;
         }
 
-        public void UpdateConfiguration(ReplicatedTableConfiguration configuration)
+        public QuorumWriteResult UpdateConfiguration(ReplicatedTableConfiguration configuration)
         {
             if (configuration == null)
             {
                 throw new ArgumentNullException("configuration");
             }
 
-            //TODO: ...
+            // - Sanitize configuration ...
+            foreach (var view in configuration.viewMap)
+            {
+                var viewName = view.Key;
+                var viewConf = view.Value;
 
-            this.configManager.Invalidate();
+                int readViewHeadIndex = viewConf.ReadViewHeadIndex;
+                long viewId = viewConf.ViewId;
+
+                View currentView = GetView(viewName);
+
+                if (viewId == 0)
+                {
+                    if (!currentView.IsEmpty)
+                    {
+                        viewId = currentView.ViewId + 1;
+                    }
+                    else
+                    {
+                        viewId = 1;
+                    }
+                }
+
+                viewConf.Timestamp = DateTime.UtcNow;
+                viewConf.ViewId = viewId;
+
+                //If the read view head index is not 0, this means we are introducing 1 or more replicas at the head.
+                // For each such replica, update the view id in which it was added to the write view of the chain
+                if (readViewHeadIndex != 0)
+                {
+                    for (int i = 0; i < readViewHeadIndex; i++)
+                    {
+                        viewConf.ReplicaChain[i].ViewInWhichAddedToChain = viewId;
+                    }
+                }
+            }
+
+            // - Upload configuration ...
+            QuorumWriteResult
+            result = CloudBlobHelpers.TryWriteBlobQuorum(
+                                            this.configManager.GetBlobs(),
+                                            configuration,
+                                            ReplicatedTableConfiguration.FromJson,
+                                            (a, b) => a.Id == b.Id,
+                                            ReplicatedTableConfiguration.GenerateNewConfigId);
+
+            if (result == QuorumWriteResult.Success)
+            {
+                this.configManager.Invalidate();
+            }
+            else
+            {
+                ReplicatedTableLogger.LogError("Failed to update configuration, result={0}", result);
+            }
+
+            return result;
         }
 
         public bool IsConfiguredTable(string tableName)
@@ -89,6 +142,24 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             return true;
+        }
+
+        public View GetView(string viewName)
+        {
+            return this.configManager.GetView(viewName);
+        }
+
+        /*
+         * Helper APIs
+         */
+        public void TurnReplicaOn(string storageAccountName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void TurnReplicaOff(string storageAccountName)
+        {
+            throw new NotImplementedException();
         }
 
         public void Dispose()

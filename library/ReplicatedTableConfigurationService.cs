@@ -142,7 +142,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 configurationStore = newConfig;
 
-                ReplicatedTableConfigurationManager.WriteConfigToBlob(blob, configurationStore.ToJson());
+                CloudBlobHelpers.TryWriteBlob(blob, configurationStore.ToJson());
             });
 
             this.configManager.Invalidate();
