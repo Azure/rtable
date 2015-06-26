@@ -19,6 +19,8 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+using System.Linq;
+
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
@@ -42,16 +44,30 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 this.ViewId = configurationStore.ViewId;
                 this.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
+                int removedReplicaCount = 0;
 
-                foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
+                for (int index = 0; index < configurationStore.ReplicaChain.Count; index++)
                 {
-                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica, useHttps);
+                    ReplicaInfo replica = configurationStore.ReplicaChain[index];
 
-                    if (replica != null && tableClient != null)
+                    if (replica.Status == ReplicaStatus.None)
+                    {
+                        if (index < this.ReadHeadIndex)
+                        {
+                            removedReplicaCount++;
+                        }
+
+                        continue;
+                    }
+
+                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica, useHttps);
+                    if (tableClient != null)
                     {
                         this.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
                     }
                 }
+
+                this.ReadHeadIndex -= removedReplicaCount;
             }
         }
 

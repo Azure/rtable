@@ -61,6 +61,20 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("config");
             }
 
+            if (config.ReplicaChain == null ||
+                config.ReplicaChain.Any(replica => replica == null))
+            {
+                var msg = string.Format("View:\'{0}\' has a null replica(s) !!!", viewName);
+                throw new Exception(msg);
+            }
+
+            if (config.ReplicaChain.Any() &&
+                config.ReadViewHeadIndex >= config.ReplicaChain.Count)
+            {
+                var msg = string.Format("View:\'{0}\' has an invalid ReadViewHeadIndex !!!", viewName);
+                throw new Exception(msg);
+            }
+
             viewMap.Remove(viewName);
             viewMap.Add(viewName, config);
         }
@@ -203,6 +217,27 @@ namespace Microsoft.Azure.Toolkit.Replication
                 foreach (var key in viewMap.Keys.ToList().Where(key => viewMap[key] == null))
                 {
                     viewMap.Remove(key);
+                }
+
+                // - Enforce none of replicas is null, and RVHI is within range
+                foreach (var entry in viewMap)
+                {
+                    var viewName = entry.Key;
+                    var viewConf = entry.Value;
+
+                    if (viewConf.ReplicaChain == null ||
+                        viewConf.ReplicaChain.Any(replica => replica == null))
+                    {
+                        var msg = string.Format("View:\'{0}\' has a null replica(s) !!!", viewName);
+                        throw new Exception(msg);
+                    }
+
+                    if (viewConf.ReplicaChain.Any() &&
+                        viewConf.ReadViewHeadIndex >= viewConf.ReplicaChain.Count)
+                    {
+                        var msg = string.Format("View:\'{0}\' has an invalid ReadViewHeadIndex !!!", viewName);
+                        throw new Exception(msg);
+                    }
                 }
             }
 

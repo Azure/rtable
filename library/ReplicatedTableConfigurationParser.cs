@@ -87,6 +87,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                     continue;
                 }
 
+                // - ERROR!
+                if (view.ReadHeadIndex > view.TailIndex)
+                {
+                    ReplicatedTableLogger.LogError("ReadHeadIndex={0} of  ViewName={1} is out of range. Must be <= {2}", view.ReadHeadIndex, view.Name, view.TailIndex);
+                    continue;
+                }
+
                 viewList.Add(view);
             }
 

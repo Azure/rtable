@@ -24,6 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System;
     using System.Collections.Generic;
     using System.Threading.Tasks;
+    using System.Linq;
 
     public class ReplicatedTableConfigurationServiceV2 : IDisposable
     {
@@ -76,7 +77,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 int readViewHeadIndex = viewConf.ReadViewHeadIndex;
                 long viewId = viewConf.ViewId;
 
-                View currentView = GetView(viewName);
+                View currentView = GetWriteView(viewName);
 
                 if (viewId == 0)
                 {
@@ -93,10 +94,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                 viewConf.Timestamp = DateTime.UtcNow;
                 viewConf.ViewId = viewId;
 
-                //If the read view head index is not 0, this means we are introducing 1 or more replicas at the head.
+                // If the read view head index is not 0, this means we are introducing 1 or more replicas at the head.
                 // For each such replica, update the view id in which it was added to the write view of the chain
-                if (readViewHeadIndex != 0)
+                if (viewConf.ReplicaChain.Any() &&
+                    readViewHeadIndex != 0)
                 {
+                    // by construction: readViewHeadIndex < viewConf.ReplicaChain.Count
                     for (int i = 0; i < readViewHeadIndex; i++)
                     {
                         viewConf.ReplicaChain[i].ViewInWhichAddedToChain = viewId;
@@ -144,9 +147,19 @@ namespace Microsoft.Azure.Toolkit.Replication
             return true;
         }
 
-        public View GetView(string viewName)
+        public View GetReadView(string viewName)
         {
             return this.configManager.GetView(viewName);
+        }
+
+        public View GetWriteView(string viewName)
+        {
+            View commonView = this.configManager.GetView(viewName);
+
+            //TODO: infer WriteView from common View ?
+            View writeView = commonView;
+
+            return writeView;
         }
 
         /*
@@ -159,7 +172,42 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public void TurnReplicaOff(string storageAccountName)
         {
-            throw new NotImplementedException();
+            if (string.IsNullOrEmpty(storageAccountName))
+            {
+                throw new ArgumentNullException("storageAccountName");
+            }
+
+            ReplicatedTableConfiguration configuration = null;
+
+            // - Retrieve configuration ...
+            QuorumReadResult readResult = RetrieveConfiguration(out configuration);
+            if (readResult != QuorumReadResult.Success)
+            {
+                ReplicatedTableLogger.LogError("TurnReplicaOff: failed to read configuration, result={0}", readResult);
+
+                var msg = string.Format("TurnReplicaOff: failed to read configuration, result={0}", readResult);
+                throw new Exception(msg);
+            }
+
+            // - Parse/Update all views ...
+            foreach (var viewConf in configuration.viewMap.Values)
+            {
+                var foundReplicas = viewConf.ReplicaChain.FindAll(r => r.StorageAccountName == storageAccountName);
+                foreach (var replica in foundReplicas)
+                {
+                    replica.Status = ReplicaStatus.None;
+                }
+            }
+
+            // - Write back configuration ...
+            QuorumWriteResult writeResult = UpdateConfiguration(configuration);
+            if (writeResult != QuorumWriteResult.Success)
+            {
+                ReplicatedTableLogger.LogError("TurnReplicaOff: failed to update configuration, result={0}", writeResult);
+
+                var msg = string.Format("TurnReplicaOff: failed to update configuration, result={0}", writeResult);
+                throw new Exception(msg);
+            }
         }
 
         public void Dispose()

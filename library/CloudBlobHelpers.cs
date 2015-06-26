@@ -357,7 +357,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             });
 
             int successRate = writeResultArray.Count(e => e == true);
-            if (successRate == numberOfBlobs)
+            int quorum = (numberOfBlobs / 2) + 1;
+
+            if (successRate >= quorum)
             {
                 return QuorumWriteResult.Success;
             }

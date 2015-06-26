@@ -25,8 +25,10 @@ namespace Microsoft.Azure.Toolkit.Replication
 
     public enum ReplicaStatus
     {
-        Off,
-        On
+        None,
+        ReadOnly,
+        WriteOnly,
+        ReadWrite,
     }
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
@@ -48,15 +50,16 @@ namespace Microsoft.Azure.Toolkit.Replication
         public ReplicaInfo()
         {
             this.ViewInWhichAddedToChain = 1;
-            this.Status = ReplicaStatus.On;
+            this.Status = ReplicaStatus.ReadWrite;
         }
 
         public override string ToString()
         {
-            return string.Format("Account Name: {0}, AccountKey: {1}, ViewInWhichAddedToChain: {2}", 
+            return string.Format("Account Name: {0}, AccountKey: {1}, ViewInWhichAddedToChain: {2}, Status: {3}",
                 this.StorageAccountName, 
                 "***********", 
-                this.ViewInWhichAddedToChain);
+                this.ViewInWhichAddedToChain,
+                this.Status);
         }
     }
 }
