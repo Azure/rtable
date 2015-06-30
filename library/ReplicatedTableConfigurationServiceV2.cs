@@ -23,6 +23,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
+    using System.Threading;
     using System.Threading.Tasks;
     using System.Linq;
 
@@ -61,7 +62,18 @@ namespace Microsoft.Azure.Toolkit.Replication
             return result;
         }
 
-        public QuorumWriteResult UpdateConfiguration(ReplicatedTableConfiguration configuration)
+        public List<ReadBlobResult> RetrieveConfiguration(out List<ReplicatedTableConfiguration> configuration)
+        {
+            List<string> eTagsArray;
+
+            return CloudBlobHelpers.TryReadAllBlobs(
+                                                this.configManager.GetBlobs(),
+                                                out configuration,
+                                                out eTagsArray,
+                                                ReplicatedTableConfiguration.FromJson);
+        }
+
+        public QuorumWriteResult UpdateConfiguration(ReplicatedTableConfiguration configuration, bool useConditionalUpdate = true)
         {
             if (configuration == null)
             {
@@ -74,10 +86,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 var viewName = view.Key;
                 var viewConf = view.Value;
 
-                int readViewHeadIndex = viewConf.ReadViewHeadIndex;
                 long viewId = viewConf.ViewId;
-
-                View currentView = GetWriteView(viewName);
+                View currentView = GetView(viewName);
 
                 if (viewId == 0)
                 {
@@ -94,26 +104,35 @@ namespace Microsoft.Azure.Toolkit.Replication
                 viewConf.Timestamp = DateTime.UtcNow;
                 viewConf.ViewId = viewId;
 
+
                 // If the read view head index is not 0, this means we are introducing 1 or more replicas at the head.
                 // For each such replica, update the view id in which it was added to the write view of the chain
-                if (viewConf.ReplicaChain.Any() &&
-                    readViewHeadIndex != 0)
+                foreach (var replica in viewConf.GetCurrentReplicaChain())
                 {
-                    // by construction: readViewHeadIndex < viewConf.ReplicaChain.Count
-                    for (int i = 0; i < readViewHeadIndex; i++)
+                    if (replica.IsWriteOnly())
                     {
-                        viewConf.ReplicaChain[i].ViewInWhichAddedToChain = viewId;
+                        replica.ViewInWhichAddedToChain = viewId;
+                        continue;
                     }
+
+                    // stop at the first Readable replica
+                    break;
                 }
             }
 
             // - Upload configuration ...
+            Func<ReplicatedTableConfiguration, ReplicatedTableConfiguration, bool> comparer = (a, b) => a.Id == b.Id;
+            if (!useConditionalUpdate)
+            {
+                comparer = (a, b) => true;
+            }
+
             QuorumWriteResult
             result = CloudBlobHelpers.TryWriteBlobQuorum(
                                             this.configManager.GetBlobs(),
                                             configuration,
                                             ReplicatedTableConfiguration.FromJson,
-                                            (a, b) => a.Id == b.Id,
+                                            comparer,
                                             ReplicatedTableConfiguration.GenerateNewConfigId);
 
             if (result == QuorumWriteResult.Success)
@@ -147,19 +166,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             return true;
         }
 
-        public View GetReadView(string viewName)
+        public View GetView(string viewName)
         {
             return this.configManager.GetView(viewName);
-        }
-
-        public View GetWriteView(string viewName)
-        {
-            View commonView = this.configManager.GetView(viewName);
-
-            //TODO: infer WriteView from common View ?
-            View writeView = commonView;
-
-            return writeView;
         }
 
         /*
@@ -167,7 +176,6 @@ namespace Microsoft.Azure.Toolkit.Replication
          */
         public void TurnReplicaOn(string storageAccountName)
         {
-            throw new NotImplementedException();
         }
 
         public void TurnReplicaOff(string storageAccountName)
@@ -183,16 +191,18 @@ namespace Microsoft.Azure.Toolkit.Replication
             QuorumReadResult readResult = RetrieveConfiguration(out configuration);
             if (readResult != QuorumReadResult.Success)
             {
-                ReplicatedTableLogger.LogError("TurnReplicaOff: failed to read configuration, result={0}", readResult);
+                ReplicatedTableLogger.LogError("TurnReplicaOff={0}: failed to read configuration, result={1}", storageAccountName, readResult);
 
-                var msg = string.Format("TurnReplicaOff: failed to read configuration, result={0}", readResult);
+                var msg = string.Format("TurnReplicaOff={0}: failed to read configuration, result={1}", storageAccountName, readResult);
                 throw new Exception(msg);
             }
 
             // - Parse/Update all views ...
             foreach (var viewConf in configuration.viewMap.Values)
             {
-                var foundReplicas = viewConf.ReplicaChain.FindAll(r => r.StorageAccountName == storageAccountName);
+                var foundReplicas = viewConf.GetCurrentReplicaChain()
+                                            .FindAll(r => r.StorageAccountName == storageAccountName);
+
                 foreach (var replica in foundReplicas)
                 {
                     replica.Status = ReplicaStatus.None;
@@ -203,9 +213,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             QuorumWriteResult writeResult = UpdateConfiguration(configuration);
             if (writeResult != QuorumWriteResult.Success)
             {
-                ReplicatedTableLogger.LogError("TurnReplicaOff: failed to update configuration, result={0}", writeResult);
+                ReplicatedTableLogger.LogError("TurnReplicaOff={0}: failed to update configuration, result={1}", storageAccountName, writeResult);
 
-                var msg = string.Format("TurnReplicaOff: failed to update configuration, result={0}", writeResult);
+                var msg = string.Format("TurnReplicaOff={0}: failed to update configuration, result={1}", storageAccountName, writeResult);
                 throw new Exception(msg);
             }
         }
@@ -230,5 +240,6 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             this.disposed = true;
         }
+        // ...
     }
 }

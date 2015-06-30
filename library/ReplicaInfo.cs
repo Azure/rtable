@@ -53,6 +53,26 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.Status = ReplicaStatus.ReadWrite;
         }
 
+        public bool IsReadOnly()
+        {
+            return (this.Status == ReplicaStatus.ReadOnly);
+        }
+
+        public bool IsReadable()
+        {
+            return (IsReadOnly() || this.Status == ReplicaStatus.ReadWrite);
+        }
+
+        public bool IsWriteOnly()
+        {
+            return (this.Status == ReplicaStatus.WriteOnly);
+        }
+
+        public bool IsWritable()
+        {
+            return (IsWriteOnly() || this.Status == ReplicaStatus.ReadWrite);
+        }
+
         public override string ToString()
         {
             return string.Format("Account Name: {0}, AccountKey: {1}, ViewInWhichAddedToChain: {2}, Status: {3}",

@@ -23,6 +23,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Runtime.Serialization;
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
@@ -78,6 +79,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         public string ToJson()
         {
             return JsonStore<ReplicatedTableConfigurationStore>.Serialize(this);
+        }
+
+        public List<ReplicaInfo> GetCurrentReplicaChain()
+        {
+            return ReplicaChain.Where(r => r.Status != ReplicaStatus.None).ToList();
         }
     }
 }

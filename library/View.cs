@@ -43,23 +43,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (configurationStore != null)
             {
                 this.ViewId = configurationStore.ViewId;
-                this.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
-                int removedReplicaCount = 0;
 
-                for (int index = 0; index < configurationStore.ReplicaChain.Count; index++)
+                foreach (ReplicaInfo replica in configurationStore.GetCurrentReplicaChain())
                 {
-                    ReplicaInfo replica = configurationStore.ReplicaChain[index];
-
-                    if (replica.Status == ReplicaStatus.None)
-                    {
-                        if (index < this.ReadHeadIndex)
-                        {
-                            removedReplicaCount++;
-                        }
-
-                        continue;
-                    }
-
                     CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica, useHttps);
                     if (tableClient != null)
                     {
@@ -67,7 +53,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     }
                 }
 
-                this.ReadHeadIndex -= removedReplicaCount;
+                this.ReadHeadIndex = this.Chain.FindIndex(tuple => tuple.Item1.IsReadable());
             }
         }
 
@@ -115,6 +101,16 @@ namespace Microsoft.Azure.Toolkit.Replication
         public bool IsEmpty
         {
             get { return Chain.Count == 0; }
+        }
+
+        public bool IsWritable()
+        {
+            if (IsEmpty)
+            {
+                return false;
+            }
+
+            return this.Chain[0].Item1.IsWritable();
         }
 
         public bool IsExpired(TimeSpan leaseDuration)

@@ -18,13 +18,13 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
     using System.Linq;
     using System.Runtime.Serialization;
+    using System.Text.RegularExpressions;
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
     public class ReplicatedTableConfiguration
@@ -61,19 +61,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("config");
             }
 
-            if (config.ReplicaChain == null ||
-                config.ReplicaChain.Any(replica => replica == null))
-            {
-                var msg = string.Format("View:\'{0}\' has a null replica(s) !!!", viewName);
-                throw new Exception(msg);
-            }
-
-            if (config.ReplicaChain.Any() &&
-                config.ReadViewHeadIndex >= config.ReplicaChain.Count)
-            {
-                var msg = string.Format("View:\'{0}\' has an invalid ReadViewHeadIndex !!!", viewName);
-                throw new Exception(msg);
-            }
+            ThrowIfViewIsNotValid(viewName, config);
 
             viewMap.Remove(viewName);
             viewMap.Add(viewName, config);
@@ -106,6 +94,77 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             viewMap.Remove(viewName);
+        }
+
+        private void ThrowIfViewIsNotValid(string viewName, ReplicatedTableConfigurationStore config)
+        {
+            if (config.ReplicaChain == null || config.ReplicaChain.Any(replica => replica == null))
+            {
+                var msg = string.Format("View:\'{0}\' has a null replica(s) !!!", viewName);
+                throw new Exception(msg);
+            }
+
+            List<ReplicaInfo> chainList = config.GetCurrentReplicaChain();
+            if (chainList.Any())
+            {
+                /* RULE 1:
+                 * =======
+                 * Read replicas rule:
+                 *  - [R] replicas are contiguous from Tail backwards
+                 *  - [R] replica count >= 1
+                 */
+                string readPattern = "^W*R+$";
+
+                /* RULE 2:
+                 * =======
+                 * Write replicas rule:
+                 *  - [W] replicas are contiguous from Head onwards
+                 *  - [W] replica count = 0 or = ChainLength
+                 */
+                string writePattern = "^W*$";
+
+
+                // Get replica sequences
+                string readSeq = "";
+                string writeSeq = "";
+
+                foreach (var replica in chainList)
+                {
+                    // Read sequence:
+                    if (replica.IsReadable())
+                    {
+                        readSeq += "R";
+                    }
+                    else
+                    {
+                        readSeq += "W";
+                    }
+
+                    // Write sequence:
+                    if (replica.IsWritable())
+                    {
+                        writeSeq += "W";
+                    }
+                    else
+                    {
+                        writeSeq += "R";
+                    }
+                }
+
+                // Verify RULE 1:
+                if (!Regex.IsMatch(readSeq, readPattern))
+                {
+                    var msg = string.Format("View:\'{0}\' has invalid Read chain:\'{1}\' !!!", viewName, readSeq);
+                    throw new Exception(msg);
+                }
+
+                // Verify RULE 2:
+                if (!Regex.IsMatch(writeSeq, writePattern))
+                {
+                    var msg = string.Format("View:\'{0}\' has invalid Write chain:\'{1}\' !!!", viewName, writeSeq);
+                    throw new Exception(msg);
+                }
+            }
         }
 
         /*
@@ -225,19 +284,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     var viewName = entry.Key;
                     var viewConf = entry.Value;
 
-                    if (viewConf.ReplicaChain == null ||
-                        viewConf.ReplicaChain.Any(replica => replica == null))
-                    {
-                        var msg = string.Format("View:\'{0}\' has a null replica(s) !!!", viewName);
-                        throw new Exception(msg);
-                    }
-
-                    if (viewConf.ReplicaChain.Any() &&
-                        viewConf.ReadViewHeadIndex >= viewConf.ReplicaChain.Count)
-                    {
-                        var msg = string.Format("View:\'{0}\' has an invalid ReadViewHeadIndex !!!", viewName);
-                        throw new Exception(msg);
-                    }
+                    ThrowIfViewIsNotValid(viewName, viewConf);
                 }
             }
 
