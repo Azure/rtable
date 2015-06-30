@@ -68,10 +68,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             /**
              * View:
              */
-            var view = new View(DefaultViewName, configurationStore, useHttps)
-            {
-                RefreshTime = DateTime.UtcNow
-            };
+            var view = View.InitFromConfigVer1(DefaultViewName, configurationStore, useHttps);
+            view.RefreshTime = DateTime.UtcNow;
 
             if (view.ViewId <= 0)
             {

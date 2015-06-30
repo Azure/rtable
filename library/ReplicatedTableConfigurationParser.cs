@@ -70,11 +70,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             foreach (var entry in configuration.viewMap)
             {
                 ReplicatedTableConfigurationStore configurationStore = entry.Value;
-
-                var view = new View(entry.Key, configurationStore, useHttps)
-                {
-                    RefreshTime = DateTime.UtcNow,
-                };
+                var view = View.InitFromConfigVer2(entry.Key, configurationStore, useHttps);
+                view.RefreshTime = DateTime.UtcNow;
 
                 if (view.ViewId <= 0)
                 {

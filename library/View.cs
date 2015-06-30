@@ -30,31 +30,57 @@ namespace Microsoft.Azure.Toolkit.Replication
     public class View
     {
         public View(string name)
-            :this(name, null, false)
-        {
-        }
-
-        public View(string name, ReplicatedTableConfigurationStore configurationStore, bool useHttps)
         {
             this.Name = name;
             this.RefreshTime = DateTime.MinValue;
             this.Chain = new List<Tuple<ReplicaInfo, CloudTableClient>>();
+        }
+
+        public static View InitFromConfigVer1(string name, ReplicatedTableConfigurationStore configurationStore, bool useHttps)
+        {
+            View view = new View(name);
 
             if (configurationStore != null)
             {
-                this.ViewId = configurationStore.ViewId;
+                view.ViewId = configurationStore.ViewId;
+                view.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
+
+                foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
+                {
+                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica, useHttps);
+
+                    if (replica != null && tableClient != null)
+                    {
+                        view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                    }
+                }
+            }
+
+            return view;
+        }
+
+        public static View InitFromConfigVer2(string name, ReplicatedTableConfigurationStore configurationStore, bool useHttps)
+        {
+            View view = new View(name);
+
+            if (configurationStore != null)
+            {
+                view.ViewId = configurationStore.ViewId;
 
                 foreach (ReplicaInfo replica in configurationStore.GetCurrentReplicaChain())
                 {
                     CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica, useHttps);
                     if (tableClient != null)
                     {
-                        this.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                        view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
                     }
                 }
 
-                this.ReadHeadIndex = this.Chain.FindIndex(tuple => tuple.Item1.IsReadable());
+                // Infered: first readable replica
+                view.ReadHeadIndex = view.Chain.FindIndex(tuple => tuple.Item1.IsReadable());
             }
+
+            return view;
         }
 
         public string Name { get; private set; }
