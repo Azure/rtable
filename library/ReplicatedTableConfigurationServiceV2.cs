@@ -43,6 +43,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.Dispose(false);
         }
 
+        /*
+         * Configuration management APIs
+         */
         public QuorumReadResult RetrieveConfiguration(out ReplicatedTableConfiguration configuration)
         {
             List<string> eTags;
@@ -80,6 +83,15 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("configuration");
             }
 
+
+            // TODO: LockBlobs(***)
+
+
+            return UpdateConfigurationInternal(configuration, useConditionalUpdate);
+        }
+
+        private QuorumWriteResult UpdateConfigurationInternal(ReplicatedTableConfiguration configuration, bool useConditionalUpdate)
+        {
             // - Sanitize configuration ...
             foreach (var view in configuration.viewMap)
             {
@@ -147,8 +159,19 @@ namespace Microsoft.Azure.Toolkit.Replication
             return result;
         }
 
-        public bool IsConfiguredTable(string tableName)
+
+        /*
+         * View/Table APIs
+         */
+        public View GetView(string viewName)
         {
+            return this.configManager.GetView(viewName);
+        }
+
+        public bool IsConfiguredTable(string tableName, out ReplicatedTableConfiguredTable configuredTable)
+        {
+            configuredTable = null;
+
             ReplicatedTableConfiguredTable config = this.configManager.FindConfiguredTable(tableName);
 
             // Neither explicit config, nor default config
@@ -163,16 +186,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return false;
             }
 
+            configuredTable = config;
             return true;
         }
 
-        public View GetView(string viewName)
-        {
-            return this.configManager.GetView(viewName);
-        }
 
         /*
-         * Helper APIs
+         * Replica management APIs
          */
         public void TurnReplicaOn(string storageAccountName)
         {
@@ -180,6 +200,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 throw new ArgumentNullException("storageAccountName");
             }
+
+
+            // TODO: LockBlobs(***)
+
 
             ReplicatedTableConfiguration configuration = null;
 
@@ -207,7 +231,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             // - Write back configuration ...
-            QuorumWriteResult writeResult = UpdateConfiguration(configuration);
+            QuorumWriteResult writeResult = UpdateConfigurationInternal(configuration, true);
             if (writeResult != QuorumWriteResult.Success)
             {
                 ReplicatedTableLogger.LogError("TurnReplicaOn={0}: failed to update -Phase 1- configuration, result={1}", storageAccountName, writeResult);
@@ -238,8 +262,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             // - Write back configuration ...
-            // Note: configuration *Id* has changed since previous updated So disable conditional update
-            writeResult = UpdateConfiguration(configuration, false);
+            //   Note: configuration *Id* has changed since previous updated So disable conditional update
+            writeResult = UpdateConfigurationInternal(configuration, false);
             if (writeResult != QuorumWriteResult.Success)
             {
                 ReplicatedTableLogger.LogError("TurnReplicaOn={0}: failed to update -Phase 2- configuration, result={1}", storageAccountName, writeResult);
@@ -257,7 +281,7 @@ namespace Microsoft.Azure.Toolkit.Replication
              *      Call Repair API
              **/
             // TODO: ...
-
+            // TODO: if chains is such :   [W] -> [None] -> ... -> [None]   will Repair work ???
 
             // TODO:
             // Set R2 to RW
@@ -274,6 +298,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 throw new ArgumentNullException("storageAccountName");
             }
+
+
+            // TODO: LockBlobs(***)
+
 
             ReplicatedTableConfiguration configuration = null;
 
@@ -300,7 +328,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             // - Write back configuration ...
-            QuorumWriteResult writeResult = UpdateConfiguration(configuration);
+            QuorumWriteResult writeResult = UpdateConfigurationInternal(configuration, true);
             if (writeResult != QuorumWriteResult.Success)
             {
                 ReplicatedTableLogger.LogError("TurnReplicaOff={0}: failed to update configuration, result={1}", storageAccountName, writeResult);
@@ -310,28 +338,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        public void Dispose()
-        {
-            Dispose(true);
-            GC.SuppressFinalize(this);
-        }
-
-        protected virtual void Dispose(bool disposing)
-        {
-            if (this.disposed)
-            {
-                return;
-            }
-
-            if (disposing)
-            {
-                this.configManager.StopMonitor();
-            }
-
-            this.disposed = true;
-        }
-
-        private void MoveReplicaToFrontAndSetViewToReadOnly(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
+        private static void MoveReplicaToFrontAndSetViewToReadOnly(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
         {
             List<ReplicaInfo> list = conf.ReplicaChain;
 
@@ -364,7 +371,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        private void SetReplicaToWriteOnly(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
+        private static void SetReplicaToWriteOnly(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
         {
             List<ReplicaInfo> list = conf.ReplicaChain;
 
@@ -385,5 +392,27 @@ namespace Microsoft.Azure.Toolkit.Replication
         }
 
         // ...
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (this.disposed)
+            {
+                return;
+            }
+
+            if (disposing)
+            {
+                this.configManager.StopMonitor();
+            }
+
+            this.disposed = true;
+        }
+
     }
 }
