@@ -121,8 +121,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                  *  - [W] replicas are contiguous from Head onwards
                  *  - [W] replica count = 0 or = ChainLength
                  */
-                string writePattern = "^W*$";
-
+                string writePattern = "^((R+)|(W+))$";
 
                 // Get replica sequences
                 string readSeq = "";

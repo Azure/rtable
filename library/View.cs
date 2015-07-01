@@ -129,6 +129,16 @@ namespace Microsoft.Azure.Toolkit.Replication
             get { return Chain.Count == 0; }
         }
 
+        public bool IsReadOnly()
+        {
+            if (IsEmpty)
+            {
+                return false;
+            }
+
+            return this.Chain[0].Item1.IsReadOnly();
+        }
+
         public bool IsWritable()
         {
             if (IsEmpty)

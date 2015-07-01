@@ -176,6 +176,96 @@ namespace Microsoft.Azure.Toolkit.Replication
          */
         public void TurnReplicaOn(string storageAccountName)
         {
+            if (string.IsNullOrEmpty(storageAccountName))
+            {
+                throw new ArgumentNullException("storageAccountName");
+            }
+
+            ReplicatedTableConfiguration configuration = null;
+
+            // - Retrieve configuration ...
+            QuorumReadResult readResult = RetrieveConfiguration(out configuration);
+            if (readResult != QuorumReadResult.Success)
+            {
+                ReplicatedTableLogger.LogError("TurnReplicaOn={0}: failed to read configuration, result={1}", storageAccountName, readResult);
+
+                var msg = string.Format("TurnReplicaOn={0}: failed to read configuration, result={1}", storageAccountName, readResult);
+                throw new Exception(msg);
+            }
+
+
+            /* - Phase 1:
+             *      Move the *replica* to the front and set it to None.
+             *      Make the view ReadOnly.
+             **/
+            foreach (var entry in configuration.viewMap)
+            {
+                var viewName = entry.Key;
+                var viewConf = entry.Value;
+
+                MoveReplicaToFrontAndSetViewToReadOnly(viewName, viewConf, storageAccountName);
+            }
+
+            // - Write back configuration ...
+            QuorumWriteResult writeResult = UpdateConfiguration(configuration);
+            if (writeResult != QuorumWriteResult.Success)
+            {
+                ReplicatedTableLogger.LogError("TurnReplicaOn={0}: failed to update -Phase 1- configuration, result={1}", storageAccountName, writeResult);
+
+                var msg = string.Format("TurnReplicaOn={0}: failed to update -Phase 1- configuration, result={1}", storageAccountName, writeResult);
+                throw new Exception(msg);
+            }
+
+            /**
+             * Chain is such: [None] -> [RO] -> ... -> [RO]
+             **/
+
+
+            // - Wait for L + CF to make sure no pending transaction working on old views
+            Thread.Sleep(TimeSpan.FromSeconds(Constants.LeaseDurationInSec + Constants.ClockFactorInSec));
+
+
+            /* - Phase 2:
+             *      Set the *replica* (head) to WriteOnly.
+             *      Set other active replicas to ReadWrite.
+             **/
+            foreach (var entry in configuration.viewMap)
+            {
+                var viewName = entry.Key;
+                var viewConf = entry.Value;
+
+                SetReplicaToWriteOnly(viewName, viewConf, storageAccountName);
+            }
+
+            // - Write back configuration ...
+            // Note: configuration *Id* has changed since previous updated So disable conditional update
+            writeResult = UpdateConfiguration(configuration, false);
+            if (writeResult != QuorumWriteResult.Success)
+            {
+                ReplicatedTableLogger.LogError("TurnReplicaOn={0}: failed to update -Phase 2- configuration, result={1}", storageAccountName, writeResult);
+
+                var msg = string.Format("TurnReplicaOn={0}: failed to update -Phase 2- configuration, result={1}", storageAccountName, writeResult);
+                throw new Exception(msg);
+            }
+
+            /**
+             * Chain is such: [W] -> [RW] -> ... -> [RW]
+             **/
+
+
+            /* - Phase 3:
+             *      Call Repair API
+             **/
+            // TODO: ...
+
+
+            // TODO:
+            // Set R2 to RW
+            // UpdateConfg
+
+            //-------------------------------------------------
+            // t3:      = 0             R2(RW)   --> R1(RW)
+
         }
 
         public void TurnReplicaOff(string storageAccountName)
@@ -240,6 +330,60 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             this.disposed = true;
         }
+
+        private void MoveReplicaToFrontAndSetViewToReadOnly(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
+        {
+            List<ReplicaInfo> list = conf.ReplicaChain;
+
+            int matchIndex = list.FindIndex(r => r.StorageAccountName == storageAccountName);
+            if (matchIndex == -1)
+            {
+                return;
+            }
+
+            // - Ensure its status is *None*
+            ReplicaInfo candidateReplica = list[matchIndex];
+            candidateReplica.Status = ReplicaStatus.None;
+
+            // - Move it to the front of the chain
+            list.RemoveAt(matchIndex);
+            list.Insert(0, candidateReplica);
+
+            // Set all active replicas to *ReadOnly*
+            foreach (ReplicaInfo replica in conf.GetCurrentReplicaChain())
+            {
+                if (replica.Status == ReplicaStatus.WriteOnly)
+                {
+                    ReplicatedTableLogger.LogError("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", viewName);
+
+                    var msg = string.Format("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", viewName);
+                    throw new Exception(msg);
+                }
+
+                replica.Status = ReplicaStatus.ReadOnly;
+            }
+        }
+
+        private void SetReplicaToWriteOnly(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
+        {
+            List<ReplicaInfo> list = conf.ReplicaChain;
+
+            if (!list.Any() ||
+                list[0].StorageAccountName != storageAccountName)
+            {
+                return;
+            }
+
+            // First, enable Write on all replicas
+            foreach (ReplicaInfo replica in conf.GetCurrentReplicaChain())
+            {
+                replica.Status = ReplicaStatus.ReadWrite;
+            }
+
+            // Then, set the head to WriteOnly
+            list[0].Status = ReplicaStatus.WriteOnly;
+        }
+
         // ...
     }
 }
