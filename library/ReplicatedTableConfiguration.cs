@@ -27,7 +27,13 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Text.RegularExpressions;
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
-    public class ReplicatedTableConfiguration
+    abstract public class ReplicatedTableConfigurationBase
+    {
+        abstract public Guid GetConfigId();
+    }
+
+    [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
+    public class ReplicatedTableConfiguration : ReplicatedTableConfigurationBase
     {
         [DataMember(IsRequired = true, Order = 0)]
         internal protected Dictionary<string, ReplicatedTableConfigurationStore> viewMap = new Dictionary<string, ReplicatedTableConfigurationStore>();
@@ -44,6 +50,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         public ReplicatedTableConfiguration()
         {
             Id = Guid.NewGuid();
+        }
+
+        override public Guid GetConfigId()
+        {
+            return Id;
         }
 
         /*
@@ -209,6 +220,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             return tableList.Find(e => tableName.Equals(e.TableName, StringComparison.OrdinalIgnoreCase));
         }
 
+        public ReplicatedTableConfiguredTable GetDefaultConfiguredTable()
+        {
+            return tableList.Find(e => e.UseAsDefault == true);
+        }
+
         public void RemoveTable(string tableName)
         {
             if (string.IsNullOrEmpty(tableName))
@@ -277,7 +293,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     viewMap.Remove(key);
                 }
 
-                // - Enforce none of replicas is null, and RVHI is within range
+                // - Enforce replicas are not null, and well sequenced
                 foreach (var entry in viewMap)
                 {
                     var viewName = entry.Key;

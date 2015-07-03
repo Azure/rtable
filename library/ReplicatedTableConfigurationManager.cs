@@ -39,6 +39,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         private Dictionary<string, View> viewMap = new Dictionary<string, View>();
         private Dictionary<string, ReplicatedTableConfiguredTable> tableMap = new Dictionary<string, ReplicatedTableConfiguredTable>();
         private ReplicatedTableConfiguredTable defaultConfiguredRule = null;
+        private Guid currentRunningConfigId = Guid.Empty;
 
         internal protected ReplicatedTableConfigurationManager(List<ConfigurationStoreLocationInfo> blobLocations, bool useHttps, int lockTimeoutInSeconds, IReplicatedTableConfigurationParser blobParser)
         {
@@ -111,8 +112,9 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             List<ReplicatedTableConfiguredTable> tableConfigList;
             int leaseDuration;
+            Guid configId;
 
-            List<View> views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.useHttps, out tableConfigList, out leaseDuration);
+            List<View> views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.useHttps, out tableConfigList, out leaseDuration, out configId);
             if (views == null)
             {
                 return;
@@ -158,6 +160,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // - Update lease duration
                 LeaseDuration = TimeSpan.FromSeconds(leaseDuration);
 
+                // - Update current config Id
+                currentRunningConfigId = configId;
+
                 UpdateTimer();
             }
         }
@@ -194,6 +199,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             RefreshReadAndWriteViewsFromBlobs(null);
         }
 
+        internal protected Guid GetCurrentRunningConfigId()
+        {
+            return currentRunningConfigId;
+        }
 
         /*
          * Views functions:
@@ -232,12 +241,17 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             lock (this)
             {
-                if (string.IsNullOrEmpty(tableName) || !this.tableMap.ContainsKey(tableName))
+                if (string.IsNullOrEmpty(tableName))
                 {
-                    return defaultConfiguredRule;
+                    return null;
                 }
 
-                return this.tableMap[tableName];
+                if (this.tableMap.ContainsKey(tableName))
+                {
+                    return this.tableMap[tableName];
+                }
+
+                return defaultConfiguredRule;
             }
         }
 

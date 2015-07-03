@@ -21,28 +21,21 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
-    using System;
-    using System.Collections.Generic;
-    using Microsoft.WindowsAzure.Storage.Blob;
-
-    internal interface IReplicatedTableConfigurationParser
+    public class ReplicatedTableWriteBlobResult
     {
-        /// <summary>
-        /// Parses the RTable configuration blobs.
-        /// Returns the list of views, the list of configured tables and the lease duration.
-        /// If null is returned, then the value of tableConfigList/leaseDuration are not relevant.
-        /// </summary>
-        /// <param name="blobs"></param>
-        /// <param name="useHttps"></param>
-        /// <param name="tableConfigList"></param>
-        /// <param name="leaseDuration"></param>
-        /// <param name="configId"></param>
-        /// <returns></returns>
-        List<View> ParseBlob(
-                        List<CloudBlockBlob> blobs,
-                        bool useHttps,
-                        out List<ReplicatedTableConfiguredTable> tableConfigList,
-                        out int leaseDuration,
-                        out Guid configId);
+        public ReplicatedTableWriteBlobResult(bool succ, string msg)
+        {
+            Success = succ;
+            Message = msg;
+        }
+
+        public bool Success { get; private set; }
+
+        public string Message { get; private set; }
+
+        public override string ToString()
+        {
+            return string.Format("WriteBlobResult Success: {0}, Message: {1}", Success, Message);
+        }
     }
 }

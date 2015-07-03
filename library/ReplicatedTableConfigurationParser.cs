@@ -42,22 +42,24 @@ namespace Microsoft.Azure.Toolkit.Replication
                                 List<CloudBlockBlob> blobs,
                                 bool useHttps,
                                 out List<ReplicatedTableConfiguredTable> tableConfigList,
-                                out int leaseDuration)
+                                out int leaseDuration,
+                                out Guid configId)
         {
             tableConfigList = null;
             leaseDuration = 0;
+            configId = Guid.Empty;
 
             ReplicatedTableConfiguration configuration;
             List<string> eTags;
 
-            QuorumReadResult result = CloudBlobHelpers.TryReadBlobQuorum(
+            ReplicatedTableQuorumReadResult result = CloudBlobHelpers.TryReadBlobQuorum(
                                                                     blobs,
                                                                     out configuration,
                                                                     out eTags,
                                                                     ReplicatedTableConfiguration.FromJson);
-            if (result != QuorumReadResult.Success)
+            if (result.Code != ReplicatedTableQuorumReadCode.Success)
             {
-                ReplicatedTableLogger.LogError("Unable to refresh views, result={0}", result);
+                ReplicatedTableLogger.LogError("Unable to refresh views, \n{0}", result.ToString());
                 return null;
             }
 
@@ -70,6 +72,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             foreach (var entry in configuration.viewMap)
             {
                 ReplicatedTableConfigurationStore configurationStore = entry.Value;
+
                 var view = View.InitFromConfigVer2(entry.Key, configurationStore, useHttps);
                 view.RefreshTime = DateTime.UtcNow;
 
@@ -108,6 +111,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // - lease duration
             leaseDuration = configuration.LeaseDuration;
+
+            // - ConfigId
+            configId = configuration.GetConfigId();
 
             return viewList;
         }

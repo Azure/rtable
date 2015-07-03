@@ -46,26 +46,26 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Configuration management APIs
          */
-        public QuorumReadResult RetrieveConfiguration(out ReplicatedTableConfiguration configuration)
+        public ReplicatedTableQuorumReadResult RetrieveConfiguration(out ReplicatedTableConfiguration configuration)
         {
             List<string> eTags;
 
-            QuorumReadResult
+            ReplicatedTableQuorumReadResult
             result = CloudBlobHelpers.TryReadBlobQuorum(
                                                 this.configManager.GetBlobs(),
                                                 out configuration,
                                                 out eTags,
                                                 ReplicatedTableConfiguration.FromJson);
 
-            if (result != QuorumReadResult.Success)
+            if (result.Code != ReplicatedTableQuorumReadCode.Success)
             {
-                ReplicatedTableLogger.LogError("Failed to read configuration, result={0}", result);
+                ReplicatedTableLogger.LogError("Failed to read configuration, \n{0}", result.ToString());
             }
 
             return result;
         }
 
-        public List<ReadBlobResult> RetrieveConfiguration(out List<ReplicatedTableConfiguration> configuration)
+        public List<ReplicatedTableReadBlobResult> RetrieveConfiguration(out List<ReplicatedTableConfiguration> configuration)
         {
             List<string> eTagsArray;
 
@@ -76,7 +76,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                                                 ReplicatedTableConfiguration.FromJson);
         }
 
-        public QuorumWriteResult UpdateConfiguration(ReplicatedTableConfiguration configuration, bool useConditionalUpdate = true)
+        public ReplicatedTableQuorumWriteResult UpdateConfiguration(ReplicatedTableConfiguration configuration, bool useConditionalUpdate = true)
         {
             if (configuration == null)
             {
@@ -90,7 +90,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return UpdateConfigurationInternal(configuration, useConditionalUpdate);
         }
 
-        private QuorumWriteResult UpdateConfigurationInternal(ReplicatedTableConfiguration configuration, bool useConditionalUpdate)
+        private ReplicatedTableQuorumWriteResult UpdateConfigurationInternal(ReplicatedTableConfiguration configuration, bool useConditionalUpdate)
         {
             // - Sanitize configuration ...
             foreach (var view in configuration.viewMap)
@@ -139,7 +139,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 comparer = (a, b) => true;
             }
 
-            QuorumWriteResult
+            ReplicatedTableQuorumWriteResult
             result = CloudBlobHelpers.TryWriteBlobQuorum(
                                             this.configManager.GetBlobs(),
                                             configuration,
@@ -147,13 +147,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                                             comparer,
                                             ReplicatedTableConfiguration.GenerateNewConfigId);
 
-            if (result == QuorumWriteResult.Success)
+            if (result.Code == ReplicatedTableQuorumWriteCode.Success)
             {
                 this.configManager.Invalidate();
             }
             else
             {
-                ReplicatedTableLogger.LogError("Failed to update configuration, result={0}", result);
+                ReplicatedTableLogger.LogError("Failed to update configuration, \n{0}", result.ToString());
             }
 
             return result;
@@ -194,11 +194,16 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Replica management APIs
          */
-        public void TurnReplicaOn(string storageAccountName)
+        public void TurnReplicaOn(string storageAccountName, List<string> tablesToRepair)
         {
             if (string.IsNullOrEmpty(storageAccountName))
             {
                 throw new ArgumentNullException("storageAccountName");
+            }
+
+            if (tablesToRepair == null)
+            {
+                throw new ArgumentNullException("tablesToRepair");
             }
 
 
@@ -208,12 +213,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             ReplicatedTableConfiguration configuration = null;
 
             // - Retrieve configuration ...
-            QuorumReadResult readResult = RetrieveConfiguration(out configuration);
-            if (readResult != QuorumReadResult.Success)
+            ReplicatedTableQuorumReadResult readResult = RetrieveConfiguration(out configuration);
+            if (readResult.Code != ReplicatedTableQuorumReadCode.Success)
             {
-                ReplicatedTableLogger.LogError("TurnReplicaOn={0}: failed to read configuration, result={1}", storageAccountName, readResult);
+                var msg = string.Format("TurnReplicaOn={0}: failed to read configuration, \n{1}", storageAccountName, readResult.ToString());
 
-                var msg = string.Format("TurnReplicaOn={0}: failed to read configuration, result={1}", storageAccountName, readResult);
+                ReplicatedTableLogger.LogError(msg);
                 throw new Exception(msg);
             }
 
@@ -222,6 +227,8 @@ namespace Microsoft.Azure.Toolkit.Replication
              *      Move the *replica* to the front and set it to None.
              *      Make the view ReadOnly.
              **/
+            #region Phase 1
+
             foreach (var entry in configuration.viewMap)
             {
                 var viewName = entry.Key;
@@ -231,17 +238,19 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             // - Write back configuration ...
-            QuorumWriteResult writeResult = UpdateConfigurationInternal(configuration, true);
-            if (writeResult != QuorumWriteResult.Success)
+            ReplicatedTableQuorumWriteResult writeResult = UpdateConfigurationInternal(configuration, true);
+            if (writeResult.Code != ReplicatedTableQuorumWriteCode.Success)
             {
-                ReplicatedTableLogger.LogError("TurnReplicaOn={0}: failed to update -Phase 1- configuration, result={1}", storageAccountName, writeResult);
+                var msg = string.Format("TurnReplicaOn={0}: failed to update -Phase 1- configuration, \n{1}", storageAccountName, writeResult.ToString());
 
-                var msg = string.Format("TurnReplicaOn={0}: failed to update -Phase 1- configuration, result={1}", storageAccountName, writeResult);
+                ReplicatedTableLogger.LogError(msg);
                 throw new Exception(msg);
             }
 
+            #endregion
             /**
              * Chain is such: [None] -> [RO] -> ... -> [RO]
+             *            or: [None] -> [None] -> ... -> [None]
              **/
 
 
@@ -250,38 +259,62 @@ namespace Microsoft.Azure.Toolkit.Replication
 
 
             /* - Phase 2:
-             *      Set the *replica* (head) to WriteOnly.
-             *      Set other active replicas to ReadWrite.
+             *      Set the *replica* (head) to WriteOnly and other active replicas to ReadWrite.
+             *   Or, in case of one replic chain
+             *      Set only the *replica* (head) to ReadWrite.
              **/
+            #region Phase 2
+
             foreach (var entry in configuration.viewMap)
             {
                 var viewName = entry.Key;
                 var viewConf = entry.Value;
 
-                SetReplicaToWriteOnly(viewName, viewConf, storageAccountName);
+                EnableWriteOnReplicas(viewName, viewConf, storageAccountName);
             }
 
             // - Write back configuration ...
             //   Note: configuration *Id* has changed since previous updated So disable conditional update
             writeResult = UpdateConfigurationInternal(configuration, false);
-            if (writeResult != QuorumWriteResult.Success)
+            if (writeResult.Code != ReplicatedTableQuorumWriteCode.Success)
             {
-                ReplicatedTableLogger.LogError("TurnReplicaOn={0}: failed to update -Phase 2- configuration, result={1}", storageAccountName, writeResult);
+                var msg = string.Format("TurnReplicaOn={0}: failed to update -Phase 2- configuration, \n{1}", storageAccountName, writeResult.ToString());
 
-                var msg = string.Format("TurnReplicaOn={0}: failed to update -Phase 2- configuration, result={1}", storageAccountName, writeResult);
+                ReplicatedTableLogger.LogError(msg);
                 throw new Exception(msg);
             }
 
+            // - Confirm the new config is the current loaded into the RTable config manager
+            if (writeResult.Message != this.configManager.GetCurrentRunningConfigId().ToString())
+            {
+                var msg = string.Format("TurnReplicaOn={0}: new configId({1}) != current loaded configurationId({2}) ?",
+                                        storageAccountName,
+                                        writeResult.Message,
+                                        this.configManager.GetCurrentRunningConfigId());
+
+                ReplicatedTableLogger.LogError(msg);
+                throw new Exception(msg);
+            }
+
+            #endregion
             /**
              * Chain is such: [W] -> [RW] -> ... -> [RW]
+             *            or: [RW] -> [None] -> ... -> [None]
              **/
 
 
             /* - Phase 3:
-             *      Call Repair API
+             *      Repair all tables
              **/
-            // TODO: ...
-            // TODO: if chains is such :   [W] -> [None] -> ... -> [None]   will Repair work ???
+            #region Phase 3
+
+            foreach (var tableName in tablesToRepair)
+            {
+                RepairTable(tableName, storageAccountName);
+            }
+
+            #endregion
+
 
             // TODO:
             // Set R2 to RW
@@ -306,12 +339,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             ReplicatedTableConfiguration configuration = null;
 
             // - Retrieve configuration ...
-            QuorumReadResult readResult = RetrieveConfiguration(out configuration);
-            if (readResult != QuorumReadResult.Success)
+            ReplicatedTableQuorumReadResult readResult = RetrieveConfiguration(out configuration);
+            if (readResult.Code != ReplicatedTableQuorumReadCode.Success)
             {
-                ReplicatedTableLogger.LogError("TurnReplicaOff={0}: failed to read configuration, result={1}", storageAccountName, readResult);
+                var msg = string.Format("TurnReplicaOff={0}: failed to read configuration, \n{1}", storageAccountName, readResult.ToString());
 
-                var msg = string.Format("TurnReplicaOff={0}: failed to read configuration, result={1}", storageAccountName, readResult);
+                ReplicatedTableLogger.LogError(msg);
                 throw new Exception(msg);
             }
 
@@ -328,12 +361,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             // - Write back configuration ...
-            QuorumWriteResult writeResult = UpdateConfigurationInternal(configuration, true);
-            if (writeResult != QuorumWriteResult.Success)
+            ReplicatedTableQuorumWriteResult writeResult = UpdateConfigurationInternal(configuration, true);
+            if (writeResult.Code != ReplicatedTableQuorumWriteCode.Success)
             {
-                ReplicatedTableLogger.LogError("TurnReplicaOff={0}: failed to update configuration, result={1}", storageAccountName, writeResult);
+                var msg = string.Format("TurnReplicaOff={0}: failed to update configuration, \n{1}", storageAccountName, writeResult.ToString());
 
-                var msg = string.Format("TurnReplicaOff={0}: failed to update configuration, result={1}", storageAccountName, writeResult);
+                ReplicatedTableLogger.LogError(msg);
                 throw new Exception(msg);
             }
         }
@@ -361,9 +394,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 if (replica.Status == ReplicaStatus.WriteOnly)
                 {
-                    ReplicatedTableLogger.LogError("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", viewName);
-
                     var msg = string.Format("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", viewName);
+
+                    ReplicatedTableLogger.LogError(msg);
                     throw new Exception(msg);
                 }
 
@@ -371,7 +404,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        private static void SetReplicaToWriteOnly(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
+        private static void EnableWriteOnReplicas(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
         {
             List<ReplicaInfo> list = conf.ReplicaChain;
 
@@ -389,6 +422,40 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Then, set the head to WriteOnly
             list[0].Status = ReplicaStatus.WriteOnly;
+
+            // one replica chain ? Force to ReadWrite
+            if (conf.GetCurrentReplicaChain().Count == 1)
+            {
+                list[0].Status = ReplicaStatus.ReadWrite;
+            }
+        }
+
+        private void RepairTable(string tableName, string storageAccountName)
+        {
+            ReplicatedTableConfiguredTable tableConfig;
+            if (!IsConfiguredTable(tableName, out tableConfig))
+            {
+                return;
+            }
+
+            var viewConf = GetView(tableConfig.ViewName);
+            if (viewConf.IsEmpty)
+            {
+                return;
+            }
+
+            ReplicaInfo head = viewConf.GetReplicaInfo(0);
+            if (head.StorageAccountName != storageAccountName)
+            {
+                return;
+            }
+
+            if (head.Status != ReplicaStatus.WriteOnly)
+            {
+                return;
+            }
+
+            // TODO: table.Repair(viewIdToRecoverFrom);
         }
 
         // ...

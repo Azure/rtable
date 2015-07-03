@@ -45,22 +45,24 @@ namespace Microsoft.Azure.Toolkit.Replication
                                 List<CloudBlockBlob> blobs,
                                 bool useHttps,
                                 out List<ReplicatedTableConfiguredTable> tableConfigList,
-                                out int leaseDuration)
+                                out int leaseDuration,
+                                out Guid configId)
         {
             tableConfigList = null;
             leaseDuration = 0;
+            configId = Guid.Empty;
 
             ReplicatedTableConfigurationStore configurationStore;
             List<string> eTags;
 
-            QuorumReadResult result = CloudBlobHelpers.TryReadBlobQuorum(
+            ReplicatedTableQuorumReadResult result = CloudBlobHelpers.TryReadBlobQuorum(
                                                                     blobs,
                                                                     out configurationStore,
                                                                     out eTags,
                                                                     JsonStore<ReplicatedTableConfigurationStore>.Deserialize);
-            if (result != QuorumReadResult.Success)
+            if (result.Code != ReplicatedTableQuorumReadCode.Success)
             {
-                ReplicatedTableLogger.LogError("Unable to refresh view, result={0}", result);
+                ReplicatedTableLogger.LogError("Unable to refresh view, \n{0}", result.ToString());
                 return null;
             }
 

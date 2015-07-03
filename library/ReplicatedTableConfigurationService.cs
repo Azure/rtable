@@ -129,12 +129,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                  * The below code is incomplete because we are supposed to use eTag to make the changes if the old blob exists.
                  * This is to support multiple clients updating the config, not a high priority scenario but something we should look at.
                  */
-                ReadBlobResult result = CloudBlobHelpers.TryReadBlob(
+                ReplicatedTableReadBlobResult result = CloudBlobHelpers.TryReadBlob(
                                                                 blob,
                                                                 out configurationStore,
                                                                 out eTag,
                                                                 JsonStore<ReplicatedTableConfigurationStore>.Deserialize);
-                if (result != ReadBlobResult.Success)
+                if (result.Code != ReadBlobCode.Success)
                 {
                     //This is the first time we are uploading the config
                     configurationStore = new ReplicatedTableConfigurationStore();
