@@ -163,9 +163,21 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * View/Table APIs
          */
+        public TimeSpan LockTimeout
+        {
+            get { return this.configManager.LockTimeout; }
+
+            set { this.configManager.LockTimeout = value; }
+        }
+
         public View GetView(string viewName)
         {
             return this.configManager.GetView(viewName);
+        }
+
+        public bool IsViewStable(string viewName)
+        {
+            return this.configManager.IsViewStable(viewName);
         }
 
         public bool IsConfiguredTable(string tableName, out ReplicatedTableConfiguredTable configuredTable)
@@ -188,6 +200,45 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             configuredTable = config;
             return true;
+        }
+
+        public View GetTableView(string tableName)
+        {
+            ReplicatedTableConfiguredTable config;
+            if (IsConfiguredTable(tableName, out config))
+            {
+                return GetView(config.ViewName);
+            }
+
+            var msg = string.Format("Table={0}: is not configured!", tableName);
+            ReplicatedTableLogger.LogError(msg);
+            throw new Exception(msg);
+        }
+
+        public bool IsTableViewStable(string tableName)
+        {
+            ReplicatedTableConfiguredTable config;
+            if (IsConfiguredTable(tableName, out config))
+            {
+                return IsViewStable(config.ViewName);
+            }
+
+            var msg = string.Format("Table={0}: is not configured!", tableName);
+            ReplicatedTableLogger.LogError(msg);
+            throw new Exception(msg);
+        }
+
+        public bool ConvertToRTable(string tableName)
+        {
+            ReplicatedTableConfiguredTable config;
+            if (IsConfiguredTable(tableName, out config))
+            {
+                return config.ConvertToRTable;
+            }
+
+            var msg = string.Format("Table={0}: is not configured", tableName);
+            ReplicatedTableLogger.LogError(msg);
+            throw new Exception(msg);
         }
 
 
