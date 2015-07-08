@@ -32,13 +32,12 @@ namespace Microsoft.Azure.Toolkit.Replication
 
     public class ReplicatedTable : IReplicatedTable
     {
-        private readonly ReplicatedTableConfigurationServiceV2 _replicatedTableConfigurationServiceV2;
-        private readonly ReplicatedTableConfigurationService _replicatedTableConfigurationService;
+        /// <summary>
+        /// Configuration wrapper (layer) on top of RTable ConfigurationService instance to present a simplified interface to ReplicatedTable class.
+        /// ReplicatedTable needs access to a subset of the configuration service that deals with the "TableName".
+        /// </summary>
+        private readonly IReplicatedTableConfigurationWrapper _configurationWrapper;
         private string myName;
-        private readonly string configServiceVer;
-
-        private const string ConfigServiceVer1 = "1.0";
-        private const string ConfigServiceVer2 = "2.0";
 
         public string TableName
         {
@@ -52,68 +51,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        /*
-         * Wrappers arround RTable configuration service
-         */
-        private TimeSpan LockTimeout
-        {
-            get
-            {
-                switch (configServiceVer)
-                {
-                    case ConfigServiceVer2:
-                        return _replicatedTableConfigurationServiceV2.LockTimeout;
-
-                    case ConfigServiceVer1:
-                    default:
-                        return _replicatedTableConfigurationService.LockTimeout;
-                }
-            }
-        }
-
         private View CurrentView
         {
-            get
-            {
-                switch (configServiceVer)
-                {
-                    case ConfigServiceVer2:
-                        return _replicatedTableConfigurationServiceV2.GetTableView(TableName);
-
-                    case ConfigServiceVer1:
-                    default:
-                        return _replicatedTableConfigurationService.GetWriteView();
-                }
-            }
-        }
-
-        private bool IsViewStable()
-        {
-            switch (configServiceVer)
-            {
-                case ConfigServiceVer2:
-                    return _replicatedTableConfigurationServiceV2.IsTableViewStable(TableName);
-
-                case ConfigServiceVer1:
-                default:
-                    return this._replicatedTableConfigurationService.IsViewStable();
-            }
-        }
-
-        private bool ConvertToRTableMode
-        {
-            get
-            {
-                switch (configServiceVer)
-                {
-                    case ConfigServiceVer2:
-                        return _replicatedTableConfigurationServiceV2.ConvertToRTable(TableName);
-
-                    case ConfigServiceVer1:
-                    default:
-                        return _replicatedTableConfigurationService.ConvertXStoreTableMode;
-                }
-            }
+            get { return this._configurationWrapper.GetWriteView(); }
         }
 
         // Used for read optimization to read from random replica
@@ -131,18 +71,14 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public ReplicatedTable(string name, ReplicatedTableConfigurationService replicatedTableConfigurationAgent)
         {
-            this._replicatedTableConfigurationServiceV2 = null;
-            this._replicatedTableConfigurationService = replicatedTableConfigurationAgent;
+            this._configurationWrapper = new ReplicatedTableConfigurationWrapper(replicatedTableConfigurationAgent);
             TableName = name;
-            this.configServiceVer = ConfigServiceVer1;
         }
 
         public ReplicatedTable(string name, ReplicatedTableConfigurationServiceV2 replicatedTableConfigurationAgent)
         {
-            this._replicatedTableConfigurationServiceV2 = replicatedTableConfigurationAgent;
-            this._replicatedTableConfigurationService = null;
+            this._configurationWrapper = new ReplicatedTableConfigurationV2Wrapper(name, replicatedTableConfigurationAgent);
             TableName = name;
-            this.configServiceVer = ConfigServiceVer2;
         }
 
         private void ValidateTxnView(View txnView)
@@ -694,7 +630,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                     if (currentRow._rtable_RowLock == true)
                     {
-                        if (DateTime.UtcNow >= currentRow._rtable_LockAcquisition + LockTimeout)
+                        if (DateTime.UtcNow >= currentRow._rtable_LockAcquisition + this._configurationWrapper.GetLockTimeout())
                         {
                             try
                             {
@@ -1311,7 +1247,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             TableResult retrievedResult = null;
-            if (ConvertToRTableMode)
+            if (this._configurationWrapper.IsConvertToRTableMode())
             {
                 // When we are in ConvertToRTable, the existing entities were created as XStore entities.
                 // Hence, need to use InitDynamicReplicatedTableEntity which catches KeyNotFoundException
@@ -1364,7 +1300,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             // If the row is not committed, either:
             // (1) (Lock expired) flush the row to other replicas, commit it, and return the result.
             // Or (2) (Lock not expired) return a Conflict so that the caller can try again later,
-            if (DateTime.UtcNow >= readRow._rtable_LockAcquisition + LockTimeout)
+            if (DateTime.UtcNow >= readRow._rtable_LockAcquisition + this._configurationWrapper.GetLockTimeout())
             {
                 ReplicatedTableLogger.LogInformational(
                     "FlushAndRetrieve(): _rtable_RowLock has expired. So, calling Flush2PC(). _rtable_LockAcquisition={0} CurrentTime={1}",
@@ -1386,7 +1322,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // The entity was locked by a different client recently. Return conflict so that the caller can retry.
                 ReplicatedTableLogger.LogInformational(
                     "FlushAndRetrieve(): Row is locked. _rtable_LockAcquisition={0} CurrentTime={1} timeout={2}",
-                    readRow._rtable_LockAcquisition, DateTime.UtcNow, LockTimeout);
+                    readRow._rtable_LockAcquisition, DateTime.UtcNow, this._configurationWrapper.GetLockTimeout());
                 result = new TableResult()
                 {
                     Result = null,
@@ -1946,7 +1882,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             long maxBatchSize = 100L)
         {
             ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
-            if (IsViewStable())
+            if (this._configurationWrapper.IsViewStable())
             {
                 return ReconfigurationStatus.SUCCESS;
             }
@@ -2184,7 +2120,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             IReplicatedTableEntity readHeadEntity = ConvertToIReplicatedTableEntity(readHeadResult);
             bool readHeadLocked = readHeadEntity._rtable_RowLock;
-            bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + LockTimeout > DateTime.UtcNow);
+            bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + this._configurationWrapper.GetLockTimeout() > DateTime.UtcNow);
 
             // take a lock on the read view entity unless the entity is already locked
             readHeadEntity._rtable_RowLock = true;
@@ -2313,7 +2249,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             View txnView = CurrentView;
             ValidateTxnView(txnView);
 
-            if (ConvertToRTableMode == false)
+            if (this._configurationWrapper.IsConvertToRTableMode() == false)
             {
                 throw new InvalidOperationException("ConvertXStoreTable() API is NOT supported when ReplicatedTable is NOT in ConvertToRTable.");
             }

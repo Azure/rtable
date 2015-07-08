@@ -69,6 +69,12 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="IReplicatedTableConfigurationWrapper.cs" />
+    <Compile Include="ReplicatedTableConfigurationWrapper.cs" />
+    <Compile Include="ReplicatedTableConfigurationV2Wrapper.cs" />
+    <Compile Include="ReplicatedTableQuorumReadResult.cs" />
+    <Compile Include="ReplicatedTableQuorumWriteResult.cs" />
+    <Compile Include="ReplicatedTableReadBlobResult.cs" />
     <Compile Include="CloudBlobHelpers.cs" />
     <Compile Include="Constants.cs" />
     <Compile Include="ConfigurationStore.cs" />
@@ -96,6 +102,7 @@
     <Compile Include="ReplicatedTableConfigurationStore.cs" />
     <Compile Include="ReplicatedTableEventSource.cs" />
     <Compile Include="ReplicatedTableConfiguredTable.cs" />
+    <Compile Include="ReplicatedTableWriteBlobResult.cs" />
     <Compile Include="View.cs" />
   </ItemGroup>
   <ItemGroup>

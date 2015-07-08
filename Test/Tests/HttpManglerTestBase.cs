@@ -806,7 +806,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                         retries, ex.ToString()); 
                     retries++;
                     gotExceptionInLastAttempt = true;
-                    Thread.Sleep(this.configurationService.LockTimeout);
+                    Thread.Sleep(this.configurationWrapper.GetLockTimeout());
 
                     // For debug purposes: read from the Head and Tail accounts:
                     this.ReadFromIndividualAccountsDirectly(entityPartitionKey, entityRowKey);                    
@@ -1168,9 +1168,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // After recovery from short outage, sleep some time to wait for entity to be unlocked, then confirm that we can update the row.
             TimeSpan elapsedTimeSinceRowLocked = DateTime.UtcNow - rowLockStartTime;
             int sleepTimeInMs = 0;
-            if (this.configurationService.LockTimeout > elapsedTimeSinceRowLocked)
+            if (this.configurationWrapper.GetLockTimeout() > elapsedTimeSinceRowLocked)
             {
-                sleepTimeInMs = (int)(this.configurationService.LockTimeout - elapsedTimeSinceRowLocked).TotalMilliseconds;
+                sleepTimeInMs = (int)(this.configurationWrapper.GetLockTimeout() - elapsedTimeSinceRowLocked).TotalMilliseconds;
             }
             sleepTimeInMs -= ConflictExceptionSleepTimeInMsec; // reduce the sleep time a little bit so that we will hit "_rtable_RowLock not expired" in RTable library.
             if (sleepTimeInMs < 0)

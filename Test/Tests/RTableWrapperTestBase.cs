@@ -580,7 +580,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             if (checkViewId)
             {
                 Assert.AreEqual(
-                    this.configurationService.GetReadView().ViewId,
+                    this.configurationWrapper.GetReadView().ViewId,
                     retrievedEntity._rtable_ViewId,
                     "_rtable_ViewId of retrievedEntity mismatch");
             }

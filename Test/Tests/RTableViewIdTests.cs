@@ -52,9 +52,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Console.WriteLine("tableName = {0}", this.tableName); 
             this.SetupRTableEnv(true, this.tableName);
 
-            for (int i = 0; i < configurationService.GetWriteView().Chain.Count; i++)
+            for (int i = 0; i < configurationWrapper.GetWriteView().Chain.Count; i++)
             {
-                replicas.Add(configurationService.GetWriteView().Chain[i].Item1);
+                replicas.Add(configurationWrapper.GetWriteView().Chain[i].Item1);
             }
         }
 

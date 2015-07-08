@@ -50,6 +50,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         public ReplicatedTableConfiguration()
         {
             Id = Guid.NewGuid();
+            LeaseDuration = Constants.LeaseDurationInSec;
         }
 
         override public Guid GetConfigId()

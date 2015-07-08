@@ -24,7 +24,6 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System;
     using System.Collections.Generic;
     using System.Threading;
-    using System.Threading.Tasks;
     using System.Linq;
 
     public class ReplicatedTableConfigurationServiceV2 : IDisposable

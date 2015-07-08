@@ -38,6 +38,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     public class RTableLibraryTestBase
     {
         /// <summary>
+        /// Configuration wrapper (layer) which interacts with the RTable ConfigurationService instance.
+        /// </summary>
+        protected IReplicatedTableConfigurationWrapper configurationWrapper;
+
+        /// <summary>
         /// Test configuration (e.g., storage account names / keys used in the unit tests) specified in an xml.
         /// </summary>
         protected RTableTestConfiguration rtableTestConfiguration;
@@ -176,7 +181,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.configurationService =
                 new ReplicatedTableConfigurationService(this.configurationInfos, useHttps);
 
-            this.configurationService.LockTimeout = TimeSpan.FromSeconds(TestLockTimeoutInSeconds);
+            this.configurationWrapper = new ReplicatedTableConfigurationWrapper(this.configurationService);
+            this.configurationWrapper.SetLockTimeout(TimeSpan.FromSeconds(TestLockTimeoutInSeconds));
 
             if (string.IsNullOrEmpty(tableName))
             {
@@ -311,7 +317,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 return;
             }
 
-            while (this.configurationService.GetWriteView().ViewId != updatedViewId)
+            while (this.configurationWrapper.GetWriteView().ViewId != updatedViewId)
             {
                 Console.WriteLine("Sleeping {0} seconds for new viewId to take effect...",
                     Constants.LeaseDurationInSec/2);
@@ -326,7 +332,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="convertXStoreTableMode"></param>
         protected void RefreshRTableEnvJsonConfigBlob(bool convertXStoreTableMode)
         {
-            long viewId = this.configurationService.GetReadView().ViewId;
+            long viewId = this.configurationWrapper.GetReadView().ViewId;
             this.RefreshRTableEnvJsonConfigBlob(viewId, convertXStoreTableMode);            
         }
 
@@ -457,7 +463,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="domainName"></param>
         /// <param name="connectionString">(Output)</param>
         /// <returns></returns>
-        private CloudBlobClient GenerateCloudBlobClient(
+        protected CloudBlobClient GenerateCloudBlobClient(
             string accountName,
             string accountKey,
             string domainName,
@@ -539,11 +545,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             TableQuery<SampleRTableEntity> query = new TableQuery<SampleRTableEntity>().
                 Where(TableQuery.CombineFilters(filter1, TableOperators.And, filter2));
 
-            SampleRTableEntity[] entities = new SampleRTableEntity[configurationService.GetWriteView().Chain.Count];
-            for (int i = 0; i < configurationService.GetWriteView().Chain.Count; i++)
+            SampleRTableEntity[] entities = new SampleRTableEntity[configurationWrapper.GetWriteView().Chain.Count];
+            for (int i = 0; i < configurationWrapper.GetWriteView().Chain.Count; i++)
             {
                 Console.WriteLine("Executing query for CloudTable #{0}", i);
-                foreach (var item in ((CloudTableClient) configurationService.GetWriteView()[i]).GetTableReference(repTable.TableName).ExecuteQuery(query))
+                foreach (var item in ((CloudTableClient) configurationWrapper.GetWriteView()[i]).GetTableReference(repTable.TableName).ExecuteQuery(query))
                 {
                     Console.WriteLine("{0}", item.ToString());
                     entities[i] = item;
@@ -553,7 +559,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             if (checkIndividualAccounts)
             {
                 Console.WriteLine("Checking for consistency...");
-                for (int i = 1; i < configurationService.GetWriteView().Chain.Count; i++)
+                for (int i = 1; i < configurationWrapper.GetWriteView().Chain.Count; i++)
                 {
                     Assert.IsTrue((entities[0] == null && entities[i] == null) || (entities[0]  != null && entities[0].Equals(entities[i])),
                         "Entities in storage accounts: #0 and #{0} do NOT match", i);
@@ -580,10 +586,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                                    Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, partitionKey));
 
             //Key = RowKey, Value = Entity
-            var headEntities = configurationService.GetWriteView()[headReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
+            var headEntities = configurationWrapper.GetWriteView()[headReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
 
             //Key = RowKey, Value = Entity
-            var tailEntities = configurationService.GetWriteView()[tailReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
+            var tailEntities = configurationWrapper.GetWriteView()[tailReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
 
             Assert.IsTrue(headEntities.Count >= tailEntities.Count);
 
