@@ -37,7 +37,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.LoadTestConfiguration();
             string tableName = this.GenerateRandomTableName();
             Console.WriteLine("tableName = {0}", tableName);
-            this.SetupRTableEnv(true, tableName, true, "", new List<int> { 0 });
+            this.SetupRTableEnv(tableName, true, "", new List<int> { 0 });
         }
 
         [TestFixtureTearDown]

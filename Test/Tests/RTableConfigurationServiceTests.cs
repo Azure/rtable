@@ -39,7 +39,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.LoadTestConfiguration();
 
             string tableName = this.GenerateRandomTableName();
-            this.SetupRTableEnv(true, tableName);
+            this.SetupRTableEnv(tableName);
         }
 
         [TearDown]
@@ -94,7 +94,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             replicas.Insert(0, newReplica);
 
             int readViewHeadIndex = 1;
-            this.configurationService.UpdateConfiguration(replicas, readViewHeadIndex);
+            this.UpdateConfiguration(replicas, readViewHeadIndex);
 
             // validate all state
             Assert.IsFalse(this.configurationWrapper.IsViewStable(), "View = {0}", this.configurationWrapper.GetWriteView().IsStable);
@@ -110,7 +110,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(writeView.GetReplicaInfo(headIndex).ViewInWhichAddedToChain == readViewHeadViewId + 1);
 
             //Now, make the read and write views the same
-            this.configurationService.UpdateConfiguration(replicas, 0);
+            this.UpdateConfiguration(replicas, 0);
             // validate all state
             Assert.IsTrue(this.configurationWrapper.IsViewStable());
             readView = this.configurationWrapper.GetReadView();
@@ -171,7 +171,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 newReplicas.Add(fullView.GetReplicaInfo(i));
             }
-            configurationService.UpdateConfiguration(newReplicas, 0);
+            this.UpdateConfiguration(newReplicas, 0);
             Assert.IsTrue(configurationWrapper.IsViewStable());
 
             SampleRTableEntity newCustomer = new SampleRTableEntity("firstname1", "lastname1", "email1@company.com");
@@ -192,7 +192,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             ReadFromIndividualAccountsDirectly(newCustomer.PartitionKey, newCustomer.RowKey, true);
 
             //Add replica at head
-            configurationService.UpdateConfiguration(fullViewReplicas, 1);
+            this.UpdateConfiguration(fullViewReplicas, 1);
 
             // repair row on the new head
             Console.WriteLine("Calling TableOperation.Replace(newCustomer)...");
@@ -248,7 +248,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             ReadFromIndividualAccountsDirectly(newCustomer.PartitionKey, newCustomer.RowKey, true);
 
             // remove replica from the head
-            configurationService.UpdateConfiguration(newReplicas, 0);
+            this.UpdateConfiguration(newReplicas, 0);
             Assert.IsTrue(configurationWrapper.IsViewStable());
 
             // delete row
@@ -258,7 +258,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual((int) HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
             //Add replica at head
-            configurationService.UpdateConfiguration(fullViewReplicas, 1);
+            this.UpdateConfiguration(fullViewReplicas, 1);
 
             // repair row on the new head
             Console.WriteLine("Calling repair row");
@@ -323,7 +323,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             ReadFromIndividualAccountsDirectly(customer3.PartitionKey, customer3.RowKey, true);
 
             // remove replica from the head
-            configurationService.UpdateConfiguration(newReplicas, 0);
+            this.UpdateConfiguration(newReplicas, 0);
             Assert.IsTrue(configurationWrapper.IsViewStable());
 
             // delete a row
@@ -348,7 +348,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
             //Add replica at head
-            configurationService.UpdateConfiguration(fullViewReplicas, 1);
+            this.UpdateConfiguration(fullViewReplicas, 1);
 
             // repair table on the new head
             Console.WriteLine("Calling repair table");

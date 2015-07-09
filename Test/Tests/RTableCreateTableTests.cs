@@ -44,7 +44,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             try
             {
                 string tableName = this.GenerateRandomTableName();
-                this.SetupRTableEnv(true, tableName);
+                this.SetupRTableEnv(tableName);
                 Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
             }
             finally
@@ -59,7 +59,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             try
             {
                 string tableName = this.GenerateRandomTableName();
-                this.SetupRTableEnv(true, tableName);
+                this.SetupRTableEnv(tableName);
                 Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
 
                 // Try to create the same RTable again.

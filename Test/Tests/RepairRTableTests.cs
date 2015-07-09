@@ -39,7 +39,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 this.LoadTestConfiguration();
 
-                bool reUploadRTableConfigBlob = true;
                 string tableName = this.GenerateRandomTableName();
                 bool useHttps = true;
                 long viewId = 1;
@@ -51,7 +50,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 Console.WriteLine("Setting up RTable that only has a Tail Replica...");
                 this.SetupRTableEnv(
-                    reUploadRTableConfigBlob,
                     tableName,
                     useHttps,
                     viewIdString,
@@ -190,7 +188,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 this.LoadTestConfiguration();
 
-                bool reUploadRTableConfigBlob = true;
                 string tableName = this.GenerateRandomTableName();
                 bool useHttps = true;
                 long viewId = 1;
@@ -202,7 +199,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 Console.WriteLine("Setting up RTable that has a Head Replica and a Tail Replica...");
                 this.SetupRTableEnv(
-                    reUploadRTableConfigBlob,
                     tableName,
                     useHttps,
                     viewIdString,

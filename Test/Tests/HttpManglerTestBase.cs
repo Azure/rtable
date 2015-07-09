@@ -71,7 +71,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.LoadTestConfiguration();
             string tableName = this.GenerateRandomTableName();
             Console.WriteLine("tableName = {0}", tableName);
-            this.SetupRTableEnv(true, tableName, this.useHttps);
+            this.SetupRTableEnv(tableName, this.useHttps);
 
             for (int i = 0; i < this.cloudTables.Count; i++)
             {
