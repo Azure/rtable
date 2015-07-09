@@ -338,6 +338,29 @@ namespace Microsoft.Azure.Toolkit.Replication
             return new ReplicatedTableQuorumWriteResult(ReplicatedTableQuorumWriteCode.QuorumWriteFailure, writeResultArray.ToList());
         }
 
+        public static ReplicatedTableQuorumWriteResult TryUploadBlobs<T>(List<CloudBlockBlob> blobs, T configuration)
+            where T : class
+        {
+            string content = configuration.ToString();
+
+            // Update blobs ...
+            int numberOfBlobs = blobs.Count;
+            ReplicatedTableWriteBlobResult[] writeResultArray = new ReplicatedTableWriteBlobResult[numberOfBlobs];
+
+            Parallel.For(0, numberOfBlobs, index =>
+            {
+                writeResultArray[index] = TryWriteBlob(blobs[index], content, "*");
+            });
+
+            int successRate = writeResultArray.Count(e => e.Success == true);
+            if (successRate == numberOfBlobs)
+            {
+                return new ReplicatedTableQuorumWriteResult(ReplicatedTableQuorumWriteCode.Success, writeResultArray.ToList());
+            }
+
+            return new ReplicatedTableQuorumWriteResult(ReplicatedTableQuorumWriteCode.QuorumWriteFailure, writeResultArray.ToList());
+        }
+
         public static ReplicatedTableWriteBlobResult TryWriteBlob(CloudBlockBlob blob, string content, string eTag)
         {
             try

@@ -54,7 +54,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             int index = 0;
-            string msg = Results.Aggregate("QuorumReadResult:",
+            string msg = Results.Aggregate("\n",
                                           (current, result) =>
                                           {
                                               if (!string.IsNullOrEmpty(current))
@@ -64,7 +64,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                                               return current + string.Format("Blob #{0} -> {1}", index++, result.ToString());
                                           });
 
-            return msg;
+            return string.Format("QuorumReadResult Code: {0}, Message: {1}", Code, msg);
         }
     }
 }

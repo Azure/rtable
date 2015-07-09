@@ -134,21 +134,21 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // add the same replica to all the blobs
             // now check that the majority view has changed
             //
-            RefreshRTableEnvJsonConfigBlob(v.ViewId + 1, false, 0, 0, false);
-            RefreshRTableEnvJsonConfigBlob(v.ViewId + 1, false, 0, 1, true);
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 1, false, 0, new List<int>{0}, false);
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 1, false, 0, new List<int>{0, 1}, true);
 
             // validate all state
             Assert.IsTrue(this.configurationWrapper.GetWriteView().ViewId == v.ViewId + 1,
                 "View did not get updated = {0}", this.configurationWrapper.GetWriteView());
 
             // now update the view on one of the blobs so that all three blobs have different views.
-            RefreshRTableEnvJsonConfigBlob(v.ViewId + 2, false, 0, 0, false);
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 2, false, 0, new List<int>{0}, false);
 
             // ensure that viewId does not change
             Thread.Sleep(Constants.LeaseDurationInSec * 1000);
             Assert.IsTrue(this.configurationWrapper.GetWriteView().IsEmpty, "View should be empty");
 
-            RefreshRTableEnvJsonConfigBlob(v.ViewId + 2, false, 0, 2, true);
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 2, false, 0, new List<int>{0, 2}, true);
             Assert.IsTrue(this.configurationWrapper.GetWriteView().ViewId == v.ViewId + 2,
                 "View did not get updated to +2 = {0}", this.configurationWrapper.GetWriteView());
         }

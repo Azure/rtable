@@ -25,6 +25,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Collections.Generic;
     using System.Threading;
     using System.Linq;
+    using Microsoft.WindowsAzure.Storage.Blob;
 
     public class ReplicatedTableConfigurationServiceV2 : IDisposable
     {
@@ -89,47 +90,55 @@ namespace Microsoft.Azure.Toolkit.Replication
             return UpdateConfigurationInternal(configuration, useConditionalUpdate);
         }
 
+        public ReplicatedTableQuorumWriteResult UploadConfigurationToBlobs(List<int> blobIndexes, ReplicatedTableConfiguration configuration)
+        {
+            if (blobIndexes == null || !blobIndexes.Any())
+            {
+                throw new ArgumentNullException("blobIndexes");
+            }
+
+            if (configuration == null)
+            {
+                throw new ArgumentNullException("configuration");
+            }
+
+            List<CloudBlockBlob> blobs = new List<CloudBlockBlob>();
+            foreach (var blobIndex in blobIndexes)
+            {
+                if (blobIndex < this.configManager.GetBlobs().Count)
+                {
+                    blobs.Add(this.configManager.GetBlobs()[blobIndex]);
+                    continue;
+                }
+
+                var msg = string.Format("blobIndex={0} >= BlobCount={1}", blobIndex, this.configManager.GetBlobs().Count);
+
+                ReplicatedTableLogger.LogError(msg);
+                throw new Exception(msg);
+            }
+
+
+            // TODO: LockBlobs(***)
+
+
+            SanitizeConfiguration(configuration);
+
+            // - Upload to blobs ...
+            ReplicatedTableQuorumWriteResult result = CloudBlobHelpers.TryUploadBlobs(blobs, configuration);
+
+            this.configManager.Invalidate();
+
+            if (result.Code != ReplicatedTableQuorumWriteCode.Success)
+            {
+                ReplicatedTableLogger.LogError("Failed to upload configuration to blobs, \n{0}", result.ToString());
+            }
+
+            return result;
+        }
+
         private ReplicatedTableQuorumWriteResult UpdateConfigurationInternal(ReplicatedTableConfiguration configuration, bool useConditionalUpdate)
         {
-            // - Sanitize configuration ...
-            foreach (var view in configuration.viewMap)
-            {
-                var viewName = view.Key;
-                var viewConf = view.Value;
-
-                long viewId = viewConf.ViewId;
-                View currentView = GetView(viewName);
-
-                if (viewId == 0)
-                {
-                    if (!currentView.IsEmpty)
-                    {
-                        viewId = currentView.ViewId + 1;
-                    }
-                    else
-                    {
-                        viewId = 1;
-                    }
-                }
-
-                viewConf.Timestamp = DateTime.UtcNow;
-                viewConf.ViewId = viewId;
-
-
-                // If the read view head index is not 0, this means we are introducing 1 or more replicas at the head.
-                // For each such replica, update the view id in which it was added to the write view of the chain
-                foreach (var replica in viewConf.GetCurrentReplicaChain())
-                {
-                    if (replica.IsWriteOnly())
-                    {
-                        replica.ViewInWhichAddedToChain = viewId;
-                        continue;
-                    }
-
-                    // stop at the first Readable replica
-                    break;
-                }
-            }
+            SanitizeConfiguration(configuration);
 
             // - Upload configuration ...
             Func<ReplicatedTableConfiguration, ReplicatedTableConfiguration, bool> comparer = (a, b) => a.Id == b.Id;
@@ -156,6 +165,47 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             return result;
+        }
+
+        private void SanitizeConfiguration(ReplicatedTableConfiguration configuration)
+        {
+            foreach (var view in configuration.viewMap)
+            {
+                var viewName = view.Key;
+                var viewConf = view.Value;
+
+                long viewId = viewConf.ViewId;
+                View currentView = GetView(viewName);
+
+                if (viewId == 0)
+                {
+                    if (!currentView.IsEmpty)
+                    {
+                        viewId = currentView.ViewId + 1;
+                    }
+                    else
+                    {
+                        viewId = 1;
+                    }
+                }
+
+                viewConf.Timestamp = DateTime.UtcNow;
+                viewConf.ViewId = viewId;
+
+                foreach (var replica in viewConf.GetCurrentReplicaChain())
+                {
+                    // We are introducing 1 or more replicas at the head.
+                    // For each such replica, update the view id in which it was added to the write view of the chain
+                    if (replica.IsWriteOnly())
+                    {
+                        replica.ViewInWhichAddedToChain = viewId;
+                        continue;
+                    }
+
+                    // stop at the first Readable replica
+                    break;
+                }
+            }
         }
 
 
