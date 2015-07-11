@@ -97,6 +97,7 @@
     <Compile Include="ReplicatedTable.cs" />
     <Compile Include="ReplicatedTableConflictException.cs" />
     <Compile Include="ReplicatedTableEntity.cs" />
+    <Compile Include="ReplicatedTableRepairResult.cs" />
     <Compile Include="ReplicatedTableStaleViewException.cs" />
     <Compile Include="ReplicatedTableConfigurationService.cs" />
     <Compile Include="ReplicatedTableConfigurationStore.cs" />
