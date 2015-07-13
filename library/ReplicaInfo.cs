@@ -44,13 +44,19 @@ namespace Microsoft.Azure.Toolkit.Replication
         [DataMember(IsRequired = true)]
         public long ViewInWhichAddedToChain { get; set; }
 
-        [DataMember(IsRequired = true)]
+        // Required = false for backward compatibility
+        [DataMember(IsRequired = false)]
         public ReplicaStatus Status { get; set; }
+
+        // Required = false for backward compatibility
+        [DataMember(IsRequired = false)]
+        public long ViewWhenTurnedOff { get; set; }
 
         public ReplicaInfo()
         {
             this.ViewInWhichAddedToChain = 1;
             this.Status = ReplicaStatus.ReadWrite;
+            this.ViewWhenTurnedOff = 0;
         }
 
         public bool IsReadOnly()

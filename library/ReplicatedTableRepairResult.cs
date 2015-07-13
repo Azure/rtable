@@ -24,9 +24,8 @@ namespace Microsoft.Azure.Toolkit.Replication
     public enum ReplicatedTableRepairCode
     {
         NotConfiguredTable,
-        TableViewEmpty,
-        NotSpecifiedReplica,
-        RepairNotNeeded,
+        NotImpactedTable,
+        StableTable,
         Success,
         Error,
     }

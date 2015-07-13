@@ -411,7 +411,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             foreach (var tableName in tablesToRepair)
             {
-                ReplicatedTableRepairResult result = RepairTable(tableName, storageAccountName);
+                ReplicatedTableRepairResult result = RepairTable(tableName, storageAccountName, configuration);
                 if (result.Code != ReplicatedTableRepairCode.Error)
                 {
                     ReplicatedTableLogger.LogInformational(result.ToString());
@@ -504,10 +504,19 @@ namespace Microsoft.Azure.Toolkit.Replication
                 var foundReplicas = viewConf.GetCurrentReplicaChain()
                                             .FindAll(r => r.StorageAccountName == storageAccountName);
 
+                if (!foundReplicas.Any())
+                {
+                    continue;
+                }
+
                 foreach (var replica in foundReplicas)
                 {
                     replica.Status = ReplicaStatus.None;
+                    replica.ViewWhenTurnedOff = viewConf.ViewId;
                 }
+
+                // Update view id
+                viewConf.ViewId++;
             }
 
             // - Write back configuration ...
@@ -552,6 +561,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 replica.Status = ReplicaStatus.ReadOnly;
             }
+
+            // Update view id
+            conf.ViewId++;
         }
 
         private static void EnableWriteOnReplicas(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
@@ -578,53 +590,53 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 list[0].Status = ReplicaStatus.ReadWrite;
             }
+
+            // Update view id
+            conf.ViewId++;
         }
 
-        private ReplicatedTableRepairResult RepairTable(string tableName, string storageAccountName)
+        private ReplicatedTableRepairResult RepairTable(string tableName, string storageAccountName, ReplicatedTableConfiguration configuration)
         {
             string viewName = "";
-            int viewIdToRecoverFrom = 0; //TODO: *****************
 
             try
             {
                 ReplicatedTableConfiguredTable tableConfig;
-                if (!IsConfiguredTable(tableName, out tableConfig))
+                if (!configuration.IsConfiguredTable(tableName, out tableConfig))
                 {
                     return new ReplicatedTableRepairResult(ReplicatedTableRepairCode.NotConfiguredTable, tableName);
                 }
 
-                // Capture viewName
                 viewName = tableConfig.ViewName;
 
-                var viewConf = GetView(viewName);
-                if (viewConf.IsEmpty)
+                List<ReplicaInfo> list = configuration.GetView(viewName).ReplicaChain;
+                if (!list.Any() ||
+                    list[0].StorageAccountName != storageAccountName)
                 {
-                    return new ReplicatedTableRepairResult(ReplicatedTableRepairCode.TableViewEmpty, tableName, viewName);
+                    return new ReplicatedTableRepairResult(ReplicatedTableRepairCode.NotImpactedTable, tableName, viewName, storageAccountName);
                 }
 
-                ReplicaInfo head = viewConf.GetReplicaInfo(0);
-                if (head.StorageAccountName != storageAccountName)
-                {
-                    return new ReplicatedTableRepairResult(ReplicatedTableRepairCode.NotSpecifiedReplica, tableName, viewName, storageAccountName);
-                }
-
+                ReplicaInfo head = list[0];
                 if (head.Status != ReplicaStatus.WriteOnly)
                 {
-                    return new ReplicatedTableRepairResult(ReplicatedTableRepairCode.RepairNotNeeded, tableName, viewName, storageAccountName);
+                    return new ReplicatedTableRepairResult(ReplicatedTableRepairCode.StableTable, tableName, viewName, storageAccountName);
                 }
 
+                int viewIdToRecoverFrom = (int)head.ViewWhenTurnedOff;
 
-                ReplicatedTableLogger.LogInformational("RepairTable={0}, View={1}, StorageAccountName={2} ...",
-                                                        tableName,
-                                                        viewName,
-                                                        storageAccountName);
-                // Repairing ...
-                ReconfigurationStatus status = new ReplicatedTable(tableName, this).RepairTable(viewIdToRecoverFrom, null);
-
-                ReplicatedTableLogger.LogInformational("RepairTable={0}, View={1}, StorageAccountName={2} => Status={3}",
+                ReplicatedTableLogger.LogInformational("RepairTable={0}, View={1}, StorageAccountName={2}, from viewId={3} ...",
                                                         tableName,
                                                         viewName,
                                                         storageAccountName,
+                                                        viewIdToRecoverFrom);
+                // Repairing ...
+                ReconfigurationStatus status = new ReplicatedTable(tableName, this).RepairTable(viewIdToRecoverFrom, null);
+
+                ReplicatedTableLogger.LogInformational("RepairTable={0}, View={1}, StorageAccountName={2}, from viewId={3} => Status={4}",
+                                                        tableName,
+                                                        viewName,
+                                                        storageAccountName,
+                                                        viewIdToRecoverFrom,
                                                         status);
 
                 if (status == ReconfigurationStatus.SUCCESS)
@@ -660,6 +672,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             list[0].Status = ReplicaStatus.ReadWrite;
+
+            // Update view id
+            conf.ViewId++;
         }
 
         // ...

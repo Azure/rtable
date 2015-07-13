@@ -226,6 +226,28 @@ namespace Microsoft.Azure.Toolkit.Replication
             return tableList.Find(e => e.UseAsDefault == true);
         }
 
+        public bool IsConfiguredTable(string tableName, out ReplicatedTableConfiguredTable configuredTable)
+        {
+            configuredTable = null;
+
+            ReplicatedTableConfiguredTable config = GetTable(tableName) ?? GetDefaultConfiguredTable();
+
+            // Neither explicit config, nor default config
+            if (config == null)
+            {
+                return false;
+            }
+
+            // Placeholder config i.e. a config with No View
+            if (string.IsNullOrEmpty(config.ViewName))
+            {
+                return false;
+            }
+
+            configuredTable = config;
+            return true;
+        }
+
         public void RemoveTable(string tableName)
         {
             if (string.IsNullOrEmpty(tableName))
