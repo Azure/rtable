@@ -81,7 +81,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             TableName = name;
         }
 
-        private void ValidateTxnView(View txnView)
+        private void ValidateTxnView(View txnView, bool viewMustBeWritable = true)
         {
             if (txnView.IsEmpty || CurrentView.IsEmpty)
             {
@@ -93,6 +93,11 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ReplicatedTableStaleViewException(string.Format("View id changed from {0} to {1}",
                     CurrentView.ViewId,
                     txnView));
+            }
+
+            if (viewMustBeWritable && !txnView.IsWritable())
+            {
+                throw new Exception("View is not Writable");
             }
         }
 
@@ -401,7 +406,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 if (opType == TableOperationType.Retrieve)
                 {
-                    // throw exception if the batch has more than one operation along with a retrieve operation
+                    // return null if the batch has more than one operation along with a retrieve operation
                     if (batch.Count > 1)
                     {
                         return null;
@@ -564,17 +569,17 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new InvalidOperationException("Cannot execute an empty batch operation");
             }
 
+            //   Extract operations from the batch and transform them to ReplicatedTable operations.
+            //   If it is a retrieve operation, just call the retrieve function
+            IList<TableResult> retrieve;
+            if ((retrieve = CheckRetrieveInBatch(batch, requestOptions, operationContext)) != null)
+            {
+                return retrieve;
+            }
+
+            //   Otherwise, transform operations and run prepare phase
             View txnView = CurrentView;
             ValidateTxnView(txnView);
-
-            //   Extract operations from the batch and transform them to ReplicatedTable operations. 
-            //   If it is a retrieve operation, just call the retrieve function
-            //   Otherwise, transform operations and run prepare phase
-            IList<TableResult>[] results = new IList<TableResult>[txnView.Chain.Count];
-            if ((results[0] = CheckRetrieveInBatch(batch, requestOptions, operationContext)) != null)
-            {
-                return results[0];
-            }
 
             // First, make sure all the rows in the batch operation are not locked. If they are locked, flush them.
             this.FlushAndRetrieveBatch(txnView, batch, requestOptions, null);
@@ -583,7 +588,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             IList<TableResult> headResults = this.RunPreparePhaseAgainstHeadReplica(txnView, batch, requestOptions, operationContext);
 
             // Perform the Prepare phase for the other replicas and the Commit phase for all replica.
-            results = this.Flush2PCBatch(txnView, batch, headResults, requestOptions, operationContext);
+            IList<TableResult>[] results = this.Flush2PCBatch(txnView, batch, headResults, requestOptions, operationContext);
 
             // Return the results returned by the tail replica, where all original operations are run.
             return results[txnView.TailIndex];
@@ -770,7 +775,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             // The tail replica is usually configured to be the closest one, so always go there. This policy optimizes
             // for latency. If read load balancing across replicas is desired, then choose a random replica and read if lock bit is 0.
             View txnView = CurrentView;
-            ValidateTxnView(txnView);
+            ValidateTxnView(txnView, false);
 
             int tailIndex = txnView.TailIndex;
             int index = tailIndex;
@@ -1224,7 +1229,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, virtualizeEtag);
         }
 
-        public TableResult FlushAndRetrieveInternal(View txnView, IReplicatedTableEntity row,
+        private TableResult FlushAndRetrieveInternal(View txnView, IReplicatedTableEntity row,
             TableRequestOptions requestOptions = null,
             OperationContext operationContext = null, bool virtualizeEtag = true)
         {
@@ -1379,6 +1384,8 @@ namespace Microsoft.Azure.Toolkit.Replication
         private TableResult RetrieveFromReplica(View txnView, int index, TableOperation operation, 
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
+            // Assert (GetOpType(operation) == TableOperationType.Retrieve)
+
             CloudTableClient tableClient = txnView[index];
             CloudTable table = tableClient.GetTableReference(this.TableName);
             TableResult retrievedResult = null;
@@ -1386,7 +1393,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             try
             {
                 retrievedResult = table.Execute(operation, requestOptions, operationContext);
-                ValidateTxnView(txnView);
+                ValidateTxnView(txnView, false);
             }
             catch (Exception e)
             {
@@ -2049,7 +2056,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return RepairRowInternal(txnView, partitionKey, rowKey, existingRow);
         }
 
-        public TableResult RepairRowInternal(View txnView, string partitionKey, string rowKey, IReplicatedTableEntity existingRow)
+        private TableResult RepairRowInternal(View txnView, string partitionKey, string rowKey, IReplicatedTableEntity existingRow)
         {
             TableResult result = new TableResult() { HttpStatusCode = (int)HttpStatusCode.OK };
 

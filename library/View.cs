@@ -52,6 +52,17 @@ namespace Microsoft.Azure.Toolkit.Replication
                         view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
                     }
                 }
+
+                if (!view.IsEmpty)
+                {
+                    ReplicaInfo head = view.GetReplicaInfo(0);
+                    head.Status = ReplicaStatus.WriteOnly;
+
+                    if (view.IsStable)
+                    {
+                        head.Status = ReplicaStatus.ReadWrite;
+                    }
+                }
             }
 
             return view;
