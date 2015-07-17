@@ -83,10 +83,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("configuration");
             }
 
-
-            // TODO: LockBlobs(***)
-
-
             return UpdateConfigurationInternal(configuration, useConditionalUpdate);
         }
 
@@ -306,10 +302,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("tablesToRepair");
             }
 
-
-            // TODO: LockBlobs(***)
-
-
             ReplicatedTableConfiguration configuration = null;
             failures = new List<ReplicatedTableRepairResult>();
 
@@ -338,15 +330,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 MoveReplicaToFrontAndSetViewToReadOnly(viewName, viewConf, storageAccountName);
             }
 
-            // - Write back configuration ...
-            ReplicatedTableQuorumWriteResult writeResult = UpdateConfigurationInternal(configuration, true);
-            if (writeResult.Code != ReplicatedTableQuorumWriteCode.Success)
-            {
-                var msg = string.Format("TurnReplicaOn={0}: failed to update -Phase 1- configuration, \n{1}", storageAccountName, writeResult.ToString());
-
-                ReplicatedTableLogger.LogError(msg);
-                throw new Exception(msg);
-            }
+            // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
+            SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 1");
 
             #endregion
             /**
@@ -374,28 +359,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 EnableWriteOnReplicas(viewName, viewConf, storageAccountName);
             }
 
-            // - Write back configuration ...
-            //   Note: configuration *Id* has changed since previous updated So disable conditional update
-            writeResult = UpdateConfigurationInternal(configuration, false);
-            if (writeResult.Code != ReplicatedTableQuorumWriteCode.Success)
-            {
-                var msg = string.Format("TurnReplicaOn={0}: failed to update -Phase 2- configuration, \n{1}", storageAccountName, writeResult.ToString());
-
-                ReplicatedTableLogger.LogError(msg);
-                throw new Exception(msg);
-            }
-
-            // - Confirm the new config is the current loaded into the RTable config manager
-            if (writeResult.Message != this.configManager.GetCurrentRunningConfigId().ToString())
-            {
-                var msg = string.Format("TurnReplicaOn={0}: new configId({1}) != current loaded configurationId({2}) after -Phase 2-",
-                                        storageAccountName,
-                                        writeResult.Message,
-                                        this.configManager.GetCurrentRunningConfigId());
-
-                ReplicatedTableLogger.LogError(msg);
-                throw new Exception(msg);
-            }
+            // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
+            SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 2");
 
             #endregion
             /**
@@ -445,28 +410,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 EnableReadWriteOnReplicas(viewName, viewConf, storageAccountName);
             }
 
-            // - Write back configuration ...
-            //   Note: configuration *Id* has changed since previous updated So disable conditional update
-            writeResult = UpdateConfigurationInternal(configuration, false);
-            if (writeResult.Code != ReplicatedTableQuorumWriteCode.Success)
-            {
-                var msg = string.Format("TurnReplicaOn={0}: failed to update -Phase 4- configuration, \n{1}", storageAccountName, writeResult.ToString());
-
-                ReplicatedTableLogger.LogError(msg);
-                throw new Exception(msg);
-            }
-
-            // - Confirm the new config is the current loaded into the RTable config manager
-            if (writeResult.Message != this.configManager.GetCurrentRunningConfigId().ToString())
-            {
-                var msg = string.Format("TurnReplicaOn={0}: new configId({1}) != current loaded configurationId({2}) after -Phase 4-",
-                                        storageAccountName,
-                                        writeResult.Message,
-                                        this.configManager.GetCurrentRunningConfigId());
-
-                ReplicatedTableLogger.LogError(msg);
-                throw new Exception(msg);
-            }
+            // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
+            SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 4");
 
             #endregion
             /**
@@ -481,10 +426,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 throw new ArgumentNullException("storageAccountName");
             }
-
-
-            // TODO: LockBlobs(***)
-
 
             ReplicatedTableConfiguration configuration = null;
 
@@ -675,6 +616,37 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Update view id
             conf.ViewId++;
+        }
+
+        private void SaveConfigAndRefreshItsIdAndValidateIsLoaded(ReplicatedTableConfiguration configuration, string iteration)
+        {
+            string msg = "";
+
+            ReplicatedTableQuorumWriteResult writeResult = UpdateConfigurationInternal(configuration, true);
+            if (writeResult.Code != ReplicatedTableQuorumWriteCode.Success)
+            {
+                msg = string.Format("{0} : Failed to update configuration, \n{1}", iteration, writeResult.ToString());
+
+                ReplicatedTableLogger.LogError(msg);
+                throw new Exception(msg);
+            }
+
+            // Update config with new Id
+            configuration.Id = new Guid(writeResult.Message);
+
+            // - Confirm the new config is the current loaded into the RTable config manager
+            if (configuration.Id == this.configManager.GetCurrentRunningConfigId())
+            {
+                return;
+            }
+
+            msg = string.Format("{0} : ConfigId({1}) != currently running configurationId({2})",
+                                iteration,
+                                configuration.Id,
+                                this.configManager.GetCurrentRunningConfigId());
+
+            ReplicatedTableLogger.LogError(msg);
+            throw new Exception(msg);
         }
 
         // ...
