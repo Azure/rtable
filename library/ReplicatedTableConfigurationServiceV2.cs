@@ -113,10 +113,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new Exception(msg);
             }
 
-
-            // TODO: LockBlobs(***)
-
-
             SanitizeConfiguration(configuration);
 
             // - Upload to blobs ...
