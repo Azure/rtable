@@ -250,7 +250,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     TamperBehaviors.TamperAllRequestsIf(
                         (session => { session.Abort(); }),
                         skipInitialSessions,
-                        AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper))
+                        AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper + "."))
                 };
 
             //
@@ -323,7 +323,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     TamperBehaviors.TamperAllRequestsIf(
                         (session => { session.Abort();}),
                         skipInitialSessions,
-                        AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper))
+                        AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper + "."))
                 };
 
             string jobIdTemplate = jobId + "-{0}";
@@ -453,7 +453,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 {
                     TamperBehaviors.TamperAllRequestsIf(
                         Actions.ThrottleTableRequest,
-                        AzureStorageSelectors.TableTraffic().IfHostNameContains("accountNameToTamper"+"."))
+                        AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper + "."))
                 };
 
             //
@@ -507,7 +507,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 {
                     DelayBehaviors.DelayAllRequestsIf(
                             delayInMs,
-                            AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper))
+                            AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper + "."))
                 };
 
             //
@@ -595,7 +595,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     TamperBehaviors.TamperAllRequestsIf(
                             Actions.ThrottleTableRequest,
                             skipInitialSessions,
-                            AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper))         
+                            AzureStorageSelectors.TableTraffic().IfHostNameContains(accountNameToTamper + "."))
                 };
 
             //
