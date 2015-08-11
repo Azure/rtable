@@ -99,7 +99,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             View v = this.configurationService.GetWriteView();
             int index = v.Chain.Count - 1;
             string accountName = v.GetReplicaInfo(index).StorageAccountName;
-            string accountKey = v.GetReplicaInfo(index).StorageAccountKey;
 
             List<ReplicaInfo> replicas = new List<ReplicaInfo>();
             for (int i = 0; i <= index; i++)
@@ -111,7 +110,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             ReplicaInfo newReplica = new ReplicaInfo()
             {
                 StorageAccountName = accountName,
-                StorageAccountKey = accountKey
             };
 
             //Add the new replica at the head

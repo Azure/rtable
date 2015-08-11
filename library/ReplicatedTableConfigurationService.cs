@@ -23,6 +23,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
+    using System.Security;
     using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.WindowsAzure.Storage;
@@ -33,11 +34,12 @@ namespace Microsoft.Azure.Toolkit.Replication
     {
         private List<ConfigurationStoreLocationInfo> blobLocations;
         private Dictionary<string, CloudBlockBlob> blobs = new Dictionary<string, CloudBlockBlob>();
+        private Dictionary<string, SecureString> connectionStringMap = null;
 
         private bool useHttps;
 
         private int quorumSize = 0;
-        private string cloudStorageAccountTemplate = "DefaultEndpointsProtocol={0};AccountName={1};AccountKey={2}";
+        private string cloudStorageAccountTemplate = Constants.ShortConnectioStringTemplate;
 
         private DateTime lastViewRefreshTime;
         private View lastRenewedReadView;
@@ -46,12 +48,70 @@ namespace Microsoft.Azure.Toolkit.Replication
         private PeriodicTimer viewRefreshTimer;
         private bool disposed = false;
 
+        private Action<ReplicaInfo> SetConnectionStringStrategy;
 
+        /// <summary>
+        /// Connection string provided by user
+        /// </summary>
+        /// <param name="replica"></param>
+        private void NewStrategyToSetConnectionString(ReplicaInfo replica)
+        {
+            if (this.connectionStringMap.ContainsKey(replica.StorageAccountName))
+            {
+                replica.ConnectionString = this.connectionStringMap[replica.StorageAccountName];
+            }
+            else
+            {
+                replica.ConnectionString = null;
+            }
+        }
+
+        /// <summary>
+        /// Connection string infered from blob content
+        /// </summary>
+        /// <param name="replica"></param>
+        private void OldStrategyToSetConnectionString(ReplicaInfo replica)
+        {
+            string connectionString = String.Format(cloudStorageAccountTemplate, useHttps ? "https" : "http", replica.StorageAccountName, replica.StorageAccountKey);
+            replica.ConnectionString = SecureStringHelper.ToSecureString(connectionString);
+        }
+
+
+        /// <summary>
+        /// ** Depricated **
+        /// </summary>
+        /// <param name="blobLocations"></param>
+        /// <param name="useHttps"></param>
+        /// <param name="lockTimeoutInSeconds"></param>
         public ReplicatedTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations, 
             bool useHttps, 
             int lockTimeoutInSeconds = 0)
+            : this(blobLocations, null, useHttps, lockTimeoutInSeconds)
+        {
+            /* Warning :
+             * Don't add any initialization here.
+             * Timer thread already started before we make it to here.
+             * If needed, consider refactoring this class initialization.
+             *
+             * However, this is being Depricated => so don't add anything here.
+             */
+        }
+
+        /// <summary>
+        /// User provides all connection strings.
+        /// If null is passed in, then connection strings are infered from the blob itself - backward compatibility -
+        /// </summary>
+        /// <param name="blobLocations"></param>
+        /// <param name="connectionStringMap"></param>
+        /// <param name="useHttps"></param>
+        /// <param name="lockTimeoutInSeconds"></param>
+        public ReplicatedTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations,
+            Dictionary<string, SecureString> connectionStringMap,
+            bool useHttps,
+            int lockTimeoutInSeconds = 0)
         {
             this.blobLocations = blobLocations;
+            this.ConnectionStrings = connectionStringMap;
             this.useHttps = useHttps;
             this.lastViewRefreshTime = DateTime.MinValue;
             this.lastRenewedReadView = new View();
@@ -59,7 +119,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? Constants.LockTimeoutInSeconds : lockTimeoutInSeconds);
             this.Initialize();
 
-            this.viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, 
+            this.viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs,
                                                       TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec));
         }
 
@@ -87,6 +147,32 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             this.quorumSize = (this.blobs.Count / 2) + 1;
+        }
+
+        /// <summary>
+        /// Update connection strings before uploading new RTable config to blob.
+        /// Make sure new connection strings are an uper-set of previous one - MBB -
+        /// </summary>
+        public Dictionary<string, SecureString> ConnectionStrings
+        {
+            private get { return null; }
+
+            set
+            {
+                lock (this)
+                {
+                    connectionStringMap = value;
+
+                    if (this.connectionStringMap != null)
+                    {
+                        SetConnectionStringStrategy = NewStrategyToSetConnectionString;
+                    }
+                    else
+                    {
+                        SetConnectionStringStrategy = OldStrategyToSetConnectionString;
+                    }
+                }
+            }
         }
 
         public TimeSpan LockTimeout
@@ -228,6 +314,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                         for (int i = 0; i < configurationStore.ReplicaChain.Count; i++)
                         {
                             ReplicaInfo replica = configurationStore.ReplicaChain[i];
+                            SetConnectionStringStrategy(replica);
+
                             CloudTableClient tableClient = GetTableClientForReplica(replica);
                             if (replica != null && tableClient != null)
                             {
@@ -278,13 +366,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         private CloudTableClient GetTableClientForReplica(ReplicaInfo replica)
         {
-            string connectionString = String.Format(cloudStorageAccountTemplate,
-                        this.useHttps ? "https" : "http",
-                        replica.StorageAccountName,
-                        replica.StorageAccountKey);
-
             CloudTableClient tableClient = null;
-            if (!CloudBlobHelpers.TryCreateCloudTableClient(connectionString, out tableClient))
+            if (!CloudBlobHelpers.TryCreateCloudTableClient(replica.ConnectionString, out tableClient))
             {
                 ReplicatedTableLogger.LogError("No table client created for replica info: {0}", replica);
             }

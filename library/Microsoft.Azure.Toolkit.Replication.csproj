@@ -89,6 +89,7 @@
     <Compile Include="ReplicatedTableConfigurationService.cs" />
     <Compile Include="ReplicatedTableConfigurationStore.cs" />
     <Compile Include="ReplicatedTableEventSource.cs" />
+    <Compile Include="SecureStringHelper.cs" />
     <Compile Include="View.cs" />
   </ItemGroup>
   <ItemGroup>

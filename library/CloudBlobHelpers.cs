@@ -22,6 +22,7 @@
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
+    using System.Security;
     using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.Storage.Blob;
@@ -107,21 +108,22 @@ namespace Microsoft.Azure.Toolkit.Replication
             return false;
         }
 
-        public static bool TryCreateCloudTableClient(string storageAccountConnectionString,
-            out CloudTableClient cloudTableClient)
+        public static bool TryCreateCloudTableClient(SecureString connectionString, out CloudTableClient cloudTableClient)
         {
             cloudTableClient = null;
 
             try
             {
-                cloudTableClient = CloudStorageAccount.Parse(storageAccountConnectionString).CreateCloudTableClient();
-                return true;
+                string decryptConnectionString = SecureStringHelper.ToString(connectionString);
+                cloudTableClient = CloudStorageAccount.Parse(decryptConnectionString).CreateCloudTableClient();
 
+                return true;
             }
             catch (Exception e)
             {
-                ReplicatedTableLogger.LogError("Error creating cloud table client: Connection string {0}. Exception: {1}", 
-                    storageAccountConnectionString, 
+                ReplicatedTableLogger.LogError(
+                    "Error creating cloud table client: Connection string {0}. Exception: {1}",
+                    "********",
                     e.Message);
             }
 

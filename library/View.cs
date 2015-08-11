@@ -81,21 +81,25 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 return false;
             }
-            
+
             if (view1.Chain.Count != view2.Chain.Count)
+            {
                 return false;
+            }
 
             if (view1.ViewId != view2.ViewId)
+            {
                 return false;
+            }
 
             if (view1.ReadHeadIndex != view2.ReadHeadIndex)
+            {
                 return false;
+            }
 
             for (int i = 0; i < view1.Chain.Count; i++)
             {
-                if ((view1.GetReplicaInfo(i).StorageAccountName != view2.GetReplicaInfo(i).StorageAccountName) ||
-                    (view1.GetReplicaInfo(i).StorageAccountKey != view2.GetReplicaInfo(i).StorageAccountKey) ||
-                    (view1.GetReplicaInfo(i).ViewInWhichAddedToChain != view2.GetReplicaInfo(i).ViewInWhichAddedToChain))
+                if ( ! view1.GetReplicaInfo(i).Equals(view2.GetReplicaInfo(i)) )
                 {
                     return false;
                 }
