@@ -39,6 +39,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Linq;
     using System.Threading;
     using System.Xml.Serialization;
+    using System.Security;
     
     public class RTableLibraryTestBase
     {
@@ -87,6 +88,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// Lock timeout for tests
         /// </summary>
         private const int TestLockTimeoutInSeconds = 5;
+
+        /// <summary>
+        /// Mapping from account name -> connection string
+        /// </summary>
+        private Dictionary<string, SecureString> connectionStringMap;
 
         private int leaseDuration = 0;
         private int clockFactor = 0;
@@ -178,6 +184,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 tableName = this.rtableTestConfiguration.RTableInformation.RTableName;
             }
+
+            this.InitConnectionStringMap(useHttps);
 
             InitialSetup(tableName, useHttps, viewId, convertXStoreTableMode, numberOfBlobs);
 
@@ -377,6 +385,24 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             return locationInfos;
         }
 
+        private void InitConnectionStringMap(bool useHttps)
+        {
+            this.connectionStringMap = new Dictionary<string, SecureString>();
+
+            for (int i = 0; i < this.rtableTestConfiguration.StorageInformation.AccountNames.Count(); i++)
+            {
+                string connectionString = string.Format(Constants.LongConnectioStringTemplate,
+                                                        useHttps ? "https" : "http",
+                                                        this.rtableTestConfiguration.StorageInformation.AccountNames[i],
+                                                        this.rtableTestConfiguration.StorageInformation.AccountKeys[i],
+                                                        this.rtableTestConfiguration.StorageInformation.DomainName);
+
+                this.connectionStringMap.Add(
+                                            this.rtableTestConfiguration.StorageInformation.AccountNames[i],
+                                            SecureStringHelper.ToSecureString(connectionString));
+            }
+        }
+
         /// <summary>
         /// Return the connection string given the specified accountName, accountKey and domainName
         /// </summary>
@@ -411,6 +437,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             CloudBlobClient client = storageAccount.CreateCloudBlobClient();
             return client;
         }
+
 
         /// <summary>
         /// Read and print the entity of the specified jobType and jobId from individual storage accounts for debugging.
@@ -523,7 +550,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             this.UploadRTableConfigToBlob(viewId, convertXStoreTableMode, numberOfBlobs);
 
-            this.configurationService = new ReplicatedTableConfigurationService(this.configurationInfos, useHttps);
+            this.configurationService = new ReplicatedTableConfigurationService(this.configurationInfos, this.connectionStringMap, useHttps);
 
             this.configurationWrapper = new ReplicatedTableConfigurationWrapper(this.configurationService);
             this.configurationWrapper.SetLockTimeout(TimeSpan.FromSeconds(TestLockTimeoutInSeconds));
@@ -562,7 +589,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 ReplicaInfo replica = new ReplicaInfo();
                 replica.StorageAccountName = this.rtableTestConfiguration.StorageInformation.AccountNames[index];
-                replica.StorageAccountKey = this.rtableTestConfiguration.StorageInformation.AccountKeys[index];
 
                 if (readViewHeadIndex != 0)
                 {
@@ -689,7 +715,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             this.configurationInfos = this.GetRTableConfigurationLocationInfo(numberOfBlobs);
 
-            this.configurationService = new ReplicatedTableConfigurationServiceV2(this.configurationInfos, useHttps);
+            this.configurationService = new ReplicatedTableConfigurationServiceV2(this.configurationInfos, this.connectionStringMap, useHttps);
 
             this.UploadRTableConfigToBlob(viewId, convertXStoreTableMode, numberOfBlobs);
 
@@ -732,7 +758,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 ReplicaInfo replica = new ReplicaInfo
                 {
                     StorageAccountName = this.rtableTestConfiguration.StorageInformation.AccountNames[index],
-                    StorageAccountKey = this.rtableTestConfiguration.StorageInformation.AccountKeys[index],
                     Status = ReplicaStatus.ReadWrite,
                 };
 

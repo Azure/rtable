@@ -21,6 +21,7 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using System.Security;
     using System.Runtime.Serialization;
 
     public enum ReplicaStatus
@@ -37,8 +38,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         [DataMember(IsRequired = true)]
         public string StorageAccountName { get; set; }
 
-        //Eventually, need a way to NOT pass this in here
-        [DataMember(IsRequired = true)]
+        ///
+        /// Depricated: kept for backward compatibility.
+        /// Pass the Connection strings directly to RTable service.
+        ///
+        [DataMember(IsRequired = false)]
         public string StorageAccountKey { get; set; }
 
         [DataMember(IsRequired = true)]
@@ -87,5 +91,37 @@ namespace Microsoft.Azure.Toolkit.Replication
                 this.ViewInWhichAddedToChain,
                 this.Status);
         }
+
+        internal SecureString ConnectionString
+        {
+            get;
+            set;
+        }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
+        }
+
+        public override bool Equals(object obj)
+        {
+            ReplicaInfo other = obj as ReplicaInfo;
+            if (other == null)
+            {
+                return false;
+            }
+
+            if (StorageAccountName != other.StorageAccountName)
+            {
+                return false;
+            }
+
+            if (ViewInWhichAddedToChain != other.ViewInWhichAddedToChain)
+            {
+                return false;
+            }
+
+            return true;
+         }
     }
 }

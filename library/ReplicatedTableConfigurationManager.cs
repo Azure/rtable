@@ -24,6 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Security;
     using System.Threading;
     using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Blob;
@@ -35,15 +36,51 @@ namespace Microsoft.Azure.Toolkit.Replication
         private List<ConfigurationStoreLocationInfo> blobLocations;
         private bool useHttps;
         private Dictionary<string, CloudBlockBlob> blobs = new Dictionary<string, CloudBlockBlob>();
+        private Dictionary<string, SecureString> connectionStringMap = null;
         private readonly IReplicatedTableConfigurationParser blobParser;
         private Dictionary<string, View> viewMap = new Dictionary<string, View>();
         private Dictionary<string, ReplicatedTableConfiguredTable> tableMap = new Dictionary<string, ReplicatedTableConfiguredTable>();
         private ReplicatedTableConfiguredTable defaultConfiguredRule = null;
         private Guid currentRunningConfigId = Guid.Empty;
 
-        internal protected ReplicatedTableConfigurationManager(List<ConfigurationStoreLocationInfo> blobLocations, bool useHttps, int lockTimeoutInSeconds, IReplicatedTableConfigurationParser blobParser)
+        private Action<ReplicaInfo> SetConnectionStringStrategy;
+
+        /// <summary>
+        /// Connection string provided by user
+        /// </summary>
+        /// <param name="replica"></param>
+        private void NewStrategyToSetConnectionString(ReplicaInfo replica)
+        {
+            if (this.connectionStringMap.ContainsKey(replica.StorageAccountName))
+            {
+                replica.ConnectionString = this.connectionStringMap[replica.StorageAccountName];
+            }
+            else
+            {
+                replica.ConnectionString = null;
+            }
+        }
+
+        /// <summary>
+        /// Connection string infered from blob content
+        /// </summary>
+        /// <param name="replica"></param>
+        private void OldStrategyToSetConnectionString(ReplicaInfo replica)
+        {
+            string connectionString = String.Format(Constants.ShortConnectioStringTemplate, useHttps ? "https" : "http", replica.StorageAccountName, replica.StorageAccountKey);
+            replica.ConnectionString = SecureStringHelper.ToSecureString(connectionString);
+        }
+
+
+        internal protected ReplicatedTableConfigurationManager(
+                                    List<ConfigurationStoreLocationInfo> blobLocations,
+                                    Dictionary<string, SecureString> connectionStringMap,
+                                    bool useHttps,
+                                    int lockTimeoutInSeconds,
+                                    IReplicatedTableConfigurationParser blobParser)
         {
             this.blobLocations = blobLocations;
+            this.ConnectionStrings = connectionStringMap;
             this.useHttps = useHttps;
             this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? Constants.LockTimeoutInSeconds : lockTimeoutInSeconds);
             this.LeaseDuration = TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec);
@@ -68,7 +105,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             foreach (var blobLocation in blobLocations)
             {
-                string accountConnectionString = String.Format(Constants.CloudStorageAccountTemplate,
+                string accountConnectionString = String.Format(Constants.ShortConnectioStringTemplate,
                                     ((this.useHttps == true) ? "https" : "http"),
                                     blobLocation.StorageAccountName,
                                     blobLocation.StorageAccountKey);
@@ -114,7 +151,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             int leaseDuration;
             Guid configId;
 
-            List<View> views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.useHttps, out tableConfigList, out leaseDuration, out configId);
+            List<View> views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), SetConnectionStringStrategy, out tableConfigList, out leaseDuration, out configId);
             if (views == null)
             {
                 return;
@@ -204,6 +241,33 @@ namespace Microsoft.Azure.Toolkit.Replication
             return currentRunningConfigId;
         }
 
+        /// <summary>
+        /// Update connection strings before uploading new RTable config to blob.
+        /// Make sure new connection strings are an uper-set of previous one - MBB -
+        /// </summary>
+        internal protected Dictionary<string, SecureString> ConnectionStrings
+        {
+            private get { return null; }
+
+            set
+            {
+                lock (this)
+                {
+                    connectionStringMap = value;
+
+                    if (this.connectionStringMap != null)
+                    {
+                        SetConnectionStringStrategy = NewStrategyToSetConnectionString;
+                    }
+                    else
+                    {
+                        SetConnectionStringStrategy = OldStrategyToSetConnectionString;
+                    }
+                }
+            }
+        }
+
+
         /*
          * Views functions:
          */
@@ -258,15 +322,10 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Class functions:
          */
-        static internal protected CloudTableClient GetTableClientForReplica(ReplicaInfo replica, bool useHttps)
+        static internal protected CloudTableClient GetTableClientForReplica(ReplicaInfo replica)
         {
-            string connectionString = String.Format(Constants.CloudStorageAccountTemplate,
-                        useHttps ? "https" : "http",
-                        replica.StorageAccountName,
-                        replica.StorageAccountKey);
-
             CloudTableClient tableClient = null;
-            if (!CloudBlobHelpers.TryCreateCloudTableClient(connectionString, out tableClient))
+            if (!CloudBlobHelpers.TryCreateCloudTableClient(replica.ConnectionString, out tableClient))
             {
                 ReplicatedTableLogger.LogError("No table client created for replica info: {0}", replica);
             }

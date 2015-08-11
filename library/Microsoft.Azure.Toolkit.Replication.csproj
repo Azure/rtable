@@ -104,6 +104,7 @@
     <Compile Include="ReplicatedTableEventSource.cs" />
     <Compile Include="ReplicatedTableConfiguredTable.cs" />
     <Compile Include="ReplicatedTableWriteBlobResult.cs" />
+    <Compile Include="SecureStringHelper.cs" />
     <Compile Include="View.cs" />
   </ItemGroup>
   <ItemGroup>

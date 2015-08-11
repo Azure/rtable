@@ -40,7 +40,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <returns></returns>
         public List<View> ParseBlob(
                                 List<CloudBlockBlob> blobs,
-                                bool useHttps,
+                                Action<ReplicaInfo> SetConnectionString,
                                 out List<ReplicatedTableConfiguredTable> tableConfigList,
                                 out int leaseDuration,
                                 out Guid configId)
@@ -73,7 +73,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 ReplicatedTableConfigurationStore configurationStore = entry.Value;
 
-                var view = View.InitFromConfigVer2(entry.Key, configurationStore, useHttps);
+                var view = View.InitFromConfigVer2(entry.Key, configurationStore, SetConnectionString);
                 view.RefreshTime = DateTime.UtcNow;
 
                 if (view.ViewId <= 0)

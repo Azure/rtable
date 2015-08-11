@@ -40,7 +40,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <returns></returns>
         List<View> ParseBlob(
                         List<CloudBlockBlob> blobs,
-                        bool useHttps,
+                        Action<ReplicaInfo> SetConnectionString,
                         out List<ReplicatedTableConfiguredTable> tableConfigList,
                         out int leaseDuration,
                         out Guid configId);

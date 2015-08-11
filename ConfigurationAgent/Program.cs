@@ -23,6 +23,7 @@ namespace Microsoft.Azure.Toolkit.Replication.ConfigurationAgent
 {
     using System;
     using System.Collections.Generic;
+    using System.Security;
     using Microsoft.Azure.Toolkit.Replication;
     
     class Program
@@ -33,6 +34,8 @@ namespace Microsoft.Azure.Toolkit.Replication.ConfigurationAgent
 
             List<ConfigurationStoreLocationInfo> configLocationInfo = new List<ConfigurationStoreLocationInfo>();
             List<ReplicaInfo> replicaChain = new List<ReplicaInfo>();
+            Dictionary<string, SecureString> connectionStringMap = new Dictionary<string, SecureString>();
+
             if (Parser.ParseArgumentsWithUsage(args, parsedArguments))
             {
                 Console.WriteLine("The storage accounts for configuration store are:");
@@ -62,9 +65,18 @@ namespace Microsoft.Azure.Toolkit.Replication.ConfigurationAgent
 
                     replicaChain.Add(new ReplicaInfo()
                     {
-                        StorageAccountName = parsedArguments.replicaChainAccountName[i],
-                        StorageAccountKey = parsedArguments.replicaChainAccountKey[i]
+                        StorageAccountName = parsedArguments.replicaChainAccountName[i]
                     });
+
+                    // connection strings (use short format)
+                    string connectionString = string.Format(Constants.ShortConnectioStringTemplate,
+                                                            "http",
+                                                            parsedArguments.replicaChainAccountName[i],
+                                                            parsedArguments.replicaChainAccountKey[i]);
+
+                    connectionStringMap.Add(
+                                            parsedArguments.replicaChainAccountName[i],
+                                            SecureStringHelper.ToSecureString(connectionString));
                 }
 
                 Console.WriteLine("The head index in read view is : {0}", parsedArguments.readViewHeadIndex);
@@ -81,9 +93,7 @@ namespace Microsoft.Azure.Toolkit.Replication.ConfigurationAgent
 
             Console.WriteLine("Updating the configuration store...");
 
-            ReplicatedTableConfigurationService agent = new ReplicatedTableConfigurationService(
-                configLocationInfo, 
-                 false);
+            ReplicatedTableConfigurationService agent = new ReplicatedTableConfigurationService(configLocationInfo, connectionStringMap, false);
 
             agent.UpdateConfiguration(replicaChain, parsedArguments.readViewHeadIndex, parsedArguments.convertXStoreTableMode);
             

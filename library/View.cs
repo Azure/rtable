@@ -34,7 +34,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.Chain = new List<Tuple<ReplicaInfo, CloudTableClient>>();
         }
 
-        public static View InitFromConfigVer1(string name, ReplicatedTableConfigurationStore configurationStore, bool useHttps)
+        public static View InitFromConfigVer1(string name, ReplicatedTableConfigurationStore configurationStore, Action<ReplicaInfo> SetConnectionString)
         {
             View view = new View(name);
 
@@ -45,8 +45,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
                 {
-                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica, useHttps);
+                    SetConnectionString(replica);
 
+                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
                     if (replica != null && tableClient != null)
                     {
                         view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
@@ -68,7 +69,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return view;
         }
 
-        public static View InitFromConfigVer2(string name, ReplicatedTableConfigurationStore configurationStore, bool useHttps)
+        public static View InitFromConfigVer2(string name, ReplicatedTableConfigurationStore configurationStore, Action<ReplicaInfo> SetConnectionString)
         {
             View view = new View(name);
 
@@ -78,7 +79,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 foreach (ReplicaInfo replica in configurationStore.GetCurrentReplicaChain())
                 {
-                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica, useHttps);
+                    SetConnectionString(replica);
+
+                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
                     if (tableClient != null)
                     {
                         view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
@@ -198,9 +201,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             for (int i = 0; i < view1.Chain.Count; i++)
             {
-                if ((view1.GetReplicaInfo(i).StorageAccountName != view2.GetReplicaInfo(i).StorageAccountName) ||
-                    (view1.GetReplicaInfo(i).StorageAccountKey != view2.GetReplicaInfo(i).StorageAccountKey) ||
-                    (view1.GetReplicaInfo(i).ViewInWhichAddedToChain != view2.GetReplicaInfo(i).ViewInWhichAddedToChain))
+                if ( ! view1.GetReplicaInfo(i).Equals(view2.GetReplicaInfo(i)) )
                 {
                     return false;
                 }

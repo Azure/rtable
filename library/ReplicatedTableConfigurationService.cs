@@ -24,6 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System;
     using System.Collections.Generic;
     using System.Linq;
+    using System.Security;
     using System.Threading.Tasks;
     using Microsoft.WindowsAzure.Storage.Blob;
     using Microsoft.WindowsAzure.Storage.Table;
@@ -33,9 +34,35 @@ namespace Microsoft.Azure.Toolkit.Replication
         private bool disposed = false;
         private readonly ReplicatedTableConfigurationManager configManager;
 
+        /// <summary>
+        /// ** Depricated **
+        /// </summary>
+        /// <param name="blobLocations"></param>
+        /// <param name="useHttps"></param>
+        /// <param name="lockTimeoutInSeconds"></param>
         public ReplicatedTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations, bool useHttps, int lockTimeoutInSeconds = 0)
+            : this(blobLocations, null, useHttps, lockTimeoutInSeconds)
         {
-            this.configManager = new ReplicatedTableConfigurationManager(blobLocations, useHttps, lockTimeoutInSeconds, new ReplicatedTableConfigurationStoreParser());
+            /* Warning :
+            * Don't add any initialization here.
+            * Timer thread already started before we make it to here.
+            * If needed, consider refactoring this class initialization.
+            *
+            * However, this is being Depricated => so don't add anything here.
+            */
+        }
+
+        /// <summary>
+        /// User provides all connection strings.
+        /// If null is passed in, then connection strings are infered from the blob itself - backward compatibility -
+        /// </summary>
+        /// <param name="blobLocations"></param>
+        /// <param name="connectionStringMap"></param>
+        /// <param name="useHttps"></param>
+        /// <param name="lockTimeoutInSeconds"></param>
+        public ReplicatedTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations, Dictionary<string, SecureString> connectionStringMap, bool useHttps, int lockTimeoutInSeconds = 0)
+        {
+            this.configManager = new ReplicatedTableConfigurationManager(blobLocations, connectionStringMap, useHttps, lockTimeoutInSeconds, new ReplicatedTableConfigurationStoreParser());
             this.configManager.StartMonitor();
         }
 

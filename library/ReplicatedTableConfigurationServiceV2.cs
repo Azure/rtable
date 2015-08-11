@@ -25,6 +25,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Collections.Generic;
     using System.Threading;
     using System.Linq;
+    using System.Security;
     using Microsoft.WindowsAzure.Storage.Blob;
 
     public class ReplicatedTableConfigurationServiceV2 : IDisposable
@@ -32,9 +33,9 @@ namespace Microsoft.Azure.Toolkit.Replication
         private bool disposed = false;
         private readonly ReplicatedTableConfigurationManager configManager;
 
-        public ReplicatedTableConfigurationServiceV2(List<ConfigurationStoreLocationInfo> blobLocations, bool useHttps, int lockTimeoutInSeconds = 0)
+        public ReplicatedTableConfigurationServiceV2(List<ConfigurationStoreLocationInfo> blobLocations, Dictionary<string, SecureString> connectionStringMap, bool useHttps, int lockTimeoutInSeconds = 0)
         {
-            this.configManager = new ReplicatedTableConfigurationManager(blobLocations, useHttps, lockTimeoutInSeconds, new ReplicatedTableConfigurationParser());
+            this.configManager = new ReplicatedTableConfigurationManager(blobLocations, connectionStringMap, useHttps, lockTimeoutInSeconds, new ReplicatedTableConfigurationParser());
             this.configManager.StartMonitor();
         }
 
