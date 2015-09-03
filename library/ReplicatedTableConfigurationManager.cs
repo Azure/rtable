@@ -110,8 +110,25 @@ namespace Microsoft.Azure.Toolkit.Replication
                                     blobLocation.StorageAccountName,
                                     blobLocation.StorageAccountKey);
 
-                CloudBlockBlob blob = CloudBlobHelpers.GetBlockBlob(accountConnectionString, blobLocation.BlobPath);
-                this.blobs.Add(blobLocation.StorageAccountName + ';' + blobLocation.BlobPath, blob);
+                try
+                {
+                    CloudBlockBlob blob = CloudBlobHelpers.GetBlockBlob(accountConnectionString, blobLocation.BlobPath);
+                    this.blobs.Add(blobLocation.StorageAccountName + ';' + blobLocation.BlobPath, blob);
+                }
+                catch (Exception e)
+                {
+                    ReplicatedTableLogger.LogError("Failed to init blob Acc={0}, Blob={1}. Exception: {2}",
+                        blobLocation.StorageAccountName,
+                        blobLocation.BlobPath,
+                        e.Message);
+                }
+            }
+
+            int quorumSize = (this.blobLocations.Count / 2) + 1;
+
+            if (this.blobs.Count < quorumSize)
+            {
+                throw new Exception(string.Format("Retrieved blobs count ({0}) is less than quorum !", this.blobs.Count));
             }
         }
 
