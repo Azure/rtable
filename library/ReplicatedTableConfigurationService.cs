@@ -142,11 +142,26 @@ namespace Microsoft.Azure.Toolkit.Replication
                                     blobLocation.StorageAccountName, 
                                     blobLocation.StorageAccountKey);
 
-                CloudBlockBlob blob = CloudBlobHelpers.GetBlockBlob(accountConnectionString, blobLocation.BlobPath);
-                this.blobs.Add(blobLocation.StorageAccountName + ';' + blobLocation.BlobPath, blob);
+                try
+                {
+                    CloudBlockBlob blob = CloudBlobHelpers.GetBlockBlob(accountConnectionString, blobLocation.BlobPath);
+                    this.blobs.Add(blobLocation.StorageAccountName + ';' + blobLocation.BlobPath, blob);
+                }
+                catch (Exception e)
+                {
+                    ReplicatedTableLogger.LogError("Failed to init blob Acc={0}, Blob={1}. Exception: {2}",
+                        blobLocation.StorageAccountName,
+                        blobLocation.BlobPath,
+                        e.Message);
+                }
             }
 
             this.quorumSize = (this.blobs.Count / 2) + 1;
+
+            if (this.blobs.Count < this.quorumSize)
+            {
+                throw new Exception(string.Format("Retrieved blobs count ({0}) is less than quorum !", this.blobs.Count));
+            }
         }
 
         /// <summary>
@@ -349,6 +364,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         public bool IsViewStable()
         {
             int viewStableCount = 0;
+
             foreach (var blob in this.blobs)
             {
                 ReplicatedTableConfigurationStore configurationStore;
@@ -358,7 +374,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
 
                 if (configurationStore.ReadViewHeadIndex == 0)
+                {
                     viewStableCount++;
+                }
             }
 
             return viewStableCount >= this.quorumSize;
