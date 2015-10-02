@@ -42,13 +42,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     public class RTableViewIdTests : HttpManglerTestBase
     {
         private string tableName;
+        List<ReplicaInfo> replicas = new List<ReplicaInfo>();
+
         [TestFixtureSetUp]
         public void TestFixtureSetup()
         {            
             this.LoadTestConfiguration();
             this.tableName = this.GenerateRandomTableName();
             Console.WriteLine("tableName = {0}", this.tableName); 
-            this.SetupRTableEnv(true, this.tableName);
+            this.SetupRTableEnv(this.tableName);
+
+            for (int i = 0; i < configurationWrapper.GetWriteView().Chain.Count; i++)
+            {
+                replicas.Add(configurationWrapper.GetWriteView().Chain[i].Item1);
+            }
         }
 
         [TestFixtureTearDown]
@@ -63,7 +70,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             long currentViewId = 100;
             long badViewId = currentViewId - 1;
 
-            this.RefreshRTableEnvJsonConfigBlob(currentViewId);
+            this.UpdateConfiguration(replicas, 0, false, currentViewId);
 
             string firstName = "FirstName01";
             string lastName = "LastName01";
@@ -109,7 +116,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Call RefreshRTableEnvJsonConfigBlob to change the viewId of the wrapper to an older value
             //
             Console.WriteLine("Changing the viewId to badViewId {0}", badViewId);
-            this.RefreshRTableEnvJsonConfigBlob(badViewId);            
+            this.UpdateConfiguration(replicas, 0, false, badViewId);
 
             //
             // Retrieve with bad viewId
@@ -214,7 +221,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             long currentViewId = 100;
             long futureViewId = currentViewId + 1;
 
-            this.RefreshRTableEnvJsonConfigBlob(currentViewId);
+            this.UpdateConfiguration(replicas, 0, false, currentViewId);
 
             string firstName = "FirstName02";
             string lastName = "LastName02";
@@ -260,7 +267,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Call ModifyConfigurationBlob to change the viewId of the wrapper to a larger value
             //
             Console.WriteLine("Changing the viewId to futureViewId {0}", futureViewId);
-            this.RefreshRTableEnvJsonConfigBlob(futureViewId);    
+            this.UpdateConfiguration(replicas, 0, false, futureViewId);
 
             //
             // Replace entity
@@ -321,7 +328,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             long futureViewId = currentViewId + 1;
             int expectedVersion = 1;
 
-            this.RefreshRTableEnvJsonConfigBlob(currentViewId);
+            this.UpdateConfiguration(replicas, 0, false, currentViewId);
 
             // Insert Entity            
             DynamicReplicatedTableEntity baseEntity = new DynamicReplicatedTableEntity("merge test02", "foo02");
@@ -335,7 +342,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Call ModifyConfigurationBlob to change the viewId of the wrapper to a larger value
             //
             Console.WriteLine("Changing the viewId to futureViewId {0}", futureViewId);
-            this.RefreshRTableEnvJsonConfigBlob(futureViewId);
+            this.UpdateConfiguration(replicas, 0, false, futureViewId);
 
             //
             // Merge
@@ -380,7 +387,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             long currentViewId = 100;
             long badViewId = currentViewId - 1;
 
-            this.RefreshRTableEnvJsonConfigBlob(currentViewId);
+            this.UpdateConfiguration(replicas, 0, false, currentViewId);
 
             string jobType = "jobType-BatchOperationExceptionWhenUsingSmallerViewId";
             string jobId = "jobId-BatchOperationExceptionWhenUsingSmallerViewId";
@@ -465,7 +472,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Call ModifyConfigurationBlob to change the viewId of the wrapper to an older value
             //
             Console.WriteLine("Changing the viewId to badViewId {0}", badViewId);
-            this.RefreshRTableEnvJsonConfigBlob(badViewId);
+            this.UpdateConfiguration(replicas, 0, false, badViewId);
 
             //
             // Execute Batch _rtable_Operation with bad viewId
@@ -488,7 +495,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             long currentViewId = 100;
             long futureViewId = currentViewId + 1;
 
-            this.RefreshRTableEnvJsonConfigBlob(currentViewId);
+            this.UpdateConfiguration(replicas, 0, false, currentViewId);
 
             string jobType = "jobType-BatchOperationUsingLargerViewId";
             string jobId = "jobId-BatchOperationUsingLargerViewId";
@@ -572,7 +579,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Call ModifyConfigurationBlob to change the viewId of the wrapper to an older value
             //
             Console.WriteLine("Changing the viewId to larger viewId {0}", futureViewId);
-            this.RefreshRTableEnvJsonConfigBlob(futureViewId);
+            this.UpdateConfiguration(replicas, 0, false, futureViewId);
 
             Console.WriteLine("\nCalling BatchOperation with a larger viewId...");
             this.repTable.ExecuteBatch(batchOperation);

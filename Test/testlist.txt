@@ -1,0 +1,5 @@
+Microsoft.Azure.Toolkit.Replication.Test.RTableConfigurationServiceTests
+Microsoft.Azure.Toolkit.Replication.Test.ConvertXStoreTableAPITests
+Microsoft.Azure.Toolkit.Replication.Test.ConvertXStoreTableOperationTests
+Microsoft.Azure.Toolkit.Replication.Test.DelayTests
+Microsoft.Azure.Toolkit.Replication.Test.ThrottlingTests

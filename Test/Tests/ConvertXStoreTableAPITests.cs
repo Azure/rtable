@@ -66,7 +66,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             // Set up RTable and its wrapper that uses only one storage account.
             //
-            this.SetupRTableEnv(true, this.xstoreTableName, true, "", this.actualStorageAccountsUsed, true);
+            this.SetupRTableEnv(this.xstoreTableName, true, "", this.actualStorageAccountsUsed, true);
         }
 
         [TestFixtureTearDown]

@@ -23,59 +23,16 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Security;
-    using System.Threading;
     using System.Threading.Tasks;
-    using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Blob;
     using Microsoft.WindowsAzure.Storage.Table;
 
     public class ReplicatedTableConfigurationService : IDisposable
     {
-        private List<ConfigurationStoreLocationInfo> blobLocations;
-        private Dictionary<string, CloudBlockBlob> blobs = new Dictionary<string, CloudBlockBlob>();
-        private Dictionary<string, SecureString> connectionStringMap = null;
-
-        private bool useHttps;
-
-        private int quorumSize = 0;
-        private string cloudStorageAccountTemplate = Constants.ShortConnectioStringTemplate;
-
-        private DateTime lastViewRefreshTime;
-        private View lastRenewedReadView;
-        private View lastRenewedWriteView;
-
-        private PeriodicTimer viewRefreshTimer;
         private bool disposed = false;
-
-        private Action<ReplicaInfo> SetConnectionStringStrategy;
-
-        /// <summary>
-        /// Connection string provided by user
-        /// </summary>
-        /// <param name="replica"></param>
-        private void NewStrategyToSetConnectionString(ReplicaInfo replica)
-        {
-            if (this.connectionStringMap.ContainsKey(replica.StorageAccountName))
-            {
-                replica.ConnectionString = this.connectionStringMap[replica.StorageAccountName];
-            }
-            else
-            {
-                replica.ConnectionString = null;
-            }
-        }
-
-        /// <summary>
-        /// Connection string infered from blob content
-        /// </summary>
-        /// <param name="replica"></param>
-        private void OldStrategyToSetConnectionString(ReplicaInfo replica)
-        {
-            string connectionString = String.Format(cloudStorageAccountTemplate, useHttps ? "https" : "http", replica.StorageAccountName, replica.StorageAccountKey);
-            replica.ConnectionString = SecureStringHelper.ToSecureString(connectionString);
-        }
-
+        private readonly ReplicatedTableConfigurationManager configManager;
 
         /// <summary>
         /// ** Depricated **
@@ -83,18 +40,16 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="blobLocations"></param>
         /// <param name="useHttps"></param>
         /// <param name="lockTimeoutInSeconds"></param>
-        public ReplicatedTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations, 
-            bool useHttps, 
-            int lockTimeoutInSeconds = 0)
+        public ReplicatedTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations, bool useHttps, int lockTimeoutInSeconds = 0)
             : this(blobLocations, null, useHttps, lockTimeoutInSeconds)
         {
             /* Warning :
-             * Don't add any initialization here.
-             * Timer thread already started before we make it to here.
-             * If needed, consider refactoring this class initialization.
-             *
-             * However, this is being Depricated => so don't add anything here.
-             */
+            * Don't add any initialization here.
+            * Timer thread already started before we make it to here.
+            * If needed, consider refactoring this class initialization.
+            *
+            * However, this is being Depricated => so don't add anything here.
+            */
         }
 
         /// <summary>
@@ -105,22 +60,10 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="connectionStringMap"></param>
         /// <param name="useHttps"></param>
         /// <param name="lockTimeoutInSeconds"></param>
-        public ReplicatedTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations,
-            Dictionary<string, SecureString> connectionStringMap,
-            bool useHttps,
-            int lockTimeoutInSeconds = 0)
+        public ReplicatedTableConfigurationService(List<ConfigurationStoreLocationInfo> blobLocations, Dictionary<string, SecureString> connectionStringMap, bool useHttps, int lockTimeoutInSeconds = 0)
         {
-            this.blobLocations = blobLocations;
-            this.ConnectionStrings = connectionStringMap;
-            this.useHttps = useHttps;
-            this.lastViewRefreshTime = DateTime.MinValue;
-            this.lastRenewedReadView = new View();
-            this.lastRenewedWriteView = new View();
-            this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? Constants.LockTimeoutInSeconds : lockTimeoutInSeconds);
-            this.Initialize();
-
-            this.viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs,
-                                                      TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec));
+            this.configManager = new ReplicatedTableConfigurationManager(blobLocations, connectionStringMap, useHttps, lockTimeoutInSeconds, new ReplicatedTableConfigurationStoreParser());
+            this.configManager.StartMonitor();
         }
 
         ~ReplicatedTableConfigurationService()
@@ -128,285 +71,108 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.Dispose(false);
         }
 
-        private void Initialize()
-        {
-            if ((this.blobLocations.Count % 2) == 0)
-            {
-                throw new ArgumentException("Number of blob locations must be odd");
-            }
-
-            foreach (var blobLocation in blobLocations)
-            {
-                string accountConnectionString =
-                    String.Format(cloudStorageAccountTemplate, ((this.useHttps == true) ? "https" : "http"), 
-                                    blobLocation.StorageAccountName, 
-                                    blobLocation.StorageAccountKey);
-
-                try
-                {
-                    CloudBlockBlob blob = CloudBlobHelpers.GetBlockBlob(accountConnectionString, blobLocation.BlobPath);
-                    this.blobs.Add(blobLocation.StorageAccountName + ';' + blobLocation.BlobPath, blob);
-                }
-                catch (Exception e)
-                {
-                    ReplicatedTableLogger.LogError("Failed to init blob Acc={0}, Blob={1}. Exception: {2}",
-                        blobLocation.StorageAccountName,
-                        blobLocation.BlobPath,
-                        e.Message);
-                }
-            }
-
-            this.quorumSize = (this.blobs.Count / 2) + 1;
-
-            if (this.blobs.Count < this.quorumSize)
-            {
-                throw new Exception(string.Format("Retrieved blobs count ({0}) is less than quorum !", this.blobs.Count));
-            }
-        }
-
-        /// <summary>
-        /// Update connection strings before uploading new RTable config to blob.
-        /// Make sure new connection strings are an uper-set of previous one - MBB -
-        /// </summary>
-        public Dictionary<string, SecureString> ConnectionStrings
-        {
-            private get { return null; }
-
-            set
-            {
-                lock (this)
-                {
-                    connectionStringMap = value;
-
-                    if (this.connectionStringMap != null)
-                    {
-                        SetConnectionStringStrategy = NewStrategyToSetConnectionString;
-                    }
-                    else
-                    {
-                        SetConnectionStringStrategy = OldStrategyToSetConnectionString;
-                    }
-                }
-            }
-        }
-
         public TimeSpan LockTimeout
         {
-            get; set;
+            get { return this.configManager.LockTimeout; }
+
+            set { this.configManager.LockTimeout = value; }
+        }
+
+        public View GetReadView()
+        {
+            return this.configManager.GetView(ReplicatedTableConfigurationStoreParser.DefaultViewName);
+        }
+
+        public View GetWriteView()
+        {
+            return this.configManager.GetView(ReplicatedTableConfigurationStoreParser.DefaultViewName);
+        }
+
+        public bool HasViewExpired
+        {
+            get
+            {
+                return this.configManager.IsViewExpired(ReplicatedTableConfigurationStoreParser.DefaultViewName);
+            }
+        }
+
+        public bool IsViewStable()
+        {
+            return this.configManager.IsViewStable(ReplicatedTableConfigurationStoreParser.DefaultViewName);
         }
 
         public bool ConvertXStoreTableMode
         {
-            get; set;
+            get
+            {
+                ReplicatedTableConfiguredTable config = this.configManager.FindConfiguredTable(ReplicatedTableConfigurationStoreParser.AllTables);
+                return config != null && config.ConvertToRTable;
+            }
         }
 
-        public void UpdateConfiguration(List<ReplicaInfo> replicaChain, int readViewHeadIndex, bool convertXStoreTableMode = false)
+        public void UpdateConfiguration(List<ReplicaInfo> replicaChain, int readViewHeadIndex, bool convertXStoreTableMode = false, long viewId = 0)
         {
-            Parallel.ForEach(this.blobs, blob =>
+            View currentView = GetWriteView();
+
+            if (viewId == 0)
+            {
+                if (!currentView.IsEmpty)
+                {
+                    viewId = currentView.ViewId + 1;
+                }
+                else
+                {
+                    viewId = 1;
+                }
+            }
+
+            ReplicatedTableConfigurationStore newConfig = new ReplicatedTableConfigurationStore
+            {
+                LeaseDuration = Constants.LeaseDurationInSec,
+                Timestamp = DateTime.UtcNow,
+                ReplicaChain = replicaChain,
+                ReadViewHeadIndex = readViewHeadIndex,
+                ConvertXStoreTableMode = convertXStoreTableMode,
+                ViewId = viewId
+            };
+
+            //If the read view head index is not 0, this means we are introducing 1 or more replicas at the head. For
+            //each such replica, update the view id in which it was added to the write view of the chain
+            if (readViewHeadIndex != 0)
+            {
+                for (int i = 0; i < readViewHeadIndex; i++)
+                {
+                    replicaChain[i].ViewInWhichAddedToChain = viewId;
+                }
+            }
+
+            Parallel.ForEach(this.configManager.GetBlobs(), blob =>
             {
                 ReplicatedTableConfigurationStore configurationStore = null;
-                long newViewId = 0;
-                if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
+                string eTag;
+
+                /*
+                 * TODO: (per Parveen Patel <Parveen.Patel@microsoft.com>)
+                 * The below code is incomplete because we are supposed to use eTag to make the changes if the old blob exists.
+                 * This is to support multiple clients updating the config, not a high priority scenario but something we should look at.
+                 */
+                ReplicatedTableReadBlobResult result = CloudBlobHelpers.TryReadBlob(
+                                                                blob,
+                                                                out configurationStore,
+                                                                out eTag,
+                                                                JsonStore<ReplicatedTableConfigurationStore>.Deserialize);
+                if (result.Code != ReadBlobCode.Success)
                 {
                     //This is the first time we are uploading the config
                     configurationStore = new ReplicatedTableConfigurationStore();
                 }
 
-                newViewId = configurationStore.ViewId + 1;
+                configurationStore = newConfig;
 
-                configurationStore.LeaseDuration = Constants.LeaseDurationInSec;
-                configurationStore.Timestamp = DateTime.UtcNow;
-                configurationStore.ReplicaChain = replicaChain;
-                configurationStore.ReadViewHeadIndex = readViewHeadIndex;
-                configurationStore.ConvertXStoreTableMode = convertXStoreTableMode;
-
-                configurationStore.ViewId = newViewId;
-
-                //If the read view head index is not 0, this means we are introducing 1 or more replicas at the head. For 
-                //each such replica, update the view id in which it was added to the write view of the chain
-                if (readViewHeadIndex != 0)
-                {
-                    for (int i = 0; i < readViewHeadIndex; i++)
-                    {
-                        replicaChain[i].ViewInWhichAddedToChain = newViewId;
-                    }
-                }
-
-                try
-                {
-                    //Step 1: Delete the current configuration
-                    blob.Value.UploadText(Constants.ConfigurationStoreUpdatingText);
-
-                    //Step 2: Wait for L + CF to make sure no pending transaction working on old views
-                    Thread.Sleep(TimeSpan.FromSeconds(Constants.LeaseDurationInSec +
-                                                        Constants.ClockFactorInSec));
-
-                    //Step 3: Update new config
-                    blob.Value.UploadText(JsonStore<ReplicatedTableConfigurationStore>.Serialize(configurationStore));
-
-                }
-                catch (StorageException e)
-                {
-                    ReplicatedTableLogger.LogError("Updating the blob: {0} failed. Exception: {1}", blob.Value, e.Message);
-                }
+                CloudBlobHelpers.TryWriteBlob(blob, configurationStore.ToJson());
             });
 
-            //Invalidate the lastViewRefreshTime so that updated views get returned
-            this.lastViewRefreshTime = DateTime.MinValue;
-        }
-
-        public View GetReadView()
-        {
-            lock (this)
-            {
-                //Even though we have periodic renewal, we still need to check if we need a renewal at this point. This 
-                //is to prevent us from returning a stale view if for some reason the periodic renewal was delayed (we are not a real time
-                //OS! ) 
-                if (this.DoesViewNeedRefresh())
-                {
-                    RefreshReadAndWriteViewsFromBlobs(null);
-                }
-
-                return this.lastRenewedReadView;
-            }
-        }
-
-        public View GetWriteView()
-        {
-            lock (this)
-            {
-                //Even though we have periodic renewal, we still need to check if we need a renewal at this point. This 
-                //is to prevent us from returning a stale view if for some reason the periodic renewal was delayed (we are not a real time
-                //OS! ) 
-                if (this.DoesViewNeedRefresh())
-                {
-                    RefreshReadAndWriteViewsFromBlobs(null);
-                }
-
-                return this.lastRenewedWriteView;
-            }
-        }
-
-        private void RefreshReadAndWriteViewsFromBlobs(object arg)
-        {
-            lock (this)
-            {
-                this.lastRenewedReadView = new View();
-                this.lastRenewedWriteView = new View();
-
-                DateTime refreshStartTime = DateTime.UtcNow;
-
-                Dictionary<long, List<CloudBlockBlob>> viewResult = new Dictionary<long, List<CloudBlockBlob>>();
-
-                foreach (var blob in this.blobs)
-                {
-                    ReplicatedTableConfigurationStore configurationStore;
-                    if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
-                    {
-                        continue;
-                    }
-
-                    if (configurationStore.ViewId <= 0)
-                    {
-                        ReplicatedTableLogger.LogInformational("ViewId={0} is invalid. Must be >= 1. Skipping this blob {1}.",
-                            configurationStore.ViewId, 
-                            blob.Value.Uri);
-                        continue;
-                    }
-
-                    List<CloudBlockBlob> viewBlobs;
-                    if (!viewResult.TryGetValue(configurationStore.ViewId, out viewBlobs))
-                    {
-                        viewBlobs = new List<CloudBlockBlob>();
-                        viewResult.Add(configurationStore.ViewId, viewBlobs);
-                    }
-
-                    viewBlobs.Add(blob.Value);
-
-                    if (viewBlobs.Count >= this.quorumSize)
-                    {
-                        this.lastRenewedReadView.ViewId = this.lastRenewedWriteView.ViewId = configurationStore.ViewId;
-                        for (int i = 0; i < configurationStore.ReplicaChain.Count; i++)
-                        {
-                            ReplicaInfo replica = configurationStore.ReplicaChain[i];
-                            SetConnectionStringStrategy(replica);
-
-                            CloudTableClient tableClient = GetTableClientForReplica(replica);
-                            if (replica != null && tableClient != null)
-                            {
-                                //Update the write view always
-                                this.lastRenewedWriteView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
-
-                                //Update the read view only for replicas part of the view
-                                if (i >= configurationStore.ReadViewHeadIndex)
-                                {
-                                    this.lastRenewedReadView.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
-                                }
-
-                                //Note the time when the view was updated
-                                this.lastViewRefreshTime = refreshStartTime;
-
-                                this.ConvertXStoreTableMode = configurationStore.ConvertXStoreTableMode;
-                            }
-                        }
-
-                        this.lastRenewedWriteView.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
-
-                        break;
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// True, if the read and write views are the same. False, otherwise.
-        /// </summary>
-        public bool IsViewStable()
-        {
-            int viewStableCount = 0;
-
-            foreach (var blob in this.blobs)
-            {
-                ReplicatedTableConfigurationStore configurationStore;
-                if (!CloudBlobHelpers.TryReadBlob<ReplicatedTableConfigurationStore>(blob.Value, out configurationStore))
-                {
-                    continue;
-                }
-
-                if (configurationStore.ReadViewHeadIndex == 0)
-                {
-                    viewStableCount++;
-                }
-            }
-
-            return viewStableCount >= this.quorumSize;
-        }
-
-        private CloudTableClient GetTableClientForReplica(ReplicaInfo replica)
-        {
-            CloudTableClient tableClient = null;
-            if (!CloudBlobHelpers.TryCreateCloudTableClient(replica.ConnectionString, out tableClient))
-            {
-                ReplicatedTableLogger.LogError("No table client created for replica info: {0}", replica);
-            }
-
-            return tableClient;
-        }
-
-
-        private bool DoesViewNeedRefresh()
-        {
-            lock (this)
-            {
-                if ((DateTime.UtcNow - this.lastViewRefreshTime) >
-                    TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec))
-                {
-                    ReplicatedTableLogger.LogInformational("Need to renew lease on the view/refresh the view");
-                    return true;
-                }
-
-                return false;
-            }
+            this.configManager.Invalidate();
         }
 
         public void Dispose()
@@ -418,11 +184,13 @@ namespace Microsoft.Azure.Toolkit.Replication
         protected virtual void Dispose(bool disposing)
         {
             if (this.disposed)
+            {
                 return;
+            }
 
             if (disposing)
             {
-                this.viewRefreshTimer.Stop();
+                this.configManager.StopMonitor();
             }
 
             this.disposed = true;

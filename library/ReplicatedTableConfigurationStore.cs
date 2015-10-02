@@ -21,15 +21,19 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Runtime.Serialization;
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
-    public class ReplicatedTableConfigurationStore : ConfigurationStore
+    public class ReplicatedTableConfigurationStore
     {
         public ReplicatedTableConfigurationStore()
-            : base()
         {
+            this.LeaseDuration = Constants.LeaseDurationInSec;
+            this.Timestamp = DateTime.UtcNow;
+            this.ViewId = 1; // minimum ViewId is 1.
             this.ReplicaChain = new List<ReplicaInfo>();
         }
 
@@ -42,5 +46,44 @@ namespace Microsoft.Azure.Toolkit.Replication
         [DataMember(IsRequired = false)]
         public bool ConvertXStoreTableMode { get; set; }
 
+        [DataMember(IsRequired = true)]
+        public long ViewId { get; set; }
+
+        [DataMember(IsRequired = true)]
+        public int LeaseDuration { get; set; }
+
+        [DataMember(IsRequired = true)]
+        public DateTime Timestamp { get; set; }
+
+        public override int GetHashCode()
+        {
+            return base.GetHashCode();
+        }
+
+        public override bool Equals(object obj)
+        {
+            ReplicatedTableConfigurationStore other = obj as ReplicatedTableConfigurationStore;
+            if (other == null)
+            {
+                return false;
+            }
+
+            if (this.ViewId == other.ViewId)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        public string ToJson()
+        {
+            return JsonStore<ReplicatedTableConfigurationStore>.Serialize(this);
+        }
+
+        public List<ReplicaInfo> GetCurrentReplicaChain()
+        {
+            return ReplicaChain.Where(r => r.Status != ReplicaStatus.None).ToList();
+        }
     }
 }

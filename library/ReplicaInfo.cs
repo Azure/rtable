@@ -24,6 +24,14 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Security;
     using System.Runtime.Serialization;
 
+    public enum ReplicaStatus
+    {
+        None,
+        ReadOnly,
+        WriteOnly,
+        ReadWrite,
+    }
+
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
     public class ReplicaInfo
     {
@@ -40,17 +48,48 @@ namespace Microsoft.Azure.Toolkit.Replication
         [DataMember(IsRequired = true)]
         public long ViewInWhichAddedToChain { get; set; }
 
+        // Required = false for backward compatibility
+        [DataMember(IsRequired = false)]
+        public ReplicaStatus Status { get; set; }
+
+        // Required = false for backward compatibility
+        [DataMember(IsRequired = false)]
+        public long ViewWhenTurnedOff { get; set; }
+
         public ReplicaInfo()
         {
             this.ViewInWhichAddedToChain = 1;
+            this.Status = ReplicaStatus.ReadWrite;
+            this.ViewWhenTurnedOff = 0;
+        }
+
+        public bool IsReadOnly()
+        {
+            return (this.Status == ReplicaStatus.ReadOnly);
+        }
+
+        public bool IsReadable()
+        {
+            return (IsReadOnly() || this.Status == ReplicaStatus.ReadWrite);
+        }
+
+        public bool IsWriteOnly()
+        {
+            return (this.Status == ReplicaStatus.WriteOnly);
+        }
+
+        public bool IsWritable()
+        {
+            return (IsWriteOnly() || this.Status == ReplicaStatus.ReadWrite);
         }
 
         public override string ToString()
         {
-            return string.Format("Account Name: {0}, AccountKey: {1}, ViewInWhichAddedToChain: {2}", 
+            return string.Format("Account Name: {0}, AccountKey: {1}, ViewInWhichAddedToChain: {2}, Status: {3}",
                 this.StorageAccountName, 
                 "***********", 
-                this.ViewInWhichAddedToChain);
+                this.ViewInWhichAddedToChain,
+                this.Status);
         }
 
         internal SecureString ConnectionString

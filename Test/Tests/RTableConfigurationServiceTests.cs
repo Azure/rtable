@@ -25,16 +25,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System;
     using System.Collections.Generic;
     using System.Net;
+    using System.Threading;
     using Microsoft.Azure.Toolkit.Replication;
     using Microsoft.WindowsAzure.Storage.Table;
     
     [TestFixture]
     public class RTableConfigurationServiceTests : RTableLibraryTestBase
     {
-        private int leaseDuration = 0;
-        private int clockFactor = 0;
-        private int leaseExpirationWatermark = 0;
-
         //For each test method, we create new tables
         [SetUp]
         public void TestFixtureSetup()
@@ -42,34 +39,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.LoadTestConfiguration();
 
             string tableName = this.GenerateRandomTableName();
-            this.SetupRTableEnv(true, tableName);
-
-            this.UpdateConfigurationConstants();
+            this.SetupRTableEnv(tableName);
         }
 
         [TearDown]
         public void TestFixtureTearDown()
         {
             this.DeleteAllRtableResources();
-            this.RestoreConfigurationConstants();
-        }
-
-        private void UpdateConfigurationConstants()
-        {
-            this.leaseDuration = Constants.LeaseDurationInSec;
-            this.clockFactor = Constants.ClockFactorInSec;
-            this.leaseExpirationWatermark = Constants.LeaseRenewalExpirationWatermark;
-
-            Constants.LeaseDurationInSec = 5;
-            Constants.ClockFactorInSec = 1;
-            Constants.LeaseRenewalExpirationWatermark = 1;
-        }
-
-        private void RestoreConfigurationConstants()
-        {
-            Constants.LeaseDurationInSec = this.leaseDuration;
-            Constants.ClockFactorInSec = this.clockFactor;
-            Constants.LeaseRenewalExpirationWatermark = this.leaseExpirationWatermark;
         }
 
         //
@@ -83,11 +59,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
 
-            View readView = this.configurationService.GetReadView();
-            View writeView = this.configurationService.GetWriteView();
-                
+            View readView = this.configurationWrapper.GetReadView();
+            View writeView = this.configurationWrapper.GetWriteView();
+
             // validate the views
-            Assert.IsTrue(this.configurationService.IsViewStable());
+            Assert.IsTrue(this.configurationWrapper.IsViewStable());
             Assert.IsTrue(readView == writeView);
         }
 
@@ -96,7 +72,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
 
-            View v = this.configurationService.GetWriteView();
+            View v = this.configurationWrapper.GetWriteView();
             int index = v.Chain.Count - 1;
             string accountName = v.GetReplicaInfo(index).StorageAccountName;
 
@@ -114,28 +90,65 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             //Add the new replica at the head
             replicas.Insert(0, newReplica);
-                
-            this.configurationService.UpdateConfiguration(replicas, 1);
+
+            int readViewHeadIndex = 1;
+            this.UpdateConfiguration(replicas, readViewHeadIndex);
 
             // validate all state
-            Assert.IsFalse(this.configurationService.IsViewStable());
-            View readView = this.configurationService.GetReadView();
-            View writeView = this.configurationService.GetWriteView();
+            Assert.IsFalse(this.configurationWrapper.IsViewStable(), "View = {0}", this.configurationWrapper.GetWriteView().IsStable);
+            View readView = this.configurationWrapper.GetReadView();
+            View writeView = this.configurationWrapper.GetWriteView();
             long viewIdAfterFirstUpdate = writeView.ViewId;
-            Assert.IsTrue(readView != writeView);
+
+            // Actually, both read and write views point to the same view
+            Assert.IsTrue(readView == writeView);
 
             int headIndex = 0;
-            long readViewHeadViewId = readView.GetReplicaInfo(headIndex).ViewInWhichAddedToChain;
+            long readViewHeadViewId = readView.GetReplicaInfo(readViewHeadIndex).ViewInWhichAddedToChain;
             Assert.IsTrue(writeView.GetReplicaInfo(headIndex).ViewInWhichAddedToChain == readViewHeadViewId + 1);
 
             //Now, make the read and write views the same
-            this.configurationService.UpdateConfiguration(replicas, 0);
+            this.UpdateConfiguration(replicas, 0);
             // validate all state
-            Assert.IsTrue(this.configurationService.IsViewStable());
-            readView = this.configurationService.GetReadView();
-            writeView = this.configurationService.GetWriteView();
+            Assert.IsTrue(this.configurationWrapper.IsViewStable());
+            readView = this.configurationWrapper.GetReadView();
+            writeView = this.configurationWrapper.GetWriteView();
             Assert.IsTrue(readView == writeView);
             Assert.IsTrue(readView.ViewId == viewIdAfterFirstUpdate + 1);
+        }
+
+        [Test(Description = "Validate that quorum view wins")]
+        public void QuorumViewTest()
+        {
+            Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
+            View v = this.configurationWrapper.GetWriteView();
+
+            Assert.IsTrue(v.Chain.Count >= 3, "Replica chain only has {0} accounts", v.Chain.Count);
+
+            //
+            // create a new config service with only one replica
+            // add the new view only to that one
+            // check that the majority view has not changed
+            // add the same replica to all the blobs
+            // now check that the majority view has changed
+            //
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 1, false, 0, new List<int>{0}, false);
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 1, false, 0, new List<int>{0, 1}, true);
+
+            // validate all state
+            Assert.IsTrue(this.configurationWrapper.GetWriteView().ViewId == v.ViewId + 1,
+                "View did not get updated = {0}", this.configurationWrapper.GetWriteView());
+
+            // now update the view on one of the blobs so that all three blobs have different views.
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 2, false, 0, new List<int>{0}, false);
+
+            // ensure that viewId does not change
+            Thread.Sleep(Constants.LeaseDurationInSec * 1000);
+            Assert.IsTrue(this.configurationWrapper.GetWriteView().IsEmpty, "View should be empty");
+
+            RefreshRTableEnvJsonConfigBlob(v.ViewId + 2, false, 0, new List<int>{0, 2}, true);
+            Assert.IsTrue(this.configurationWrapper.GetWriteView().ViewId == v.ViewId + 2,
+                "View did not get updated to +2 = {0}", this.configurationWrapper.GetWriteView());
         }
 
         [Test(Description = "TableOperation Repair Row API")]
@@ -144,7 +157,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Insert entity
             Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
 
-            View fullView = configurationService.GetWriteView();
+            View fullView = configurationWrapper.GetWriteView();
             List<ReplicaInfo> fullViewReplicas = new List<ReplicaInfo>();
             for (int i = 0; i <= fullView.TailIndex; i++)
             {
@@ -156,8 +169,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 newReplicas.Add(fullView.GetReplicaInfo(i));
             }
-            configurationService.UpdateConfiguration(newReplicas, 0);
-            Assert.IsTrue(configurationService.IsViewStable());
+            this.UpdateConfiguration(newReplicas, 0);
+            Assert.IsTrue(configurationWrapper.IsViewStable());
 
             SampleRTableEntity newCustomer = new SampleRTableEntity("firstname1", "lastname1", "email1@company.com");
 
@@ -172,12 +185,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(false, row._rtable_RowLock, "row._rtable_RowLock mismatch");
             Assert.AreEqual(1, row._rtable_Version, "row._rtable_Version mismatch");
             Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
-            Assert.AreEqual(configurationService.GetWriteView().ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
+            Assert.AreEqual(configurationWrapper.GetWriteView().ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
 
             ReadFromIndividualAccountsDirectly(newCustomer.PartitionKey, newCustomer.RowKey, true);
 
             //Add replica at head
-            configurationService.UpdateConfiguration(fullViewReplicas, 1);
+            this.UpdateConfiguration(fullViewReplicas, 1);
 
             // repair row on the new head
             Console.WriteLine("Calling TableOperation.Replace(newCustomer)...");
@@ -202,7 +215,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Insert entity
             Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
 
-            View fullView = configurationService.GetWriteView();
+            View fullView = configurationWrapper.GetWriteView();
             List<ReplicaInfo> fullViewReplicas = new List<ReplicaInfo>();
             for (int i = 0; i <= fullView.TailIndex; i++)
             {
@@ -228,13 +241,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(false, row._rtable_RowLock, "row._rtable_RowLock mismatch");
             Assert.AreEqual(1, row._rtable_Version, "row._rtable_Version mismatch");
             Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
-            Assert.AreEqual(configurationService.GetWriteView().ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
+            Assert.AreEqual(configurationWrapper.GetWriteView().ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
 
             ReadFromIndividualAccountsDirectly(newCustomer.PartitionKey, newCustomer.RowKey, true);
 
             // remove replica from the head
-            configurationService.UpdateConfiguration(newReplicas, 0);
-            Assert.IsTrue(configurationService.IsViewStable());
+            this.UpdateConfiguration(newReplicas, 0);
+            Assert.IsTrue(configurationWrapper.IsViewStable());
 
             // delete row
             TableOperation deleteOperation = TableOperation.Delete(newCustomer);
@@ -243,7 +256,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual((int) HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
             //Add replica at head
-            configurationService.UpdateConfiguration(fullViewReplicas, 1);
+            this.UpdateConfiguration(fullViewReplicas, 1);
 
             // repair row on the new head
             Console.WriteLine("Calling repair row");
@@ -268,7 +281,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Insert entity
             Assert.IsTrue(this.repTable.Exists(), "RTable does not exist");
 
-            View fullView = configurationService.GetWriteView();
+            View fullView = configurationWrapper.GetWriteView();
             List<ReplicaInfo> fullViewReplicas = new List<ReplicaInfo>();
             for (int i = 0; i <= fullView.TailIndex; i++)
             {
@@ -308,8 +321,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             ReadFromIndividualAccountsDirectly(customer3.PartitionKey, customer3.RowKey, true);
 
             // remove replica from the head
-            configurationService.UpdateConfiguration(newReplicas, 0);
-            Assert.IsTrue(configurationService.IsViewStable());
+            this.UpdateConfiguration(newReplicas, 0);
+            Assert.IsTrue(configurationWrapper.IsViewStable());
 
             // delete a row
             TableOperation deleteOperation = TableOperation.Delete(customer1);
@@ -333,7 +346,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
             //Add replica at head
-            configurationService.UpdateConfiguration(fullViewReplicas, 1);
+            this.UpdateConfiguration(fullViewReplicas, 1);
 
             // repair table on the new head
             Console.WriteLine("Calling repair table");

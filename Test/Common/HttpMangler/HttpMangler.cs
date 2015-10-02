@@ -223,11 +223,8 @@ namespace Microsoft.WindowsAzure.Test.Network
                     bool shouldCall = this.ShouldCallBehavior(this.behaviors[i], openSession, triggerFlag);
                     if (shouldCall)
                     {
-                        if (triggerFlag == TriggerType.BeforeRequest)
-                        {
-                            Console.WriteLine("\t\t ShouldCall=true. {0:hh:mm:ss.fff} openSession: id={1} host={2}",
-                                DateTime.UtcNow, openSession.id, openSession.host);
-                        }
+                        Console.WriteLine("\t\t ShouldCall=true. {0:hh:mm:ss.fff} openSession: id={1} host={2} url = {3}",
+                            DateTime.UtcNow, openSession.id, openSession.host, openSession.url);
                         this.behaviors[i].Execute(openSession);
                     }
                     else

@@ -27,10 +27,77 @@ namespace Microsoft.Azure.Toolkit.Replication
 
     public class View
     {
-        public View()
+        public View(string name)
         {
+            this.Name = name;
+            this.RefreshTime = DateTime.MinValue;
             this.Chain = new List<Tuple<ReplicaInfo, CloudTableClient>>();
         }
+
+        public static View InitFromConfigVer1(string name, ReplicatedTableConfigurationStore configurationStore, Action<ReplicaInfo> SetConnectionString)
+        {
+            View view = new View(name);
+
+            if (configurationStore != null)
+            {
+                view.ViewId = configurationStore.ViewId;
+                view.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
+
+                foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
+                {
+                    SetConnectionString(replica);
+
+                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
+                    if (replica != null && tableClient != null)
+                    {
+                        view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                    }
+                }
+
+                if (!view.IsEmpty)
+                {
+                    ReplicaInfo head = view.GetReplicaInfo(0);
+                    head.Status = ReplicaStatus.WriteOnly;
+
+                    if (view.IsStable)
+                    {
+                        head.Status = ReplicaStatus.ReadWrite;
+                    }
+                }
+            }
+
+            return view;
+        }
+
+        public static View InitFromConfigVer2(string name, ReplicatedTableConfigurationStore configurationStore, Action<ReplicaInfo> SetConnectionString)
+        {
+            View view = new View(name);
+
+            if (configurationStore != null)
+            {
+                view.ViewId = configurationStore.ViewId;
+
+                foreach (ReplicaInfo replica in configurationStore.GetCurrentReplicaChain())
+                {
+                    SetConnectionString(replica);
+
+                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
+                    if (tableClient != null)
+                    {
+                        view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                    }
+                }
+
+                // Infered: first readable replica
+                view.ReadHeadIndex = view.Chain.FindIndex(tuple => tuple.Item1.IsReadable());
+            }
+
+            return view;
+        }
+
+        public string Name { get; private set; }
+
+        public DateTime RefreshTime { get; set; }
 
         public long ViewId { get; set; }
 
@@ -74,10 +141,45 @@ namespace Microsoft.Azure.Toolkit.Replication
             get { return Chain.Count == 0; }
         }
 
+        public bool IsReadOnly()
+        {
+            if (IsEmpty)
+            {
+                return false;
+            }
+
+            return this.Chain[0].Item1.IsReadOnly();
+        }
+
+        public bool IsWritable()
+        {
+            if (IsEmpty)
+            {
+                return false;
+            }
+
+            return this.Chain[0].Item1.IsWritable();
+        }
+
+        public bool IsExpired(TimeSpan leaseDuration)
+        {
+            if (DateTime.UtcNow - RefreshTime > leaseDuration)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         public static bool operator ==(View view1, View view2)
         {
             if ( object.ReferenceEquals(view1, null) ||
                  object.ReferenceEquals(view2, null))
+            {
+                return false;
+            }
+
+            if ( ! string.Equals(view1.Name, view2.Name, StringComparison.OrdinalIgnoreCase) )
             {
                 return false;
             }

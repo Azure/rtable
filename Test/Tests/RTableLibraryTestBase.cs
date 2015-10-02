@@ -19,6 +19,12 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+#if true
+    #define USE_CONFIGSERVICE_V2
+#else
+    #define USE_CONFIGSERVICE_V1
+#endif
+
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using Microsoft.WindowsAzure.Storage;
@@ -38,6 +44,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     public class RTableLibraryTestBase
     {
         /// <summary>
+        /// Configuration wrapper (layer) which interacts with the RTable ConfigurationService instance.
+        /// </summary>
+        protected IReplicatedTableConfigurationWrapper configurationWrapper;
+
+        /// <summary>
         /// Test configuration (e.g., storage account names / keys used in the unit tests) specified in an xml.
         /// </summary>
         protected RTableTestConfiguration rtableTestConfiguration;
@@ -51,11 +62,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// ConfigurationInfo used to construct the RTable.
         /// </summary>
         protected List<ConfigurationStoreLocationInfo> configurationInfos = new List<ConfigurationStoreLocationInfo>();
-
-        /// <summary>
-        /// ConfigurationService associated with the RTable.
-        /// </summary>
-        protected ReplicatedTableConfigurationService configurationService;
 
         /// <summary>
         /// Ues this to insert, modify, etc. entities in the RTable.
@@ -74,11 +80,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         protected List<int> actualStorageAccountsUsed;
 
         /// <summary>
-        /// This is the index of the storage account where the RTable config is stored.
-        /// </summary>
-        protected int rtableConfigStorageAccountIndex = 0;
-
-        /// <summary>
         /// Cloud Table of the individual storage account used to construct the RTable. Used for debugging and validation only.
         /// </summary>
         protected List<CloudTable> cloudTables;
@@ -92,6 +93,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// Mapping from account name -> connection string
         /// </summary>
         private Dictionary<string, SecureString> connectionStringMap;
+
+        private int leaseDuration = 0;
+        private int clockFactor = 0;
+        private int minimumLeaseRenewalInterval = 0;
+        private int lockTimeoutInSeconds = 0;
 
         /// <summary>
         /// Read the test configuration from "RTableTestConfiguration.xml"
@@ -136,21 +142,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <summary>
         /// Setup the RTable Env in order to run unit tests.
         /// </summary>
-        /// <param name="reUploadRTableConfigBlob">set to true if want to re-upload a config blob to the container</param>        
         /// <param name="tableName">Name of the RTable. If string.Empty or null, then use this.rtableTestConfiguration.RTableInformation.RTableName</param>
         /// <param name="useHttps">When using HttpMangler, set this to false</param>
         /// <param name="viewIdString">_rtable_ViewId used in the RTable config blob. Set to string.Empty or null to use the _rtable_ViewId value in the xml config</param>
         /// <param name="actualStorageAccountsToBeUsed">Specify how/which Storage accounts in the config.xml will be used to construct the RTable. Set to null to use all accounts in xml. E.g., {0,1}</param>
         protected void SetupRTableEnv(
-            bool reUploadRTableConfigBlob = true,
             string tableName = "",
             bool useHttps = true,
             string viewIdString = "",
             List<int> actualStorageAccountsToBeUsed = null,
-            bool convertXStoreTableMode = false)
-        {            
+            bool convertXStoreTableMode = false,
+            int numberOfBlobs = 0)
+        {
             int numberOfStorageAccounts = this.rtableTestConfiguration.StorageInformation.AccountNames.Count();
-           
+
             // If user does not specify which storage accounts to construct the RTable, then use all the storage accounts in the xml.
             this.actualStorageAccountsUsed = actualStorageAccountsToBeUsed;
             if (this.actualStorageAccountsUsed == null || this.actualStorageAccountsUsed.Count == 0)
@@ -162,6 +167,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 }
             }
 
+            this.UpdateConfigurationConstants();
+
             // Upload RTable configuration to blob
             int viewId = this.rtableTestConfiguration.RTableInformation.ViewId;
             if (!string.IsNullOrEmpty(viewIdString))
@@ -169,19 +176,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 viewId = int.Parse(viewIdString);
             }
 
-            this.InitConnectionStringMap(useHttps);
-            this.configurationInfos = this.UploadRTableConfigToBlob(reUploadRTableConfigBlob, viewId, convertXStoreTableMode);
-            this.configurationService = new ReplicatedTableConfigurationService(this.configurationInfos, this.connectionStringMap, useHttps);
-
-            this.configurationService.LockTimeout = TimeSpan.FromSeconds(TestLockTimeoutInSeconds);
+            numberOfBlobs = numberOfBlobs == 0
+                ? this.rtableTestConfiguration.StorageInformation.AccountKeys.Count()
+                : numberOfBlobs;
 
             if (string.IsNullOrEmpty(tableName))
             {
                 tableName = this.rtableTestConfiguration.RTableInformation.RTableName;
             }
+
+            this.InitConnectionStringMap(useHttps);
+
+            InitialSetup(tableName, useHttps, viewId, convertXStoreTableMode, numberOfBlobs);
+
             this.repTable = new ReplicatedTable(tableName, this.configurationService);
-            this.repTable.CreateIfNotExists();            
-            this.rtableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(this.repTable);  
+            this.repTable.CreateIfNotExists();
+            this.rtableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(this.repTable);
 
             this.cloudTableClients = new List<CloudTableClient>();
             this.cloudTables = new List<CloudTable>();
@@ -191,6 +201,27 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 this.cloudTableClients.Add(cloudBloblClient);
                 this.cloudTables.Add(cloudBloblClient.GetTableReference(repTable.TableName));
             }
+        }
+
+        private void UpdateConfigurationConstants()
+        {
+            this.leaseDuration = Constants.LeaseDurationInSec;
+            this.clockFactor = Constants.ClockFactorInSec;
+            this.minimumLeaseRenewalInterval = Constants.MinimumLeaseRenewalInterval;
+            this.lockTimeoutInSeconds = Constants.LockTimeoutInSeconds;
+
+            Constants.LeaseDurationInSec = 5;
+            Constants.ClockFactorInSec = 1;
+            Constants.MinimumLeaseRenewalInterval = 1;
+            Constants.LockTimeoutInSeconds = 5;
+        }
+
+        private void RestoreConfigurationConstants()
+        {
+            Constants.LeaseDurationInSec = this.leaseDuration;
+            Constants.ClockFactorInSec = this.clockFactor;
+            Constants.MinimumLeaseRenewalInterval = this.minimumLeaseRenewalInterval;
+            Constants.LockTimeoutInSeconds = this.lockTimeoutInSeconds;
         }
 
         /// <summary>
@@ -220,9 +251,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         protected void DeleteAllRtableResources()
         {
+            this.repTable.DeleteIfExists();
             this.DeleteConfigurationBlob();
             this.configurationService.Dispose();
-            this.repTable.DeleteIfExists();            
+            this.RestoreConfigurationConstants();
         }
 
         /// <summary>
@@ -242,17 +274,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 }
 
                 Console.WriteLine("Deleting configuration blob at {0}", blobName);
-                index = this.rtableConfigStorageAccountIndex;
-                string connectionString;
-                CloudBlobClient cloudBloblClient = this.GenerateCloudBlobClient(
-                                       this.rtableTestConfiguration.StorageInformation.AccountNames[index],
-                                       this.rtableTestConfiguration.StorageInformation.AccountKeys[index],
-                                       this.rtableTestConfiguration.StorageInformation.DomainName,
-                                       out connectionString);
+                for (index = 0;
+                    index < this.rtableTestConfiguration.StorageInformation.AccountKeys.Count();
+                    index++)
+                {
+                    string connectionString;
+                    CloudBlobClient cloudBloblClient = this.GenerateCloudBlobClient(
+                        this.rtableTestConfiguration.StorageInformation.AccountNames[index],
+                        this.rtableTestConfiguration.StorageInformation.AccountKeys[index],
+                        this.rtableTestConfiguration.StorageInformation.DomainName,
+                        out connectionString);
 
-                CloudBlobContainer container = cloudBloblClient.GetContainerReference(this.rtableTestConfiguration.RTableInformation.ContainerName);
-                CloudBlockBlob blockBlob = container.GetBlockBlobReference(blobName);
-                blockBlob.Delete();
+                    CloudBlobContainer container =
+                        cloudBloblClient.GetContainerReference(
+                            this.rtableTestConfiguration.RTableInformation.ContainerName);
+                    CloudBlockBlob blockBlob = container.GetBlockBlobReference(blobName);
+                    blockBlob.Delete();
+                }
             }
             catch (Exception ex)
             {
@@ -265,16 +303,32 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// and convertXStoreTableMode and update the appropriate wrapper.
         /// </summary>
         /// <param name="updatedViewId"></param>
-        protected void RefreshRTableEnvJsonConfigBlob(long updatedViewId, bool convertXStoreTableMode = false, int readViewHeadIndex = 0)
+        protected void RefreshRTableEnvJsonConfigBlob(long updatedViewId, bool convertXStoreTableMode = false,
+            int readViewHeadIndex = 0, List<int> blobIndexes = null, bool waitForConfig = true)
         {
-            Console.WriteLine("Calling RefreshRTableEnvJsonConfigBlob() with updatedViewId={0} convertXStoreTableMode={1} readViewHeadIndex={2}",
+            if (blobIndexes == null)
+            {
+                blobIndexes = new List<int> { 0 };
+            }
+
+            Console.WriteLine(
+                "Calling RefreshRTableEnvJsonConfigBlob() with updatedViewId={0} convertXStoreTableMode={1} readViewHeadIndex={2}",
                 updatedViewId, convertXStoreTableMode, readViewHeadIndex);
-            this.ModifyConfigurationBlob(updatedViewId, convertXStoreTableMode, readViewHeadIndex);
+            this.ModifyConfigurationBlob(updatedViewId, convertXStoreTableMode, readViewHeadIndex, blobIndexes);
             this.repTable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
             this.rtableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(this.repTable);
 
-            Console.WriteLine("Sleeping {0} seconds for new viewId to take effect...", Constants.LeaseDurationInSec);
-            Thread.Sleep(Constants.LeaseDurationInSec * 1000);
+            if (!waitForConfig)
+            {
+                return;
+            }
+
+            while (this.configurationWrapper.GetWriteView().ViewId != updatedViewId)
+            {
+                Console.WriteLine("Sleeping {0} seconds for new viewId to take effect...",
+                    Constants.LeaseDurationInSec/2);
+                Thread.Sleep((Constants.LeaseDurationInSec/2)*1000);
+            }
         }
 
         /// <summary>
@@ -284,47 +338,51 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="convertXStoreTableMode"></param>
         protected void RefreshRTableEnvJsonConfigBlob(bool convertXStoreTableMode)
         {
-            long viewId = this.configurationService.GetReadView().ViewId;
+            long viewId = this.configurationWrapper.GetReadView().ViewId;
             this.RefreshRTableEnvJsonConfigBlob(viewId, convertXStoreTableMode);            
         }
 
         /// <summary>
-        /// Modify the contents of the RTable configuration blob to use the updated viewId
+        /// Return RTableConfiguration LocationInfo.
         /// </summary>
-        /// <param name="updatedViewId"></param>
-        /// <param name="convertXStoreTableMode"></param>
-        /// <param name="readViewHeadIndex"></param>
-        private void ModifyConfigurationBlob(long updatedViewId, bool convertXStoreTableMode, int readViewHeadIndex)
+        private List<ConfigurationStoreLocationInfo> GetRTableConfigurationLocationInfo(int numberOfBlobs)
         {
-            try
+            // e.g., Convert "config.txt" into "config-2014-09-01-23-55-59-123.txt"
+            string blobName = this.rtableTestConfiguration.RTableInformation.BlobName;
+            string dateString = DateTime.UtcNow.ToString("yyyy-MM-dd-HH-mm-ss-fff");
+
+            int index = blobName.IndexOf(".");
+            if (index >= 0)
             {
-                string blobName = this.configurationInfos.FirstOrDefault().BlobPath;
-                int index = blobName.IndexOf("/");
-                blobName = blobName.Substring(index + 1); // +1 to acording for "/"
-
-                Console.WriteLine("Configuration blobname = {0}", blobName);
-                index = this.rtableConfigStorageAccountIndex;
-                string connectionString;
-                CloudBlobClient cloudBloblClient = this.GenerateCloudBlobClient(
-                                       this.rtableTestConfiguration.StorageInformation.AccountNames[index],
-                                       this.rtableTestConfiguration.StorageInformation.AccountKeys[index],
-                                       this.rtableTestConfiguration.StorageInformation.DomainName,
-                                       out connectionString);
-
-                CloudBlobContainer container = cloudBloblClient.GetContainerReference(this.rtableTestConfiguration.RTableInformation.ContainerName);
-                CloudBlockBlob blockBlob = container.GetBlockBlobReference(blobName);
-                string currentConfigText = blockBlob.DownloadText();
-                Console.WriteLine("currentConfigText = {0}", currentConfigText);
-
-                string updatedConfigText = this.GetRTableJsonConfiguration(updatedViewId, convertXStoreTableMode, readViewHeadIndex);
-                Console.WriteLine("updatedConfigText = {0}", updatedConfigText);
-                blockBlob.UploadText(updatedConfigText);
+                blobName = blobName.Substring(0, index) + "-" + dateString + blobName.Substring(index);
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine("ModifyConfigurationBlob() encountered exception {0}", ex.ToString());
-                throw;
+                blobName = blobName + "-" + dateString;
             }
+
+            string configFilePath = string.Format(@"{0}/{1}", this.rtableTestConfiguration.RTableInformation.ContainerName, blobName);
+
+            Console.WriteLine("RTable configuration blob location is: {0}", configFilePath);
+
+            var locationInfos = new List<ConfigurationStoreLocationInfo>();
+            for (int blobIndex = 0; blobIndex < numberOfBlobs; blobIndex++)
+            {
+                string connectionString = this.GetConnectionString(
+                                                    this.rtableTestConfiguration.StorageInformation.AccountNames[blobIndex],
+                                                    this.rtableTestConfiguration.StorageInformation.AccountKeys[blobIndex],
+                                                    this.rtableTestConfiguration.StorageInformation.DomainName
+                                                    );
+
+                ConfigurationStoreLocationInfo configurationStoreLocationInfo = new ConfigurationStoreLocationInfo(connectionString)
+                {
+                    BlobPath = configFilePath,
+                };
+
+                locationInfos.Add(configurationStoreLocationInfo);
+            }
+
+            return locationInfos;
         }
 
         private void InitConnectionStringMap(bool useHttps)
@@ -343,65 +401,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                             this.rtableTestConfiguration.StorageInformation.AccountNames[i],
                                             SecureStringHelper.ToSecureString(connectionString));
             }
-        }
-
-        /// <summary>
-        /// Create the contents of the RTable configuration, and upload it to the appropriate container and blob.
-        /// Return ConfigurationStoreLocationInfo.
-        /// </summary>
-        /// <param name="reUploadRTableConfigBlob"></param>
-        /// <param name="viewId"></param>
-        private List<ConfigurationStoreLocationInfo> UploadRTableConfigToBlob(
-            bool reUploadRTableConfigBlob, 
-            int viewId, 
-            bool convertXStoreTableMode = false)
-        {
-            string connectionString;
-
-            // Currently, RTable config is only uploaded to ONE storage account's blob only.
-            // The first storage account is given by this.actualStorageAccountsUsed[0].
-            // Create a CloudBlobClient and upload the config there.
-            int index = this.rtableConfigStorageAccountIndex;
-            CloudBlobClient cloudBloblClient = this.GenerateCloudBlobClient(
-                                   this.rtableTestConfiguration.StorageInformation.AccountNames[index],
-                                   this.rtableTestConfiguration.StorageInformation.AccountKeys[index],
-                                   this.rtableTestConfiguration.StorageInformation.DomainName,
-                                   out connectionString);
-
-            // e.g., Convert "config.txt" into "config-2014-09-01-23-55-59-123.txt"
-            string blobName = this.rtableTestConfiguration.RTableInformation.BlobName; 
-            index = blobName.IndexOf(".");
-            string dateString = DateTime.UtcNow.ToString("yyyy-MM-dd-HH-mm-ss-fff");
-            if (index >= 0)
-            {
-                blobName = blobName.Substring(0, index) + "-" + dateString + blobName.Substring(index);
-            }
-            else
-            {
-                blobName = blobName + "-" + dateString;
-            }
-
-            CloudBlobContainer container = cloudBloblClient.GetContainerReference(this.rtableTestConfiguration.RTableInformation.ContainerName);            
-            bool justCreatedContainer = container.CreateIfNotExists();
-            if (justCreatedContainer || reUploadRTableConfigBlob)
-            {
-                // If it is a new container, then upload the RTable config
-                // Or, if the user specifies re-upload, then upload the RTable config
-                CloudBlockBlob blockBlob = container.GetBlockBlobReference(blobName);
-                Console.WriteLine("Uploading RTable config because we just created a new container in Head storage account or user specifies re-upload");
-                string jsonConfigText = this.GetRTableJsonConfiguration(viewId, convertXStoreTableMode);
-                blockBlob.UploadText(jsonConfigText);
-            }
-
-            string configFilePath = string.Format(@"{0}/{1}",
-                this.rtableTestConfiguration.RTableInformation.ContainerName,
-                blobName);
-
-            Console.WriteLine("RTable configuration blob location is: {0}", configFilePath);
-
-            ConfigurationStoreLocationInfo configurationStoreLocationInfo = new ConfigurationStoreLocationInfo(connectionString);
-            configurationStoreLocationInfo.BlobPath = configFilePath;
-            return new List<ConfigurationStoreLocationInfo>(){configurationStoreLocationInfo};
         }
 
         /// <summary>
@@ -427,7 +426,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="domainName"></param>
         /// <param name="connectionString">(Output)</param>
         /// <returns></returns>
-        private CloudBlobClient GenerateCloudBlobClient(
+        protected CloudBlobClient GenerateCloudBlobClient(
             string accountName,
             string accountKey,
             string domainName,
@@ -437,56 +436,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             CloudStorageAccount storageAccount = CloudStorageAccount.Parse(connectionString);
             CloudBlobClient client = storageAccount.CreateCloudBlobClient();
             return client;
-        }
-        
-        /// <summary>
-        /// Helper function to return the RTableConfig as a string. 
-        /// Note that even if 3 (say) accounts are specified in the xml, 
-        /// the test codes can specify that only accounts #0 and #2 are used to construct the RTable.
-        /// </summary>
-        /// <param name="viewId"></param>
-        /// <param name="convertXStoreTableMode"></param>
-        /// <param name="readViewHeadIndex"></param>
-        /// <returns></returns>
-        private string GetRTableJsonConfiguration(long viewId, bool convertXStoreTableMode, int readViewHeadIndex = 0)
-        {
-            if (viewId <= 0)
-            {
-                throw new Exception(string.Format("GetRTableConfigText() was called with invalid viewId {0}", viewId));
-            }
-
-            ReplicatedTableConfigurationStore configuration = new ReplicatedTableConfigurationStore();
-
-            configuration.ViewId = viewId;
-            configuration.ReadViewHeadIndex = readViewHeadIndex;
-            configuration.ConvertXStoreTableMode = convertXStoreTableMode;
-
-            int numberOfStorageAccounts = this.rtableTestConfiguration.StorageInformation.AccountNames.Count();
-            for (int i = 0; i < this.actualStorageAccountsUsed.Count; i++)
-            {
-                int index = this.actualStorageAccountsUsed[i];
-                if (index < 0 || index > numberOfStorageAccounts)
-                {
-                    throw new Exception(string.Format("this.actualStorageAccountsUsed[{0}] = {1} is out of range.", i, index));
-                }
-
-                ReplicaInfo replica = new ReplicaInfo();
-                replica.StorageAccountName = this.rtableTestConfiguration.StorageInformation.AccountNames[index];
-
-                if (readViewHeadIndex != 0)
-                {
-                    //If the read view head index is not 0, this means we are introducing 1 or more replicas at the head. For 
-                    //each such replica, update the view id in which it was added to the write view of the chain
-                    if (i < readViewHeadIndex)
-                    {
-                        replica.ViewInWhichAddedToChain = viewId;
-                    }
-                }
-
-                configuration.ReplicaChain.Add(replica);
-            }
-
-            return JsonStore<ReplicatedTableConfigurationStore>.Serialize(configuration);
         }
 
         /// <summary>
@@ -508,11 +457,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             TableQuery<SampleRTableEntity> query = new TableQuery<SampleRTableEntity>().
                 Where(TableQuery.CombineFilters(filter1, TableOperators.And, filter2));
 
-            SampleRTableEntity[] entities = new SampleRTableEntity[configurationService.GetWriteView().Chain.Count];
-            for (int i = 0; i < configurationService.GetWriteView().Chain.Count; i++)
+            SampleRTableEntity[] entities = new SampleRTableEntity[configurationWrapper.GetWriteView().Chain.Count];
+            for (int i = 0; i < configurationWrapper.GetWriteView().Chain.Count; i++)
             {
                 Console.WriteLine("Executing query for CloudTable #{0}", i);
-                foreach (var item in ((CloudTableClient) configurationService.GetWriteView()[i]).GetTableReference(repTable.TableName).ExecuteQuery(query))
+                foreach (var item in ((CloudTableClient) configurationWrapper.GetWriteView()[i]).GetTableReference(repTable.TableName).ExecuteQuery(query))
                 {
                     Console.WriteLine("{0}", item.ToString());
                     entities[i] = item;
@@ -522,7 +471,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             if (checkIndividualAccounts)
             {
                 Console.WriteLine("Checking for consistency...");
-                for (int i = 1; i < configurationService.GetWriteView().Chain.Count; i++)
+                for (int i = 1; i < configurationWrapper.GetWriteView().Chain.Count; i++)
                 {
                     Assert.IsTrue((entities[0] == null && entities[i] == null) || (entities[0]  != null && entities[0].Equals(entities[i])),
                         "Entities in storage accounts: #0 and #{0} do NOT match", i);
@@ -549,10 +498,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                                    Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, partitionKey));
 
             //Key = RowKey, Value = Entity
-            var headEntities = configurationService.GetWriteView()[headReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
+            var headEntities = configurationWrapper.GetWriteView()[headReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
 
             //Key = RowKey, Value = Entity
-            var tailEntities = configurationService.GetWriteView()[tailReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
+            var tailEntities = configurationWrapper.GetWriteView()[tailReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
 
             Assert.IsTrue(headEntities.Count >= tailEntities.Count);
 
@@ -583,5 +532,372 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             Console.WriteLine("END PerformInvariantChecks()\n");
         }
+
+
+        #region ReplicatedTableConfigurationService class related helpers/wrappers
+
+#if USE_CONFIGSERVICE_V1
+
+        /// <summary>
+        /// ConfigurationService associated with the RTable.
+        /// </summary>
+        protected ReplicatedTableConfigurationService configurationService;
+
+        private void InitialSetup(string tableName, bool useHttps, int viewId, bool convertXStoreTableMode, int numberOfBlobs)
+        {
+            this.configurationInfos = this.GetRTableConfigurationLocationInfo(numberOfBlobs);
+
+            this.UploadRTableConfigToBlob(viewId, convertXStoreTableMode, numberOfBlobs);
+
+            this.configurationService = new ReplicatedTableConfigurationService(this.configurationInfos, this.connectionStringMap, useHttps);
+
+            this.configurationWrapper = new ReplicatedTableConfigurationWrapper(this.configurationService);
+            this.configurationWrapper.SetLockTimeout(TimeSpan.FromSeconds(TestLockTimeoutInSeconds));
+        }
+
+        /// <summary>
+        /// Helper function to return the RTableConfig
+        /// Note that even if 3 (say) accounts are specified in the xml,
+        /// the test codes can specify that only accounts #0 and #2 are used to construct the RTable.
+        /// </summary>
+        /// <param name="viewId"></param>
+        /// <param name="convertXStoreTableMode"></param>
+        /// <param name="readViewHeadIndex"></param>
+        /// <returns></returns>
+        private ReplicatedTableConfigurationStore GetRTableConfiguration(long viewId, bool convertXStoreTableMode, int readViewHeadIndex = 0)
+        {
+            if (viewId <= 0)
+            {
+                throw new Exception(string.Format("GetRTableConfigText() was called with invalid viewId {0}", viewId));
+            }
+
+            ReplicatedTableConfigurationStore configuration = new ReplicatedTableConfigurationStore();
+
+            configuration.ViewId = viewId;
+            configuration.ReadViewHeadIndex = readViewHeadIndex;
+            configuration.ConvertXStoreTableMode = convertXStoreTableMode;
+
+            int numberOfStorageAccounts = this.rtableTestConfiguration.StorageInformation.AccountNames.Count();
+            for (int i = 0; i < this.actualStorageAccountsUsed.Count; i++)
+            {
+                int index = this.actualStorageAccountsUsed[i];
+                if (index < 0 || index > numberOfStorageAccounts)
+                {
+                    throw new Exception(string.Format("this.actualStorageAccountsUsed[{0}] = {1} is out of range.", i, index));
+                }
+
+                ReplicaInfo replica = new ReplicaInfo();
+                replica.StorageAccountName = this.rtableTestConfiguration.StorageInformation.AccountNames[index];
+
+                if (readViewHeadIndex != 0)
+                {
+                    //If the read view head index is not 0, this means we are introducing 1 or more replicas at the head. For
+                    //each such replica, update the view id in which it was added to the write view of the chain
+                    if (i < readViewHeadIndex)
+                    {
+                        replica.ViewInWhichAddedToChain = viewId;
+                    }
+                }
+
+                configuration.ReplicaChain.Add(replica);
+            }
+
+            return configuration;
+        }
+
+        /// <summary>
+        /// Create the contents of the RTable configuration, and upload it to the appropriate container and blob.
+        /// </summary>
+        private void UploadRTableConfigToBlob(int viewId, bool convertXStoreTableMode, int numberOfBlobs)
+        {
+            string blobName = this.configurationInfos.FirstOrDefault().BlobPath;
+            int index = blobName.IndexOf("/");
+            blobName = blobName.Substring(index + 1); // +1 to acording for "/"
+
+            Console.WriteLine("Uploading RTable config ...");
+
+            for (int blobIndex = 0; blobIndex < numberOfBlobs; blobIndex++)
+            {
+                string connectionString;
+                CloudBlobClient cloudBloblClient = this.GenerateCloudBlobClient(
+                    this.rtableTestConfiguration.StorageInformation.AccountNames[blobIndex],
+                    this.rtableTestConfiguration.StorageInformation.AccountKeys[blobIndex],
+                    this.rtableTestConfiguration.StorageInformation.DomainName,
+                    out connectionString);
+
+                CloudBlobContainer container = cloudBloblClient.GetContainerReference(this.rtableTestConfiguration.RTableInformation.ContainerName);
+                container.CreateIfNotExists();
+
+                CloudBlockBlob blockBlob = container.GetBlockBlobReference(blobName);
+
+                ReplicatedTableConfigurationStore configuration = this.GetRTableConfiguration(viewId, convertXStoreTableMode);
+
+                string jsonConfigText = JsonStore<ReplicatedTableConfigurationStore>.Serialize(configuration);
+                blockBlob.UploadText(jsonConfigText);
+            }
+        }
+
+        /// <summary>
+        /// Modify the contents of the RTable configuration blob to use the updated viewId
+        /// </summary>
+        /// <param name="updatedViewId"></param>
+        /// <param name="convertXStoreTableMode"></param>
+        /// <param name="readViewHeadIndex"></param>
+        private void ModifyConfigurationBlob(long updatedViewId, bool convertXStoreTableMode, int readViewHeadIndex, List<int> blobIndexes)
+        {
+            try
+            {
+                foreach (var blobIndex in blobIndexes)
+                {
+                    Console.WriteLine("ModifyConfigurationBlob#{0} ...", blobIndex);
+
+                    string blobName = this.configurationInfos[blobIndex].BlobPath;
+                    int index = blobName.IndexOf("/");
+                    blobName = blobName.Substring(index + 1); // +1 to acording for "/"
+
+                    Console.WriteLine("Configuration blobname = {0}", blobName);
+
+                    string connectionString;
+                    CloudBlobClient cloudBloblClient = this.GenerateCloudBlobClient(
+                        this.rtableTestConfiguration.StorageInformation.AccountNames[blobIndex],
+                        this.rtableTestConfiguration.StorageInformation.AccountKeys[blobIndex],
+                        this.rtableTestConfiguration.StorageInformation.DomainName,
+                        out connectionString);
+
+                    CloudBlobContainer container =
+                        cloudBloblClient.GetContainerReference(
+                            this.rtableTestConfiguration.RTableInformation.ContainerName);
+                    CloudBlockBlob blockBlob = container.GetBlockBlobReference(blobName);
+
+                    string currentConfigText = blockBlob.DownloadText();
+                    Console.WriteLine("currentConfigText = {0}", currentConfigText);
+
+                    ReplicatedTableConfigurationStore configuration = this.GetRTableConfiguration(updatedViewId,
+                        convertXStoreTableMode, readViewHeadIndex);
+
+                    string updatedConfigText = JsonStore<ReplicatedTableConfigurationStore>.Serialize(configuration);
+                    Console.WriteLine("updatedConfigText = {0}", updatedConfigText);
+
+                    blockBlob.UploadText(updatedConfigText);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("ModifyConfigurationBlob() encountered exception {0}", ex.ToString());
+                throw;
+            }
+        }
+
+        protected void UpdateConfiguration(List<ReplicaInfo> replicaChain, int readViewHeadIndex, bool convertXStoreTableMode = false, long viewId = 0)
+        {
+            this.configurationService.UpdateConfiguration(replicaChain, readViewHeadIndex, convertXStoreTableMode, viewId);
+        }
+
+#endif
+
+        #endregion
+
+
+        #region ReplicatedTableConfigurationServiceV2 class related helpers/wrappers
+
+#if USE_CONFIGSERVICE_V2
+
+        /// <summary>
+        /// ConfigurationService associated with the RTable.
+        /// </summary>
+        protected ReplicatedTableConfigurationServiceV2 configurationService;
+
+        private readonly string DefaultViewName = "DefaultView";
+        private readonly string DefaultTableConfigName = "DefaultTableConfig";
+
+        private void InitialSetup(string tableName, bool useHttps, int viewId, bool convertXStoreTableMode, int numberOfBlobs)
+        {
+            this.configurationInfos = this.GetRTableConfigurationLocationInfo(numberOfBlobs);
+
+            this.configurationService = new ReplicatedTableConfigurationServiceV2(this.configurationInfos, this.connectionStringMap, useHttps);
+
+            this.UploadRTableConfigToBlob(viewId, convertXStoreTableMode, numberOfBlobs);
+
+            this.configurationWrapper = new ReplicatedTableConfigurationV2Wrapper(tableName, this.configurationService);
+            this.configurationWrapper.SetLockTimeout(TimeSpan.FromSeconds(TestLockTimeoutInSeconds));
+        }
+
+        /// <summary>
+        /// Helper function to return the RTableConfig
+        /// Note that even if 3 (say) accounts are specified in the xml,
+        /// the test codes can specify that only accounts #0 and #2 are used to construct the RTable.
+        /// </summary>
+        /// <param name="viewId"></param>
+        /// <param name="convertXStoreTableMode"></param>
+        /// <param name="readViewHeadIndex"></param>
+        /// <returns></returns>
+        private ReplicatedTableConfiguration GetRTableConfiguration(long viewId, bool convertXStoreTableMode, int readViewHeadIndex = 0)
+        {
+            if (viewId <= 0)
+            {
+                throw new Exception(string.Format("GetRTableConfigText() was called with invalid viewId {0}", viewId));
+            }
+
+            // 1 - Create a default view
+            var viewConfig = new ReplicatedTableConfigurationStore
+            {
+                ViewId = viewId,
+                ReadViewHeadIndex = readViewHeadIndex,
+            };
+
+            int numberOfStorageAccounts = this.rtableTestConfiguration.StorageInformation.AccountNames.Count();
+            for (int i = 0; i < this.actualStorageAccountsUsed.Count; i++)
+            {
+                int index = this.actualStorageAccountsUsed[i];
+                if (index < 0 || index > numberOfStorageAccounts)
+                {
+                    throw new Exception(string.Format("this.actualStorageAccountsUsed[{0}] = {1} is out of range.", i, index));
+                }
+
+                ReplicaInfo replica = new ReplicaInfo
+                {
+                    StorageAccountName = this.rtableTestConfiguration.StorageInformation.AccountNames[index],
+                    Status = ReplicaStatus.ReadWrite,
+                };
+
+                if (readViewHeadIndex != 0 && i < readViewHeadIndex)
+                {
+                    replica.Status = ReplicaStatus.WriteOnly;
+                }
+
+                viewConfig.ReplicaChain.Add(replica);
+            }
+
+            // 2 - Create a default table config. that references the "DefaultView"
+            var tableConfig = new ReplicatedTableConfiguredTable
+            {
+                TableName = DefaultTableConfigName,
+                ViewName = DefaultViewName,
+                ConvertToRTable = convertXStoreTableMode,
+                UseAsDefault = true,
+            };
+
+            // 3 - Create the final RTable configuration
+            ReplicatedTableConfiguration configuration = new ReplicatedTableConfiguration();
+            configuration.SetView(DefaultViewName, viewConfig);
+            configuration.SetTable(tableConfig);
+
+            return configuration;
+        }
+
+        /// <summary>
+        /// Create the contents of the RTable configuration, and upload it to the appropriate container and blob.
+        /// </summary>
+        private void UploadRTableConfigToBlob(int viewId, bool convertXStoreTableMode, int numberOfBlobs)
+        {
+            // upload the RTable config
+            Console.WriteLine("Uploading RTable config ...");
+
+            for (int blobIndex = 0; blobIndex < numberOfBlobs; blobIndex++)
+            {
+                string connectionString;
+                CloudBlobClient cloudBloblClient = this.GenerateCloudBlobClient(
+                                       this.rtableTestConfiguration.StorageInformation.AccountNames[blobIndex],
+                                       this.rtableTestConfiguration.StorageInformation.AccountKeys[blobIndex],
+                                       this.rtableTestConfiguration.StorageInformation.DomainName,
+                                       out connectionString);
+
+                CloudBlobContainer container = cloudBloblClient.GetContainerReference(this.rtableTestConfiguration.RTableInformation.ContainerName);
+                container.CreateIfNotExists();
+            }
+
+            ReplicatedTableConfiguration rtableConfig = this.GetRTableConfiguration(viewId, convertXStoreTableMode);
+            this.configurationService.UpdateConfiguration(rtableConfig, false);
+        }
+
+        /// <summary>
+        /// Modify the contents of the RTable configuration blob to use the updated viewId
+        /// </summary>
+        /// <param name="updatedViewId"></param>
+        /// <param name="convertXStoreTableMode"></param>
+        /// <param name="readViewHeadIndex"></param>
+        private void ModifyConfigurationBlob(long updatedViewId, bool convertXStoreTableMode, int readViewHeadIndex, List<int> blobIndexes)
+        {
+            try
+            {
+                List<ReplicatedTableConfiguration> configurations;
+                List<ReplicatedTableReadBlobResult> result = this.configurationService.RetrieveConfiguration(out configurations);
+
+                foreach (var blobIndex in blobIndexes)
+                {
+                    if (blobIndex >= result.Count)
+                    {
+                        var msg = string.Format("BlobIndex={0} >= ResultCount={1}", blobIndex, result.Count);
+                        throw new Exception(msg);
+                    }
+
+                    if (result[blobIndex].Code != ReadBlobCode.Success)
+                    {
+                        throw new Exception(result.ToString());
+                    }
+
+                    string currentConfigText = configurations[blobIndex].ToJson();
+                    Console.WriteLine("Blob#{0}:\nCurrentConfigText = {1}", blobIndex, currentConfigText);
+                }
+
+                ReplicatedTableConfiguration newConfig = this.GetRTableConfiguration(updatedViewId, convertXStoreTableMode, readViewHeadIndex);
+                string updatedConfigText = newConfig.ToJson();
+
+                Console.WriteLine("\nModifying blobs:\nUpdatedConfigText = {0}", updatedConfigText);
+
+                ReplicatedTableQuorumWriteResult writeResult = this.configurationService.UploadConfigurationToBlobs(blobIndexes, newConfig);
+                if (writeResult.Code != ReplicatedTableQuorumWriteCode.Success)
+                {
+                    throw new Exception(writeResult.ToString());
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("ModifyConfigurationBlob() encountered exception {0}", ex.ToString());
+                throw;
+            }
+        }
+
+        protected void UpdateConfiguration(List<ReplicaInfo> replicaChain, int readViewHeadIndex, bool convertXStoreTableMode = false, long viewId = 0)
+        {
+            for (int i = 0; i < replicaChain.Count; i++)
+            {
+                replicaChain[i].Status = ReplicaStatus.ReadWrite;
+
+                if (readViewHeadIndex != 0 && i < readViewHeadIndex)
+                {
+                    replicaChain[i].Status = ReplicaStatus.WriteOnly;
+                }
+            }
+
+            // - view config
+            var viewConfig = new ReplicatedTableConfigurationStore
+            {
+                ViewId = viewId,
+                ReadViewHeadIndex = readViewHeadIndex,
+                ReplicaChain = replicaChain,
+            };
+
+            // - table config
+            var tableConfig = new ReplicatedTableConfiguredTable
+            {
+                TableName = DefaultTableConfigName,
+                ViewName = DefaultViewName,
+                ConvertToRTable = convertXStoreTableMode,
+                UseAsDefault = true,
+            };
+
+            // - Update RTable configuration
+            ReplicatedTableConfiguration configuration = new ReplicatedTableConfiguration();
+            configuration.SetView(DefaultViewName, viewConfig);
+            configuration.SetTable(tableConfig);
+
+            this.configurationService.UpdateConfiguration(configuration, false);
+        }
+
+#endif
+
+        #endregion
+
     }
 }
