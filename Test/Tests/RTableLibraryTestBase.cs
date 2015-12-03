@@ -339,7 +339,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         protected void RefreshRTableEnvJsonConfigBlob(bool convertXStoreTableMode)
         {
             long viewId = this.configurationWrapper.GetReadView().ViewId;
-            this.RefreshRTableEnvJsonConfigBlob(viewId, convertXStoreTableMode);            
+            this.RefreshRTableEnvJsonConfigBlob(++viewId, convertXStoreTableMode, 0, new List<int> { 0, 1, 2});
         }
 
         /// <summary>

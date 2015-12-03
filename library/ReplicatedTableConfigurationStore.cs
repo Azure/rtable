@@ -81,9 +81,130 @@ namespace Microsoft.Azure.Toolkit.Replication
             return JsonStore<ReplicatedTableConfigurationStore>.Serialize(this);
         }
 
+        /// <summary>
+        /// List of active Replicas i.e. RO / WO / RW
+        /// </summary>
+        /// <returns></returns>
         public List<ReplicaInfo> GetCurrentReplicaChain()
         {
             return ReplicaChain.Where(r => r.Status != ReplicaStatus.None).ToList();
+        }
+
+
+        /*
+         * Helpers ...
+         */
+        internal protected void SanitizeWithCurrentView(View currentView)
+        {
+            if (ViewId == 0)
+            {
+                // Assert(currentView != null)
+
+                if (!currentView.IsEmpty)
+                {
+                    ViewId = currentView.ViewId + 1;
+                }
+                else
+                {
+                    ViewId = 1;
+                }
+            }
+
+            Timestamp = DateTime.UtcNow;
+
+            foreach (var replica in GetCurrentReplicaChain())
+            {
+                // We are introducing 1 or more replicas at the head.
+                // For each such replica, update the view id in which it was added to the write view of the chain
+                if (replica.IsWriteOnly())
+                {
+                    replica.ViewInWhichAddedToChain = ViewId;
+                    continue;
+                }
+
+                // stop at the first Readable replica
+                break;
+            }
+        }
+
+        internal protected void MoveReplicaToHeadAndSetViewToReadOnly(string viewName, string storageAccountName)
+        {
+            // Assert (storageAccountName != null)
+
+            int matchIndex = ReplicaChain.FindIndex(r => r.StorageAccountName == storageAccountName);
+            if (matchIndex == -1)
+            {
+                return;
+            }
+
+            // - Ensure its status is *None*
+            ReplicaInfo candidateReplica = ReplicaChain[matchIndex];
+            candidateReplica.Status = ReplicaStatus.None;
+
+            // - Move it to the front of the chain
+            ReplicaChain.RemoveAt(matchIndex);
+            ReplicaChain.Insert(0, candidateReplica);
+
+            // Set all active replicas to *ReadOnly*
+            foreach (ReplicaInfo replica in GetCurrentReplicaChain())
+            {
+                if (replica.Status == ReplicaStatus.WriteOnly)
+                {
+                    var msg = string.Format("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", viewName);
+
+                    ReplicatedTableLogger.LogError(msg);
+                    throw new Exception(msg);
+                }
+
+                replica.Status = ReplicaStatus.ReadOnly;
+            }
+
+            // Update view id
+            ViewId++;
+        }
+
+        internal protected void EnableWriteOnReplicas(string viewName, string headStorageAccountName)
+        {
+            // Assert (headStorageAccountName != null)
+
+            if (!ReplicaChain.Any() ||
+                ReplicaChain[0].StorageAccountName != headStorageAccountName)
+            {
+                return;
+            }
+
+            // First, enable Write on all replicas
+            foreach (ReplicaInfo replica in GetCurrentReplicaChain())
+            {
+                replica.Status = ReplicaStatus.ReadWrite;
+            }
+
+            // Then, set the head to WriteOnly
+            ReplicaChain[0].Status = ReplicaStatus.WriteOnly;
+
+            // one replica chain ? Force to ReadWrite
+            if (GetCurrentReplicaChain().Count == 1)
+            {
+                ReplicaChain[0].Status = ReplicaStatus.ReadWrite;
+            }
+
+            // Update view id
+            ViewId++;
+        }
+
+        internal protected void EnableReadWriteOnReplica(string viewName, string headStorageAccountName)
+        {
+            if (!ReplicaChain.Any() ||
+                ReplicaChain[0].StorageAccountName != headStorageAccountName ||
+                ReplicaChain[0].Status != ReplicaStatus.WriteOnly)
+            {
+                return;
+            }
+
+            ReplicaChain[0].Status = ReplicaStatus.ReadWrite;
+
+            // Update view id
+            ViewId++;
         }
     }
 }

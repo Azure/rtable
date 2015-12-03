@@ -167,37 +167,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 var viewName = view.Key;
                 var viewConf = view.Value;
 
-                long viewId = viewConf.ViewId;
                 View currentView = GetView(viewName);
-
-                if (viewId == 0)
-                {
-                    if (!currentView.IsEmpty)
-                    {
-                        viewId = currentView.ViewId + 1;
-                    }
-                    else
-                    {
-                        viewId = 1;
-                    }
-                }
-
-                viewConf.Timestamp = DateTime.UtcNow;
-                viewConf.ViewId = viewId;
-
-                foreach (var replica in viewConf.GetCurrentReplicaChain())
-                {
-                    // We are introducing 1 or more replicas at the head.
-                    // For each such replica, update the view id in which it was added to the write view of the chain
-                    if (replica.IsWriteOnly())
-                    {
-                        replica.ViewInWhichAddedToChain = viewId;
-                        continue;
-                    }
-
-                    // stop at the first Readable replica
-                    break;
-                }
+                viewConf.SanitizeWithCurrentView(currentView);
             }
         }
 
@@ -278,7 +249,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return config.ConvertToRTable;
             }
 
-            var msg = string.Format("Table={0}: is not configured", tableName);
+            var msg = string.Format("Table={0}: is not configured!", tableName);
             ReplicatedTableLogger.LogError(msg);
             throw new Exception(msg);
         }
@@ -319,13 +290,7 @@ namespace Microsoft.Azure.Toolkit.Replication
              **/
             #region Phase 1
 
-            foreach (var entry in configuration.viewMap)
-            {
-                var viewName = entry.Key;
-                var viewConf = entry.Value;
-
-                MoveReplicaToFrontAndSetViewToReadOnly(viewName, viewConf, storageAccountName);
-            }
+            configuration.MoveReplicaToHeadAndSetViewToReadOnly(storageAccountName);
 
             // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
             SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 1");
@@ -348,13 +313,7 @@ namespace Microsoft.Azure.Toolkit.Replication
              **/
             #region Phase 2
 
-            foreach (var entry in configuration.viewMap)
-            {
-                var viewName = entry.Key;
-                var viewConf = entry.Value;
-
-                EnableWriteOnReplicas(viewName, viewConf, storageAccountName);
-            }
+            configuration.EnableWriteOnReplicas(storageAccountName);
 
             // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
             SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 2");
@@ -382,6 +341,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 ReplicatedTableLogger.LogError(result.ToString());
 
+                // List of tables (and corresponding views) failed to repair!
                 failures.Add(result);
             }
 
@@ -393,19 +353,7 @@ namespace Microsoft.Azure.Toolkit.Replication
              **/
             #region Phase 4
 
-            foreach (var entry in configuration.viewMap)
-            {
-                var viewName = entry.Key;
-                var viewConf = entry.Value;
-
-                if (failures.Any(r => r.ViewName == viewName))
-                {
-                    // skip
-                    continue;
-                }
-
-                EnableReadWriteOnReplicas(viewName, viewConf, storageAccountName);
-            }
+            configuration.EnableReadWriteOnReplicas(storageAccountName, failures.Select(r => r.ViewName).ToList());
 
             // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
             SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 4");
@@ -466,71 +414,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                 ReplicatedTableLogger.LogError(msg);
                 throw new Exception(msg);
             }
-        }
-
-        private static void MoveReplicaToFrontAndSetViewToReadOnly(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
-        {
-            List<ReplicaInfo> list = conf.ReplicaChain;
-
-            int matchIndex = list.FindIndex(r => r.StorageAccountName == storageAccountName);
-            if (matchIndex == -1)
-            {
-                return;
-            }
-
-            // - Ensure its status is *None*
-            ReplicaInfo candidateReplica = list[matchIndex];
-            candidateReplica.Status = ReplicaStatus.None;
-
-            // - Move it to the front of the chain
-            list.RemoveAt(matchIndex);
-            list.Insert(0, candidateReplica);
-
-            // Set all active replicas to *ReadOnly*
-            foreach (ReplicaInfo replica in conf.GetCurrentReplicaChain())
-            {
-                if (replica.Status == ReplicaStatus.WriteOnly)
-                {
-                    var msg = string.Format("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", viewName);
-
-                    ReplicatedTableLogger.LogError(msg);
-                    throw new Exception(msg);
-                }
-
-                replica.Status = ReplicaStatus.ReadOnly;
-            }
-
-            // Update view id
-            conf.ViewId++;
-        }
-
-        private static void EnableWriteOnReplicas(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
-        {
-            List<ReplicaInfo> list = conf.ReplicaChain;
-
-            if (!list.Any() ||
-                list[0].StorageAccountName != storageAccountName)
-            {
-                return;
-            }
-
-            // First, enable Write on all replicas
-            foreach (ReplicaInfo replica in conf.GetCurrentReplicaChain())
-            {
-                replica.Status = ReplicaStatus.ReadWrite;
-            }
-
-            // Then, set the head to WriteOnly
-            list[0].Status = ReplicaStatus.WriteOnly;
-
-            // one replica chain ? Force to ReadWrite
-            if (conf.GetCurrentReplicaChain().Count == 1)
-            {
-                list[0].Status = ReplicaStatus.ReadWrite;
-            }
-
-            // Update view id
-            conf.ViewId++;
         }
 
         private ReplicatedTableRepairResult RepairTable(string tableName, string storageAccountName, ReplicatedTableConfiguration configuration)
@@ -596,23 +479,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                     Message = ex.ToString(),
                 };
             }
-        }
-
-        private static void EnableReadWriteOnReplicas(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
-        {
-            List<ReplicaInfo> list = conf.ReplicaChain;
-
-            if (!list.Any() ||
-                list[0].StorageAccountName != storageAccountName ||
-                list[0].Status != ReplicaStatus.WriteOnly)
-            {
-                return;
-            }
-
-            list[0].Status = ReplicaStatus.ReadWrite;
-
-            // Update view id
-            conf.ViewId++;
         }
 
         private void SaveConfigAndRefreshItsIdAndValidateIsLoaded(ReplicatedTableConfiguration configuration, string iteration)

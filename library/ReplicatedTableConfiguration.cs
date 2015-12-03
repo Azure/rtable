@@ -75,6 +75,10 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             ThrowIfViewIsNotValid(viewName, config);
 
+            // In case this is an update to an existing view,
+            // the view should not break any existing constraint.
+            ThrowIfViewBreaksTableConstraint(viewName, config);
+
             viewMap.Remove(viewName);
             viewMap.Add(viewName, config);
         }
@@ -178,6 +182,31 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
+        private void ThrowIfViewBreaksTableConstraint(string viewName, ReplicatedTableConfigurationStore config)
+        {
+            foreach (ReplicatedTableConfiguredTable table in tableList)
+            {
+                if (table.ConvertToRTable == false ||
+                    string.IsNullOrEmpty(table.ViewName) ||
+                    !table.ViewName.Equals(viewName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // Convertion mode: view shoud not have more than 1 replica
+                List<ReplicaInfo> chainList = config.GetCurrentReplicaChain();
+                if (chainList.Count <= 1)
+                {
+                    continue;
+                }
+
+                var msg = string.Format("Table:\'{0}\' should not have a view:\'{1}\' with more than 1 replica since it is in Convertion mode!",
+                                        table.TableName,
+                                        viewName);
+                throw new Exception(msg);
+            }
+        }
+
         /*
          * Configured tables APIs:
          */
@@ -194,8 +223,11 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("TableName");
             }
 
-            // If pointing a view, then the view must exist ?
+            // 1 - If pointing a view, then the view must exist ?
             ThrowIfViewIsMissing(config);
+
+            // 2 - If table is in ConvertToRTable mode then view should have no more than 1 replica
+            ThrowIfViewHasManyReplicasInConvertionMode(config);
 
             if (config.UseAsDefault == true)
             {
@@ -276,6 +308,29 @@ namespace Microsoft.Azure.Toolkit.Replication
             throw new Exception(msg);
         }
 
+        private void ThrowIfViewHasManyReplicasInConvertionMode(ReplicatedTableConfiguredTable config)
+        {
+            if (config.ConvertToRTable == false || string.IsNullOrEmpty(config.ViewName))
+            {
+                return;
+            }
+
+            ReplicatedTableConfigurationStore viewConfig = GetView(config.ViewName);
+            // Assert (viewConfig != null)
+
+            // In Convertion mode, view should not have more than 1 replica
+            List<ReplicaInfo> chainList = viewConfig.GetCurrentReplicaChain();
+            if (chainList.Count <= 1)
+            {
+                return;
+            }
+
+            var msg = string.Format("Table:\'{0}\' refers a view:\'{1}\' with more than 1 replica while in Convertion mode!",
+                                    config.TableName,
+                                    config.ViewName);
+            throw new Exception(msg);
+        }
+
         /*
          * Helpers ...
          */
@@ -330,7 +385,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             /*
              * 2 - Tables config validation
              */
-
             // - Enforce tableList not null
             if (tableList == null)
             {
@@ -352,20 +406,72 @@ namespace Microsoft.Azure.Toolkit.Replication
                     throw new Exception(msg);
                 }
 
-                // - Enforce tables refering existing views
+                // Enforce that:
                 tableList.TrueForAll(cfg =>
                 {
+                    // 1 - each table refers an existing view
                     ThrowIfViewIsMissing(cfg);
+
+                    // 2 - and, each table in ConvertToRTable mode has no more than one replica
+                    ThrowIfViewHasManyReplicasInConvertionMode(cfg);
                     return true;
                 });
 
                 // - Enforce no more than 1 default configured table (rule)
                 if (tableList.Count(cfg => cfg.UseAsDefault) > 1)
                 {
-                    var msg = string.Format("Can't have more than 1 configured table as a default!");
+                    string msg = "Can't have more than 1 configured table as a default!";
                     throw new Exception(msg);
                 }
+            }
+        }
 
+        internal protected void MoveReplicaToHeadAndSetViewToReadOnly(string storageAccountName)
+        {
+            // Assert (storageAccountName != null)
+
+            foreach (var entry in viewMap)
+            {
+                var viewName = entry.Key;
+                var viewConf = entry.Value;
+
+                viewConf.MoveReplicaToHeadAndSetViewToReadOnly(viewName, storageAccountName);
+            }
+        }
+
+        internal protected void EnableWriteOnReplicas(string storageAccountName)
+        {
+            // Assert (storageAccountName != null)
+
+            foreach (var entry in viewMap)
+            {
+                var viewName = entry.Key;
+                var viewConf = entry.Value;
+
+                viewConf.EnableWriteOnReplicas(viewName, storageAccountName);
+
+                // Resulting view should not break any existing constraint.
+                ThrowIfViewBreaksTableConstraint(viewName, viewConf);
+            }
+        }
+
+        internal protected void EnableReadWriteOnReplicas(string storageAccountName, List<string> viewsToSkip)
+        {
+            // Assert (storageAccountName != null)
+            // Assert viewsToSkip ! null
+
+            foreach (var entry in viewMap)
+            {
+                var viewName = entry.Key;
+                var viewConf = entry.Value;
+
+                if (viewsToSkip.Any(v => v == viewName))
+                {
+                    // skip view
+                    continue;
+                }
+
+                viewConf.EnableReadWriteOnReplica(viewName, storageAccountName);
             }
         }
 
