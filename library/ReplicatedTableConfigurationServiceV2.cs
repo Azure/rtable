@@ -258,6 +258,15 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Replica management APIs
          */
+        /// <summary>
+        /// Update connection strings before uploading new RTable config to blob.
+        /// Make sure new connection strings are an uper-set of previous one - MBB -
+        /// </summary>
+        public void UpdateConnectionStrings(Dictionary<string, SecureString> connectionStringMap)
+        {
+            this.configManager.ConnectionStrings = connectionStringMap;
+        }
+
         public void TurnReplicaOn(string storageAccountName, List<string> tablesToRepair, out List<ReplicatedTableRepairResult> failures)
         {
             if (string.IsNullOrEmpty(storageAccountName))

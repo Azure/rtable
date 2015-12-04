@@ -168,14 +168,16 @@ namespace Microsoft.Azure.Toolkit.Replication
             int leaseDuration;
             Guid configId;
 
-            List<View> views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), SetConnectionStringStrategy, out tableConfigList, out leaseDuration, out configId);
-            if (views == null)
-            {
-                return;
-            }
-
             lock (this)
             {
+                // SetConnectionStringStrategy and connectionStringMap both can be updated OOB, so start the Lock here ...
+
+                List<View> views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.SetConnectionStringStrategy, out tableConfigList, out leaseDuration, out configId);
+                if (views == null)
+                {
+                    return;
+                }
+
                 // - Update list of views
                 this.viewMap.Clear();
 
