@@ -2284,12 +2284,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                     InitDynamicReplicatedTableEntity entity = enumerator.Current;
                     if (entity._rtable_ViewId != 0)
                     {
-                        // _rtable_ViewId = 0 means that the entity has not been operated on since ther XStore Table was converted to ReplicatedTable.
-                        // So, convert it manually now.
                         ReplicatedTableLogger.LogInformational("Skipped XStore entity with Partition={0} Row={1}", entity.PartitionKey, entity.RowKey);
                         skippedCount++;
                         continue;
                     }
+
+                    // _rtable_ViewId = 0 means that the entity has not been operated on since the XStore Table was converted to ReplicatedTable.
+                    // So, convert it manually now.
                     entity._rtable_ViewId = txnView.ViewId;
                     entity._rtable_Version = 1;
                     TableOperation top = TableOperation.Replace(entity);
