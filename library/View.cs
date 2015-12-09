@@ -45,13 +45,24 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
                 {
+                    if (replica == null)
+                    {
+                        continue;
+                    }
+
                     SetConnectionString(replica);
 
                     CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
-                    if (replica != null && tableClient != null)
+                    if (tableClient == null)
                     {
-                        view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                        // All replicas MUST exist or View is not relevant
+                        view.Chain.Clear();
+
+                        ReplicatedTableLogger.LogError("ViewName={0} could not load replica ({1})", name, replica);
+                        break;
                     }
+
+                    view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
                 }
 
                 if (!view.IsEmpty)
@@ -82,10 +93,16 @@ namespace Microsoft.Azure.Toolkit.Replication
                     SetConnectionString(replica);
 
                     CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
-                    if (tableClient != null)
+                    if (tableClient == null)
                     {
-                        view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                        // All replicas MUST exist or View is not relevant
+                        view.Chain.Clear();
+
+                        ReplicatedTableLogger.LogError("ViewName={0} could not load replica ({1})", name, replica);
+                        break;
                     }
+
+                    view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
                 }
 
                 // Infered: first readable replica
