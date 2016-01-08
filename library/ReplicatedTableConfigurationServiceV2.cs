@@ -301,8 +301,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             configuration.MoveReplicaToHeadAndSetViewToReadOnly(storageAccountName);
 
-            // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
-            SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 1");
+            // - Write back configuration, refresh its Id with the new one,
+            //   but don't validate it is loaded bcz if all views of the config are empty, the config won't be refreshed by RefreshReadAndWriteViewsFromBlobs() thread!
+            SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 1", false);
 
             #endregion
             /**
@@ -324,7 +325,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             configuration.EnableWriteOnReplicas(storageAccountName);
 
-            // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
+            // - Write back configuration, refresh its Id with the new one,
+            //   and then validate it is loaded now (it has to be working since next Phase is "Repair")
             SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 2");
 
             #endregion
@@ -332,6 +334,11 @@ namespace Microsoft.Azure.Toolkit.Replication
              * Chain is such: [W] -> [RW] -> ... -> [RW]
              *            or: [RW] -> [None] -> ... -> [None]
              **/
+
+
+            // To be safe:
+            // - Wait for L + CF to make sure no pending transaction working on old views
+            Thread.Sleep(TimeSpan.FromSeconds(Constants.LeaseDurationInSec + Constants.ClockFactorInSec));
 
 
             /* - Phase 3:
@@ -364,7 +371,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             configuration.EnableReadWriteOnReplicas(storageAccountName, failures.Select(r => r.ViewName).ToList());
 
-            // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
+            // - Write back configuration, refresh its Id with the new one,
+            //   and then validate it is loaded now (i.e. it is a working config)
             SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 4");
 
             #endregion
@@ -490,7 +498,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        private void SaveConfigAndRefreshItsIdAndValidateIsLoaded(ReplicatedTableConfiguration configuration, string iteration)
+        private void SaveConfigAndRefreshItsIdAndValidateIsLoaded(ReplicatedTableConfiguration configuration, string iteration, bool validateConfigIsLoaded = true)
         {
             string msg = "";
 
@@ -505,6 +513,12 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Update config with new Id
             configuration.Id = new Guid(writeResult.Message);
+
+            // do we need to validate if the config is loaded by the config manager ?
+            if (!validateConfigIsLoaded)
+            {
+                return;
+            }
 
             // - Confirm the new config is the current loaded into the RTable config manager
             if (configuration.Id == this.configManager.GetCurrentRunningConfigId())

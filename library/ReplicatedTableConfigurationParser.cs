@@ -100,6 +100,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             if (!viewList.Any())
             {
+                ReplicatedTableLogger.LogError("Config has no active Views !");
                 return null;
             }
 
