@@ -21,9 +21,36 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using System.Diagnostics.Tracing;
+
     public static class ReplicatedTableLogger
     {
         private static ReplicatedTableEventSource eventSource = new ReplicatedTableEventSource();
+        private static ReplicatedTableEventListener eventListener = new ReplicatedTableEventListener();
+
+        // OffSets RTable event IDs to a different range to not clash with IDs from other event sources that the user may receive.
+        public static int EventIdOffSet { get; private set; }
+
+        // Prefix for log messages to help filter messages from different clients when we dump logs to commun table/file ...
+        public static string LogPrefix { get; private set; }
+
+        public static void EnableEvents(EventLevel level = EventLevel.Verbose, int eventIdOffSet = 0, string logPrefix = "")
+        {
+            ReplicatedTableLogger.EventIdOffSet = eventIdOffSet;
+            ReplicatedTableLogger.LogPrefix = logPrefix;
+            ReplicatedTableLogger.eventListener.EnableEvents(ReplicatedTableLogger.eventSource, level);
+        }
+
+        public static void DisableEvents()
+        {
+            ReplicatedTableLogger.eventListener.DisableEvents(ReplicatedTableLogger.eventSource);
+        }
+
+        public static void DisposeLogger()
+        {
+            ReplicatedTableLogger.eventListener.Dispose();
+            ReplicatedTableLogger.eventSource.Dispose();
+        }
 
         public static void LogError(string format, params object[] args)
         {

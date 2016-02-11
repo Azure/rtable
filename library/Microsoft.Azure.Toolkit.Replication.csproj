@@ -72,6 +72,7 @@
     <Compile Include="IReplicatedTableConfigurationWrapper.cs" />
     <Compile Include="ReplicatedTableConfigurationWrapper.cs" />
     <Compile Include="ReplicatedTableConfigurationV2Wrapper.cs" />
+    <Compile Include="ReplicatedTableEventListener.cs" />
     <Compile Include="ReplicatedTableQuorumReadResult.cs" />
     <Compile Include="ReplicatedTableQuorumWriteResult.cs" />
     <Compile Include="ReplicatedTableReadBlobResult.cs" />

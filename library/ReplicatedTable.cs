@@ -116,7 +116,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             int tablesCreated = 0;
             foreach (var entry in txnView.Chain)
             {
-                ReplicatedTableLogger.LogVerbose("Creating table {0} on replica: {1}", entry.Item2.BaseUri.ToString());
+                ReplicatedTableLogger.LogVerbose("Creating table {0} on replica: {1}", this.TableName, entry.Item2.BaseUri.ToString());
                 CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
                 if (!ctable.Exists())
                 {
@@ -650,7 +650,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                         }
                         else
                         {
-                            ReplicatedTableLogger.LogInformational("FlushAndRetrieveBatch(): Row is locked but NOT expired. PartitionKey={1} RowKey={1}",
+                            ReplicatedTableLogger.LogInformational("FlushAndRetrieveBatch(): Row is locked but NOT expired. PartitionKey={0} RowKey={1}",
                                                     row.PartitionKey, row.RowKey);
                         }
                     }
