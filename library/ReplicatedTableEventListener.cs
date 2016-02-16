@@ -34,6 +34,12 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
         }
 
+        // OffSets eventIDs to a different range to not clash with IDs from other event sources that the user may receive.
+        internal int EventIdOffSet { get; set; }
+
+        // Prefix for log messages to help filter messages from different clients when we dump logs to commun table/file ...
+        internal string LogPrefix { get; set; }
+
         public override void Dispose()
         {
             try
@@ -61,13 +67,12 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             this.traceSource.TraceEvent(
                                 GetEventTypeFromEventLevel(eventData.Level),
-                                ReplicatedTableLogger.EventIdOffSet + (eventData.EventId),
-                                string.Format("[{0}][{1}] {2}", ReplicatedTableLogger.LogPrefix, DateTime.Now, msg)
+                                EventIdOffSet + (eventData.EventId),
+                                string.Format("[{0}][{1}] {2}", LogPrefix, DateTime.Now, msg)
                                 );
 
             this.traceSource.Flush();
         }
-
 
         private static TraceEventType GetEventTypeFromEventLevel(EventLevel eventLevel)
         {

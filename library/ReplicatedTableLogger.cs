@@ -21,67 +21,44 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using System.Collections.Generic;
     using System.Diagnostics.Tracing;
 
     public static class ReplicatedTableLogger
     {
-        private static ReplicatedTableEventSource eventSource = new ReplicatedTableEventSource();
-        private static ReplicatedTableEventListener eventListener = new ReplicatedTableEventListener();
+        private static List<IReplicatedLogger> loggers = new List<IReplicatedLogger>();
 
-        // OffSets RTable event IDs to a different range to not clash with IDs from other event sources that the user may receive.
-        public static int EventIdOffSet { get; private set; }
-
-        // Prefix for log messages to help filter messages from different clients when we dump logs to commun table/file ...
-        public static string LogPrefix { get; private set; }
-
-        public static void EnableEvents(EventLevel level = EventLevel.Verbose, int eventIdOffSet = 0, string logPrefix = "")
+        public static void Subscribe(IReplicatedLogger log)
         {
-            ReplicatedTableLogger.EventIdOffSet = eventIdOffSet;
-            ReplicatedTableLogger.LogPrefix = logPrefix;
-            ReplicatedTableLogger.eventListener.EnableEvents(ReplicatedTableLogger.eventSource, level);
+            if (log != null)
+            {
+                loggers.Add(log);
+            }
         }
 
-        public static void DisableEvents()
+        public static void Unsubscribe(IReplicatedLogger log)
         {
-            ReplicatedTableLogger.eventListener.DisableEvents(ReplicatedTableLogger.eventSource);
-        }
-
-        public static void DisposeLogger()
-        {
-            ReplicatedTableLogger.eventListener.Dispose();
-            ReplicatedTableLogger.eventSource.Dispose();
+            loggers.Remove(log);
         }
 
         public static void LogError(string format, params object[] args)
         {
-            if (ReplicatedTableLogger.eventSource.IsEnabled())
-            {
-                ReplicatedTableLogger.eventSource.Error(string.Format(format, args));
-            }
+            loggers.ForEach(log => log.LogMessage(EventLevel.Error, format, args));
         }
 
         public static void LogWarning(string format, params object[] args)
         {
-            if (ReplicatedTableLogger.eventSource.IsEnabled())
-            {
-                ReplicatedTableLogger.eventSource.Warning(string.Format(format, args));
-            }
+            loggers.ForEach(log => log.LogMessage(EventLevel.Warning, format, args));
         }
 
         public static void LogInformational(string format, params object[] args)
         {
-            if (ReplicatedTableLogger.eventSource.IsEnabled())
-            {
-                ReplicatedTableLogger.eventSource.Informational(string.Format(format, args));
-            }
+            loggers.ForEach(log => log.LogMessage(EventLevel.Informational, format, args));
         }
 
         public static void LogVerbose(string format, params object[] args)
         {
-            if (ReplicatedTableLogger.eventSource.IsEnabled())
-            {
-                ReplicatedTableLogger.eventSource.Verbose(string.Format(format, args));
-            }
+            loggers.ForEach(log => log.LogMessage(EventLevel.Verbose, format, args));
         }
     }
 }

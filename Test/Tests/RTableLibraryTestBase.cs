@@ -99,6 +99,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         private int minimumLeaseRenewalInterval = 0;
         private int lockTimeoutInSeconds = 0;
 
+        protected RTableLibraryTestBase()
+        {
+            // Enable/Use default Logger ...
+            ReplicatedTableEtwLogger.EnableEvents();
+            ReplicatedTableLogger.Subscribe(new ReplicatedTableEtwLogger());
+        }
+
         /// <summary>
         /// Read the test configuration from "RTableTestConfiguration.xml"
         /// </summary>
@@ -255,6 +262,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.DeleteConfigurationBlob();
             this.configurationService.Dispose();
             this.RestoreConfigurationConstants();
+
+            // Disable/Dispose default Logger
+            ReplicatedTableEtwLogger.DisableEvents();
+            ReplicatedTableEtwLogger.DisposeLogger();
         }
 
         /// <summary>

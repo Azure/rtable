@@ -69,7 +69,9 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="IReplicatedLogger.cs" />
     <Compile Include="IReplicatedTableConfigurationWrapper.cs" />
+    <Compile Include="ReplicatedTableEtwLogger.cs" />
     <Compile Include="ReplicatedTableConfigurationWrapper.cs" />
     <Compile Include="ReplicatedTableConfigurationV2Wrapper.cs" />
     <Compile Include="ReplicatedTableEventListener.cs" />
