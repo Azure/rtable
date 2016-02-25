@@ -78,6 +78,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Set up RTable and its wrapper that uses only one storage account.
             //
             this.SetupRTableEnv(this.xstoreTableName, true, "", this.actualStorageAccountsUsed, true);
+
+            Assert.True(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be True");
         }
 
         [TestFixtureTearDown]
@@ -179,7 +181,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Modify the Json Config Blob to indicate NOT running convertXSToreTableMode anymore
             //
             Console.WriteLine("\n Setting convertXSToreTableMode to false (default state)...");
-            this.RefreshRTableEnvJsonConfigBlob(false);           
+            this.RefreshRTableEnvJsonConfigBlob(false);
+
+            Assert.False(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be False");
 
             this.PerformOperationAndValidate(TableOperationType.Replace, jobTypeA, jobIdA, this.updatedMessage);
             this.PerformOperationAndValidate(TableOperationType.InsertOrReplace, jobTypeA, jobIdA, this.updatedAgainMessage);
@@ -192,6 +196,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Change it back to convertXSToreTableMode = true so that other test cases in this suite would work.
             //
             this.RefreshRTableEnvJsonConfigBlob(true);
+
+            Assert.True(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be True");
 
             // Simulate a rollback:
             // Perform xstore operations to see if it works. 

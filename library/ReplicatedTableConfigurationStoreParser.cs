@@ -81,6 +81,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             if (view.IsEmpty)
             {
+                ReplicatedTableLogger.LogError("ViewName={0} is empty, skipping ...", view.Name);
                 return null;
             }
 

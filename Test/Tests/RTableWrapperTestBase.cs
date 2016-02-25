@@ -169,7 +169,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                             {
                                 case TableOperationType.Delete:
                                     {
-                                        retrievedEntity.ETag = retrievedEntity._rtable_Version.ToString(); // set ETag
                                         this.rtableWrapper.DeleteRow(retrievedEntity);
                                     }
                                     break;
@@ -183,7 +182,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                 case TableOperationType.Merge:
                                     {
                                         retrievedEntity.Message = this.GenerateMessage(updatedEntityMessage, i, j);
-                                        retrievedEntity.ETag = retrievedEntity._rtable_Version.ToString(); // set ETag
                                         this.rtableWrapper.MergeRow(retrievedEntity);
                                         rowKeys.Add(retrievedEntity.RowKey);
                                     }
@@ -191,7 +189,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                 case TableOperationType.Replace:
                                     {
                                         retrievedEntity.Message = this.GenerateMessage(updatedEntityMessage, i, j);
-                                        retrievedEntity.ETag = retrievedEntity._rtable_Version.ToString(); // set ETag
                                         this.rtableWrapper.ReplaceRow(retrievedEntity);
                                         rowKeys.Add(retrievedEntity.RowKey);
                                     }

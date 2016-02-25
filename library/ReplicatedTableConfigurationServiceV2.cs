@@ -167,37 +167,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 var viewName = view.Key;
                 var viewConf = view.Value;
 
-                long viewId = viewConf.ViewId;
                 View currentView = GetView(viewName);
-
-                if (viewId == 0)
-                {
-                    if (!currentView.IsEmpty)
-                    {
-                        viewId = currentView.ViewId + 1;
-                    }
-                    else
-                    {
-                        viewId = 1;
-                    }
-                }
-
-                viewConf.Timestamp = DateTime.UtcNow;
-                viewConf.ViewId = viewId;
-
-                foreach (var replica in viewConf.GetCurrentReplicaChain())
-                {
-                    // We are introducing 1 or more replicas at the head.
-                    // For each such replica, update the view id in which it was added to the write view of the chain
-                    if (replica.IsWriteOnly())
-                    {
-                        replica.ViewInWhichAddedToChain = viewId;
-                        continue;
-                    }
-
-                    // stop at the first Readable replica
-                    break;
-                }
+                viewConf.SanitizeWithCurrentView(currentView);
             }
         }
 
@@ -278,7 +249,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return config.ConvertToRTable;
             }
 
-            var msg = string.Format("Table={0}: is not configured", tableName);
+            var msg = string.Format("Table={0}: is not configured!", tableName);
             ReplicatedTableLogger.LogError(msg);
             throw new Exception(msg);
         }
@@ -287,6 +258,15 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Replica management APIs
          */
+        /// <summary>
+        /// Update connection strings before uploading new RTable config to blob.
+        /// Make sure new connection strings are an uper-set of previous one - MBB -
+        /// </summary>
+        public void UpdateConnectionStrings(Dictionary<string, SecureString> connectionStringMap)
+        {
+            this.configManager.ConnectionStrings = connectionStringMap;
+        }
+
         public void TurnReplicaOn(string storageAccountName, List<string> tablesToRepair, out List<ReplicatedTableRepairResult> failures)
         {
             if (string.IsNullOrEmpty(storageAccountName))
@@ -319,16 +299,11 @@ namespace Microsoft.Azure.Toolkit.Replication
              **/
             #region Phase 1
 
-            foreach (var entry in configuration.viewMap)
-            {
-                var viewName = entry.Key;
-                var viewConf = entry.Value;
+            configuration.MoveReplicaToHeadAndSetViewToReadOnly(storageAccountName);
 
-                MoveReplicaToFrontAndSetViewToReadOnly(viewName, viewConf, storageAccountName);
-            }
-
-            // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
-            SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 1");
+            // - Write back configuration, refresh its Id with the new one,
+            //   but don't validate it is loaded bcz if all views of the config are empty, the config won't be refreshed by RefreshReadAndWriteViewsFromBlobs() thread!
+            SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 1", false);
 
             #endregion
             /**
@@ -348,15 +323,10 @@ namespace Microsoft.Azure.Toolkit.Replication
              **/
             #region Phase 2
 
-            foreach (var entry in configuration.viewMap)
-            {
-                var viewName = entry.Key;
-                var viewConf = entry.Value;
+            configuration.EnableWriteOnReplicas(storageAccountName);
 
-                EnableWriteOnReplicas(viewName, viewConf, storageAccountName);
-            }
-
-            // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
+            // - Write back configuration, refresh its Id with the new one,
+            //   and then validate it is loaded now (it has to be working since next Phase is "Repair")
             SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 2");
 
             #endregion
@@ -364,6 +334,11 @@ namespace Microsoft.Azure.Toolkit.Replication
              * Chain is such: [W] -> [RW] -> ... -> [RW]
              *            or: [RW] -> [None] -> ... -> [None]
              **/
+
+
+            // To be safe:
+            // - Wait for L + CF to make sure no pending transaction working on old views
+            Thread.Sleep(TimeSpan.FromSeconds(Constants.LeaseDurationInSec + Constants.ClockFactorInSec));
 
 
             /* - Phase 3:
@@ -382,6 +357,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 ReplicatedTableLogger.LogError(result.ToString());
 
+                // List of tables (and corresponding views) failed to repair!
                 failures.Add(result);
             }
 
@@ -393,21 +369,10 @@ namespace Microsoft.Azure.Toolkit.Replication
              **/
             #region Phase 4
 
-            foreach (var entry in configuration.viewMap)
-            {
-                var viewName = entry.Key;
-                var viewConf = entry.Value;
+            configuration.EnableReadWriteOnReplicas(storageAccountName, failures.Select(r => r.ViewName).ToList());
 
-                if (failures.Any(r => r.ViewName == viewName))
-                {
-                    // skip
-                    continue;
-                }
-
-                EnableReadWriteOnReplicas(viewName, viewConf, storageAccountName);
-            }
-
-            // - Write back configuration, refresh its Id with the new one, and then validate it is loaded now
+            // - Write back configuration, refresh its Id with the new one,
+            //   and then validate it is loaded now (i.e. it is a working config)
             SaveConfigAndRefreshItsIdAndValidateIsLoaded(configuration, "Phase 4");
 
             #endregion
@@ -466,71 +431,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                 ReplicatedTableLogger.LogError(msg);
                 throw new Exception(msg);
             }
-        }
-
-        private static void MoveReplicaToFrontAndSetViewToReadOnly(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
-        {
-            List<ReplicaInfo> list = conf.ReplicaChain;
-
-            int matchIndex = list.FindIndex(r => r.StorageAccountName == storageAccountName);
-            if (matchIndex == -1)
-            {
-                return;
-            }
-
-            // - Ensure its status is *None*
-            ReplicaInfo candidateReplica = list[matchIndex];
-            candidateReplica.Status = ReplicaStatus.None;
-
-            // - Move it to the front of the chain
-            list.RemoveAt(matchIndex);
-            list.Insert(0, candidateReplica);
-
-            // Set all active replicas to *ReadOnly*
-            foreach (ReplicaInfo replica in conf.GetCurrentReplicaChain())
-            {
-                if (replica.Status == ReplicaStatus.WriteOnly)
-                {
-                    var msg = string.Format("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", viewName);
-
-                    ReplicatedTableLogger.LogError(msg);
-                    throw new Exception(msg);
-                }
-
-                replica.Status = ReplicaStatus.ReadOnly;
-            }
-
-            // Update view id
-            conf.ViewId++;
-        }
-
-        private static void EnableWriteOnReplicas(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
-        {
-            List<ReplicaInfo> list = conf.ReplicaChain;
-
-            if (!list.Any() ||
-                list[0].StorageAccountName != storageAccountName)
-            {
-                return;
-            }
-
-            // First, enable Write on all replicas
-            foreach (ReplicaInfo replica in conf.GetCurrentReplicaChain())
-            {
-                replica.Status = ReplicaStatus.ReadWrite;
-            }
-
-            // Then, set the head to WriteOnly
-            list[0].Status = ReplicaStatus.WriteOnly;
-
-            // one replica chain ? Force to ReadWrite
-            if (conf.GetCurrentReplicaChain().Count == 1)
-            {
-                list[0].Status = ReplicaStatus.ReadWrite;
-            }
-
-            // Update view id
-            conf.ViewId++;
         }
 
         private ReplicatedTableRepairResult RepairTable(string tableName, string storageAccountName, ReplicatedTableConfiguration configuration)
@@ -598,24 +498,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        private static void EnableReadWriteOnReplicas(string viewName, ReplicatedTableConfigurationStore conf, string storageAccountName)
-        {
-            List<ReplicaInfo> list = conf.ReplicaChain;
-
-            if (!list.Any() ||
-                list[0].StorageAccountName != storageAccountName ||
-                list[0].Status != ReplicaStatus.WriteOnly)
-            {
-                return;
-            }
-
-            list[0].Status = ReplicaStatus.ReadWrite;
-
-            // Update view id
-            conf.ViewId++;
-        }
-
-        private void SaveConfigAndRefreshItsIdAndValidateIsLoaded(ReplicatedTableConfiguration configuration, string iteration)
+        private void SaveConfigAndRefreshItsIdAndValidateIsLoaded(ReplicatedTableConfiguration configuration, string iteration, bool validateConfigIsLoaded = true)
         {
             string msg = "";
 
@@ -630,6 +513,12 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Update config with new Id
             configuration.Id = new Guid(writeResult.Message);
+
+            // do we need to validate if the config is loaded by the config manager ?
+            if (!validateConfigIsLoaded)
+            {
+                return;
+            }
 
             // - Confirm the new config is the current loaded into the RTable config manager
             if (configuration.Id == this.configManager.GetCurrentRunningConfigId())

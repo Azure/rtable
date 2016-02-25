@@ -93,7 +93,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 throw new ReplicatedTableStaleViewException(string.Format("View id changed from {0} to {1}",
                     CurrentView.ViewId,
-                    txnView));
+                    txnView.ViewId));
             }
 
             if (viewMustBeWritable && !txnView.IsWritable())
@@ -117,7 +117,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             int tablesCreated = 0;
             foreach (var entry in txnView.Chain)
             {
-                ReplicatedTableLogger.LogVerbose("Creating table {0} on replica: {1}", entry.Item2.BaseUri.ToString());
+                ReplicatedTableLogger.LogVerbose("Creating table {0} on replica: {1}", this.TableName, entry.Item2.BaseUri.ToString());
                 CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
                 if (!ctable.Exists())
                 {
@@ -716,7 +716,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                         }
                         else
                         {
-                            ReplicatedTableLogger.LogInformational("FlushAndRetrieveBatch(): Row is locked but NOT expired. PartitionKey={1} RowKey={1}",
+                            ReplicatedTableLogger.LogInformational("FlushAndRetrieveBatch(): Row is locked but NOT expired. PartitionKey={0} RowKey={1}",
                                                     row.PartitionKey, row.RowKey);
                             return null;
                         }
@@ -862,7 +862,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             //The current read algorithm is as follows:
             //  1. Try read from tail, since tail always has committed data
             //  2. If above succeeds, return the result
-            //  2. If read at tail fails, then traverse the chain in reverse from tail to readHeadIndex. The first replica that 
+            //  3. If read at tail fails, then traverse the chain in reverse from tail to readHeadIndex. The first replica that
             //     can be reached and whose rowLock = false has the committed data. If no such replica exists we fail the read
             while (true)
             {
@@ -892,26 +892,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                     return retrievedResult;
                 }
 
-                IReplicatedTableEntity currentRow = null;
-                if (retrievedResult.Result is DynamicReplicatedTableEntity)
-                {
-                    currentRow = retrievedResult.Result as DynamicReplicatedTableEntity;
-                }
-                else if (retrievedResult.Result is ReplicatedTableEntity)
-                {
-                    currentRow = retrievedResult.Result as ReplicatedTableEntity;
-                }
-                else
-                {
-                    throw new Exception(
-                        "Illegal entity type used in ReplicatedTable.");
-                }
+                IReplicatedTableEntity currentRow = retrievedResult.Result as IReplicatedTableEntity;
 
+                // if the row is not committed, throw an exception
                 if (index != tailIndex && currentRow._rtable_RowLock)
                 {
-                    //Since we always try the tail first, if we are here, it means all replicas from index to readHeadIndex
-                    //will also have the rowLock as true and hence we can just fail the read at this point
-                    throw new Exception("Read failed at all replicas");
+                    throw new Exception("Uncommitted value");
                 }
 
                 // if the entry has a tombstone set, don't return it.
@@ -922,8 +908,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // We read a committed value. return it after virtualizing the ETag
                 retrievedResult.Etag = currentRow._rtable_Version.ToString();
-                IReplicatedTableEntity row = ConvertToIReplicatedTableEntity(retrievedResult);
-                row.ETag = retrievedResult.Etag;
+                currentRow.ETag = retrievedResult.Etag;
 
                 return retrievedResult;
             }
@@ -1451,13 +1436,17 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             return query;
         }
-        
-        //
-        // RetrieveFromReplica: Retrieve row from a specific replica
-        // The caller has to make sure that the argument "operation" is of type TableOperationType.Retrieve. 
-        // We do not do the sanity check of the operation type to avoid reflection calls.
-        // 
-        private TableResult RetrieveFromReplica(View txnView, int index, TableOperation operation, 
+
+        /// <summary>
+        /// Retrieve a row from a specific replica i.e. @index.
+        /// No sanity check (avoiding reflection calls) so make sure argument operation == TableOperationType.Retrieve
+        ///
+        /// Return null when an exception, or xstore retunred null !
+        /// Return (TableResult.Result = null) when the type of entity is unknown.
+        /// Throws if the entity.ViewId > View.viewId.
+        /// Return TableResult.Result = entity converted to RTable format.
+        /// </summary>
+        private TableResult RetrieveFromReplica(View txnView, int index, TableOperation operation,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
             // Assert (GetOpType(operation) == TableOperationType.Retrieve)
@@ -1470,6 +1459,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 retrievedResult = table.Execute(operation, requestOptions, operationContext);
                 ValidateTxnView(txnView, false);
+
+                if (retrievedResult == null)
+                {
+                    return null;
+                }
             }
             catch (Exception e)
             {
@@ -1477,44 +1471,54 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return null;
             }
 
-            // If we are able to retrieve an existing entity, 
-            // then check consistency of viewId between the currentView and existing entity.
-            if (retrievedResult != null)
+            // Convert to RTable
+            IReplicatedTableEntity readRow = ConvertToIReplicatedTableEntity(retrievedResult);
+            if (readRow == null)
             {
-                IReplicatedTableEntity readRow = ConvertToIReplicatedTableEntity(retrievedResult);
-                if (readRow != null && !txnView.IsEmpty && txnView.ViewId < readRow._rtable_ViewId)
-                {
-                    throw new ReplicatedTableStaleViewException(
+                // retrievedResult.Result = null (set by ConvertToIReplicatedTableEntity call)
+                return retrievedResult;
+            }
+
+            // Check consistency of viewId between the currentView and existing entity.
+            if (txnView.ViewId < readRow._rtable_ViewId)
+            {
+                throw new ReplicatedTableStaleViewException(
                         string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}",
                         txnView.ViewId.ToString(),
                         readRow._rtable_ViewId));
-                }
             }
 
             return retrievedResult;
         }
 
+        /// <summary>
+        /// Convert a retrieved DynamicTableEntity to DynamicReplicatedTableEntity.
+        /// Otherwise, set retrievedResult.Result = null and return null.
+        /// </summary>
         private IReplicatedTableEntity ConvertToIReplicatedTableEntity(TableResult retrievedResult)
         {
-            IReplicatedTableEntity readRow = null;
+            // If the generic TableOperation.Retrive<T>() is used, the returned result is of IReplicatedTableEntity type
+            if (retrievedResult.Result is IReplicatedTableEntity)
+            {
+                return (IReplicatedTableEntity)retrievedResult.Result;
+            }
 
-            //If the non-generic TableOperation.Retrive() is used, the returned result is of DynamicTableEntity type
+            // If the non-generic TableOperation.Retrive() is used, the returned result is of DynamicTableEntity type
             if (retrievedResult.Result is DynamicTableEntity)
             {
-                //Convert to an equivalent DynamicReplicatedTableEntity
-                DynamicTableEntity tableEntity = (DynamicTableEntity) retrievedResult.Result;
-                readRow = new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag, tableEntity.Properties);
+                // Convert to an equivalent DynamicReplicatedTableEntity
+                DynamicTableEntity tableEntity = (DynamicTableEntity)retrievedResult.Result;
+
+                IReplicatedTableEntity readRow = new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag, tableEntity.Properties);
                 readRow.ReadEntity(tableEntity.Properties, null);
-            }
-            //If the generic TableOperation.Retrive<T>() is used, the returned result is of IReplicatedTableEntity type
-            else if (retrievedResult.Result is IReplicatedTableEntity)
-            {
-                readRow = (IReplicatedTableEntity) retrievedResult.Result;
+
+                retrievedResult.Result = readRow;
+                return readRow;
             }
 
-            retrievedResult.Result = readRow;
-
-            return readRow;
+            // Unknown type !
+            retrievedResult.Result = null;
+            return null;
         }
 
         //
@@ -2356,12 +2360,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                     InitDynamicReplicatedTableEntity entity = enumerator.Current;
                     if (entity._rtable_ViewId != 0)
                     {
-                        // _rtable_ViewId = 0 means that the entity has not been operated on since ther XStore Table was converted to ReplicatedTable.
-                        // So, convert it manually now.
                         ReplicatedTableLogger.LogInformational("Skipped XStore entity with Partition={0} Row={1}", entity.PartitionKey, entity.RowKey);
                         skippedCount++;
                         continue;
                     }
+
+                    // _rtable_ViewId = 0 means that the entity has not been operated on since the XStore Table was converted to ReplicatedTable.
+                    // So, convert it manually now.
                     entity._rtable_ViewId = txnView.ViewId;
                     entity._rtable_Version = 1;
                     TableOperation top = TableOperation.Replace(entity);

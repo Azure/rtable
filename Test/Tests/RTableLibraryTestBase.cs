@@ -99,6 +99,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         private int minimumLeaseRenewalInterval = 0;
         private int lockTimeoutInSeconds = 0;
 
+        protected RTableLibraryTestBase()
+        {
+            // Enable/Use default Logger ...
+            ReplicatedTableEtwLogger.EnableEvents();
+            ReplicatedTableLogger.Subscribe(new ReplicatedTableEtwLogger());
+        }
+
         /// <summary>
         /// Read the test configuration from "RTableTestConfiguration.xml"
         /// </summary>
@@ -255,6 +262,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.DeleteConfigurationBlob();
             this.configurationService.Dispose();
             this.RestoreConfigurationConstants();
+
+            // Disable/Dispose default Logger
+            ReplicatedTableEtwLogger.DisableEvents();
+            ReplicatedTableEtwLogger.DisposeLogger();
         }
 
         /// <summary>
@@ -339,7 +350,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         protected void RefreshRTableEnvJsonConfigBlob(bool convertXStoreTableMode)
         {
             long viewId = this.configurationWrapper.GetReadView().ViewId;
-            this.RefreshRTableEnvJsonConfigBlob(viewId, convertXStoreTableMode);            
+            this.RefreshRTableEnvJsonConfigBlob(++viewId, convertXStoreTableMode, 0, new List<int> { 0, 1, 2});
         }
 
         /// <summary>
@@ -437,7 +448,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             CloudBlobClient client = storageAccount.CreateCloudBlobClient();
             return client;
         }
-
 
         /// <summary>
         /// Read and print the entity of the specified jobType and jobId from individual storage accounts for debugging.
