@@ -24,6 +24,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChainTableInterface", "stab
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STableLib", "stable\STableLib\STableLib.csproj", "{5881CD5F-E467-497C-8A5B-46AC8B79A0B8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "STableUnitTest", "stable\STableUnitTest\STableUnitTest.csproj", "{1CD204E9-2B5D-4015-9B36-17AE0BA7A1EB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -62,6 +64,10 @@ Global
 		{5881CD5F-E467-497C-8A5B-46AC8B79A0B8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5881CD5F-E467-497C-8A5B-46AC8B79A0B8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5881CD5F-E467-497C-8A5B-46AC8B79A0B8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1CD204E9-2B5D-4015-9B36-17AE0BA7A1EB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1CD204E9-2B5D-4015-9B36-17AE0BA7A1EB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1CD204E9-2B5D-4015-9B36-17AE0BA7A1EB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1CD204E9-2B5D-4015-9B36-17AE0BA7A1EB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
