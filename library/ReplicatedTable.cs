@@ -524,16 +524,28 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 if (insertTombstone.Count > 0)
                 {
-                    table.ExecuteBatch(insertTombstone);
+                    results = table.ExecuteBatch(insertTombstone);
 
                     ValidateTxnView(txnView);
+
+                    if (results == null)
+                    {
+                        ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones");
+                        return null;
+                    }
 
                     // lock rest of the replica
                     for (int i = 1; i <= tailIndex; ++i)
                     {
                         tableClient = txnView[i];
                         table = tableClient.GetTableReference(this.TableName);
-                        table.ExecuteBatch(insertTombstone);
+                        results = table.ExecuteBatch(insertTombstone);
+                        
+                        if (results == null)
+                        {
+                            ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones");
+                            return null;
+                        }
                     }
                 }
             }
@@ -630,7 +642,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             var oldResults = this.FlushAndRetrieveBatch(txnView, batch, requestOptions, null);
 
             if (oldResults == null)
+            {
                 throw new Exception("something wrong in flush and retrieve");
+            }
 
             // Perform the Prepare phase for the headIndex.
             IList<TableResult> headResults = this.RunPreparePhaseAgainstHeadReplica(txnView, batch, requestOptions, operationContext);
@@ -705,7 +719,10 @@ namespace Microsoft.Azure.Toolkit.Replication
                                 var result = this.Flush2PC(txnView, currentRow, requestOptions, operationContext);
                                 if (result == null ||
                                     (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent))
+                                {
                                     return null;
+                                }
+                                    
                                 results.Add(result);
                             }
                             catch (Exception ex)
