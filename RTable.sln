@@ -19,6 +19,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".nuget", ".nuget", "{E94472
 	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChainTableFactory", "stable\ChainTableFactory\ChainTableFactory.csproj", "{D34A9308-3F44-4C1C-942E-330BB766EABC}"
+	ProjectSection(ProjectDependencies) = postProject
+		{0F6D71F2-1322-4B32-BB08-A6A99EB812D4} = {0F6D71F2-1322-4B32-BB08-A6A99EB812D4}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ChainTableInterface", "stable\ChainTableInterface\ChainTableInterface.csproj", "{C24BC418-9BFD-48FA-94BE-8DC8864C2EA6}"
 EndProject

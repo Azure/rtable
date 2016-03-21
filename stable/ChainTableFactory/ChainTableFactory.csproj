@@ -40,7 +40,7 @@
       <Private>True</Private>
     </Reference>
     <Reference Include="Microsoft.Azure.Toolkit.Replication">
-      <HintPath>..\library\obj\Debug\Microsoft.Azure.Toolkit.Replication.dll</HintPath>
+      <HintPath>..\..\library\bin\Release\Microsoft.Azure.Toolkit.Replication.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.Data.Edm, Version=5.6.4.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <HintPath>..\..\packages\Microsoft.Data.Edm.5.6.4\lib\net40\Microsoft.Data.Edm.dll</HintPath>
@@ -89,6 +89,9 @@
       <Project>{c24bc418-9bfd-48fa-94be-8dc8864c2ea6}</Project>
       <Name>ChainTableInterface</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <WCFMetadata Include="Service References\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

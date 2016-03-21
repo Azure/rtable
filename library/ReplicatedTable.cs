@@ -535,7 +535,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     }
 
                     // lock rest of the replica
-                    for (int i = 1; i <= tailIndex; ++i)
+                    for (int i = txnView.WriteHeadIndex+1; i <= txnView.TailIndex; ++i)
                     {
                         tableClient = txnView[i];
                         table = tableClient.GetTableReference(this.TableName);
