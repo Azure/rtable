@@ -29,6 +29,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Reflection;
     using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Table;
+    using System.Threading.Tasks;
 
     public class ReplicatedTable : IReplicatedTable
     {
@@ -271,14 +272,18 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// this function will retrieve the row from the specified replica and increment row._rtable_Version.
         /// Finally, (does not matter whether it is in Prepare or Commit phase), create and return an appropriate TableOperation.
         /// The caller of this function will then create a TableBatchOperation based on the return value of this function.
+        /// If needInsertTombstone == true, it will generate the tombstone insert operation and put it to insertTombstones if we need so
         /// </summary>
         /// <param name="row"></param>
         /// <param name="phase"></param>
         /// <param name="index"></param>
+        /// <param name="needInsertTombstone"></param>
+        /// <param name="insertTombstones"></param>
         /// <param name="requestOptions"></param>
         /// <param name="operationContext"></param>
         /// <returns></returns>
-        private TableOperation TransformOp(View txnView, IReplicatedTableEntity row, int phase, int index,
+        private TableOperation TransformOp(View txnView, IReplicatedTableEntity row, int phase, int index, 
+            bool needInsertTombstone, ref TableBatchOperation insertTombstones,
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
         {
             int tailIndex = txnView.TailIndex;
@@ -325,6 +330,14 @@ namespace Microsoft.Azure.Toolkit.Replication
                                                     row.ETag, currentRow._rtable_Version);
                             return null;
                         }
+
+                        // do not need tombstone
+                        needInsertTombstone = false;
+                    }
+                    else
+                    {
+                        // IOR or IOM, if exists, then not insert tombstone
+                        needInsertTombstone &= (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK);
                     }
 
                     if (currentRow != null)
@@ -372,23 +385,30 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // We use merge in both phases
                 return TableOperation.Merge(row);
             }
-            else if (row._rtable_Operation == GetTableOperation(TableOperationType.Insert))
+
+            if (needInsertTombstone)
             {
-                // We insert in the prepare phase for non-tail replicas and during the commit phase at the tail replica
-                return TableOperation.Insert(row);
+                DynamicReplicatedTableEntity tsRow = new DynamicReplicatedTableEntity(row.PartitionKey, row.RowKey);
+                tsRow._rtable_RowLock = true;
+                tsRow._rtable_LockAcquisition = DateTime.UtcNow;
+                tsRow._rtable_ViewId = txnView.ViewId;
+                tsRow._rtable_Version = 0;
+                tsRow._rtable_Tombstone = true;
+                tsRow._rtable_Operation = GetTableOperation(TableOperationType.Insert);
+
+                insertTombstones.Add(TableOperation.Insert(tsRow));
             }
-            else if (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrReplace))
+
+            // we have already inserted tombstone, so replace/merge now
+            row.ETag = "*";
+            if (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrMerge))
             {
-                return TableOperation.InsertOrReplace(row);
-            }
-            else if (row._rtable_Operation == GetTableOperation(TableOperationType.InsertOrMerge))
-            {
-                return TableOperation.InsertOrMerge(row);
+                return TableOperation.Merge(row);
             }
             else
             {
-                // we shouldn't reach here
-                return null;
+                // insert / IOR
+                return TableOperation.Replace(row);
             }
         }
 
@@ -439,6 +459,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             TableBatchOperation batchOp = new TableBatchOperation();
             IEnumerator<TableResult> iter = (results != null) ? results.GetEnumerator() : null;
             int tailIndex = txnView.TailIndex;
+            bool tombstone = (phase == PREPARE_PHASE && index == txnView.WriteHeadIndex);
+            TableBatchOperation insertTombstone = new TableBatchOperation();
 
             while (enumerator.MoveNext())
             {
@@ -460,7 +482,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     //          It may be better to check for safety but involves a round trip to the server.
                     row._rtable_BatchId = Guid.NewGuid();
 
-                    if ((prepOp = TransformOp(txnView, row, phase, index, requestOptions, operationContext)) == null)
+                    if ((prepOp = TransformOp(txnView, row, phase, index, tombstone, ref insertTombstone, requestOptions, operationContext)) == null)
                     {
                         return null;
                     }
@@ -477,7 +499,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     }
                     row._rtable_RowLock = false;
 
-                    if ((prepOp = TransformOp(txnView, row, phase, index, requestOptions, operationContext)) == null)
+                    if ((prepOp = TransformOp(txnView, row, phase, index, tombstone, ref insertTombstone, requestOptions, operationContext)) == null)
                     {
                         throw new ArgumentException();
                     }
@@ -491,6 +513,41 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // Add transformed operation to the batch
                 batchOp.Add(prepOp);
+            }
+
+            if (tombstone)
+            {
+                // index == write head
+                // lock head
+                var tableClient = txnView[txnView.WriteHeadIndex];
+                var table = tableClient.GetTableReference(this.TableName);
+
+                if (insertTombstone.Count > 0)
+                {
+                    results = table.ExecuteBatch(insertTombstone);
+
+                    ValidateTxnView(txnView);
+
+                    if (results == null)
+                    {
+                        ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones");
+                        return null;
+                    }
+
+                    // lock rest of the replica
+                    for (int i = txnView.WriteHeadIndex+1; i <= txnView.TailIndex; ++i)
+                    {
+                        tableClient = txnView[i];
+                        table = tableClient.GetTableReference(this.TableName);
+                        results = table.ExecuteBatch(insertTombstone);
+                        
+                        if (results == null)
+                        {
+                            ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones");
+                            return null;
+                        }
+                    }
+                }
             }
 
             return batchOp;
@@ -582,7 +639,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             ValidateTxnView(txnView);
 
             // First, make sure all the rows in the batch operation are not locked. If they are locked, flush them.
-            this.FlushAndRetrieveBatch(txnView, batch, requestOptions, null);
+            var oldResults = this.FlushAndRetrieveBatch(txnView, batch, requestOptions, null);
+
+            if (oldResults == null)
+            {
+                throw new Exception("something wrong in flush and retrieve");
+            }
 
             // Perform the Prepare phase for the headIndex.
             IList<TableResult> headResults = this.RunPreparePhaseAgainstHeadReplica(txnView, batch, requestOptions, operationContext);
@@ -594,7 +656,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             return results[txnView.TailIndex];
         }
 
-
         /// <summary>
         /// Retrieve all the rows in the batchOperation from the headIndex.
         /// Check to see whether any row is locked.
@@ -603,13 +664,30 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="batch"></param>
         /// <param name="requestOptions"></param>
         /// <param name="operationContext"></param>
-        private void FlushAndRetrieveBatch(
+        private IList<TableResult> FlushAndRetrieveBatch(
             View txnView,
             TableBatchOperation batch,
             TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
             TableBatchOperation flushBatch = new TableBatchOperation();
+            IList<TableResult> results = new List<TableResult>();
+
+            // TODO: repair them first
+            bool failed = false;
+            Parallel.ForEach(batch, op => {
+                var row = GetEntityFromOperation(op);
+                var repairResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
+                if (repairResult == null)
+                {
+                    // service unavailable
+                    failed = true;
+                }
+            });
+            if (failed)
+            {
+                return null;
+            }
 
             IEnumerator<TableOperation> enumerator = batch.GetEnumerator();
             while (enumerator.MoveNext())
@@ -624,12 +702,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                 if (retrievedResult == null)
                 {
                     // service unavailable
+                    return null;
                 }
-                else if (retrievedResult.Result == null)
-                {
-                    // row may not be present
-                }
-                else if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK)
+                else if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK && retrievedResult.Result != null)
                 {
                     IReplicatedTableEntity currentRow = ConvertToIReplicatedTableEntity(retrievedResult);
 
@@ -641,25 +716,41 @@ namespace Microsoft.Azure.Toolkit.Replication
                             {
                                 ReplicatedTableLogger.LogInformational("FlushAndRetrieveBatch(): Row is locked and has expired. PartitionKey={0} RowKey={1}",
                                                         row.PartitionKey, row.RowKey);
-                                this.Flush2PC(txnView, currentRow, requestOptions, operationContext);
+                                var result = this.Flush2PC(txnView, currentRow, requestOptions, operationContext);
+                                if (result == null ||
+                                    (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent))
+                                {
+                                    return null;
+                                }
+                                    
+                                results.Add(result);
                             }
                             catch (Exception ex)
                             {
                                 ReplicatedTableLogger.LogError("FlushAndRetrieveBatch(): Flush2PC() exception {0}", ex.ToString());
+                                return null;
                             }
                         }
                         else
                         {
                             ReplicatedTableLogger.LogInformational("FlushAndRetrieveBatch(): Row is locked but NOT expired. PartitionKey={0} RowKey={1}",
                                                     row.PartitionKey, row.RowKey);
+                            return null;
                         }
+                    }
+                    else
+                    {
+                        results.Add(retrievedResult);
                     }
                 }
                 else
                 {
                     // row may not be present
+                    results.Add(new TableResult() { HttpStatusCode = (int) HttpStatusCode.NotFound, Etag = null, Result = null });
                 }
             }
+
+            return results;
         }
 
         /// <summary>
@@ -681,6 +772,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             CloudTableClient tableClient = txnView[txnView.WriteHeadIndex];
             CloudTable table = tableClient.GetTableReference(this.TableName);
+
+            // insert tombstone when transform
             TableBatchOperation batchOp = TransformUpdateBatchOp(txnView, batch, phase, txnView.WriteHeadIndex, null, requestOptions,
                 operationContext);
             if (batchOp == null)
