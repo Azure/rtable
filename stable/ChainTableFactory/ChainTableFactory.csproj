@@ -39,9 +39,6 @@
       <HintPath>..\..\packages\Microsoft.Azure.KeyVault.Core.1.0.0\lib\net40\Microsoft.Azure.KeyVault.Core.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="Microsoft.Azure.Toolkit.Replication">
-      <HintPath>..\..\library\bin\Release\Microsoft.Azure.Toolkit.Replication.dll</HintPath>
-    </Reference>
     <Reference Include="Microsoft.Data.Edm, Version=5.6.4.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <HintPath>..\..\packages\Microsoft.Data.Edm.5.6.4\lib\net40\Microsoft.Data.Edm.dll</HintPath>
       <Private>True</Private>
@@ -85,6 +82,10 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\library\Microsoft.Azure.Toolkit.Replication.csproj">
+      <Project>{0f6d71f2-1322-4b32-bb08-a6a99eb812d4}</Project>
+      <Name>Microsoft.Azure.Toolkit.Replication</Name>
+    </ProjectReference>
     <ProjectReference Include="..\ChainTableInterface\ChainTableInterface.csproj">
       <Project>{c24bc418-9bfd-48fa-94be-8dc8864c2ea6}</Project>
       <Name>ChainTableInterface</Name>
