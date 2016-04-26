@@ -527,9 +527,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                     {
                         results = table.ExecuteBatch(insertTombstone, requestOptions, operationContext);
                     } 
-                    catch (StorageException)
+                    catch (StorageException e)
                     {
-                        ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones");
+                        ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones. " + e.Message);
                         return null;
                     }
 
@@ -546,7 +546,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                         }
                         catch (StorageException e)
                         {
-                            ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones");
+                            ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones. " + e.Message);
                             return null;
                         }
                     }
