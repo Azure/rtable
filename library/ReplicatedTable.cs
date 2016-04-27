@@ -521,29 +521,32 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // lock head
                 var tableClient = txnView[txnView.WriteHeadIndex];
                 var table = tableClient.GetTableReference(this.TableName);
-
                 if (insertTombstone.Count > 0)
                 {
-                    results = table.ExecuteBatch(insertTombstone);
-
-                    ValidateTxnView(txnView);
-
-                    if (results == null)
+                    try
                     {
-                        ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones");
+                        results = table.ExecuteBatch(insertTombstone, requestOptions, operationContext);
+                    } 
+                    catch (StorageException e)
+                    {
+                        ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones. " + e.Message);
                         return null;
                     }
+
+                    ValidateTxnView(txnView);
 
                     // lock rest of the replica
                     for (int i = txnView.WriteHeadIndex+1; i <= txnView.TailIndex; ++i)
                     {
                         tableClient = txnView[i];
                         table = tableClient.GetTableReference(this.TableName);
-                        results = table.ExecuteBatch(insertTombstone);
-                        
-                        if (results == null)
+                        try
                         {
-                            ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones");
+                            results = table.ExecuteBatch(insertTombstone);
+                        }
+                        catch (StorageException e)
+                        {
+                            ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones. " + e.Message);
                             return null;
                         }
                     }
