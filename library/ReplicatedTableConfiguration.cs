@@ -112,6 +112,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             viewMap.Remove(viewName);
         }
 
+        public int GetViewSize()
+        {
+            return viewMap.Count;
+        }
+
         private void ThrowIfViewIsNotValid(string viewName, ReplicatedTableConfigurationStore config)
         {
             if (config.ReplicaChain == null || config.ReplicaChain.Any(replica => replica == null))
@@ -120,66 +125,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new Exception(msg);
             }
 
-            List<ReplicaInfo> chainList = config.GetCurrentReplicaChain();
-            if (chainList.Any())
-            {
-                /* RULE 1:
-                 * =======
-                 * Read replicas rule:
-                 *  - [R] replicas are contiguous from Tail backwards
-                 *  - [R] replica count >= 1
-                 */
-                string readPattern = "^W*R+$";
-
-                /* RULE 2:
-                 * =======
-                 * Write replicas rule:
-                 *  - [W] replicas are contiguous from Head onwards
-                 *  - [W] replica count = 0 or = ChainLength
-                 */
-                string writePattern = "^((R+)|(W+))$";
-
-                // Get replica sequences
-                string readSeq = "";
-                string writeSeq = "";
-
-                foreach (var replica in chainList)
-                {
-                    // Read sequence:
-                    if (replica.IsReadable())
-                    {
-                        readSeq += "R";
-                    }
-                    else
-                    {
-                        readSeq += "W";
-                    }
-
-                    // Write sequence:
-                    if (replica.IsWritable())
-                    {
-                        writeSeq += "W";
-                    }
-                    else
-                    {
-                        writeSeq += "R";
-                    }
-                }
-
-                // Verify RULE 1:
-                if (!Regex.IsMatch(readSeq, readPattern))
-                {
-                    var msg = string.Format("View:\'{0}\' has invalid Read chain:\'{1}\' !!!", viewName, readSeq);
-                    throw new Exception(msg);
-                }
-
-                // Verify RULE 2:
-                if (!Regex.IsMatch(writeSeq, writePattern))
-                {
-                    var msg = string.Format("View:\'{0}\' has invalid Write chain:\'{1}\' !!!", viewName, writeSeq);
-                    throw new Exception(msg);
-                }
-            }
+            config.ThrowIfChainIsNotValid(viewName);
         }
 
         private void ThrowIfViewBreaksTableConstraint(string viewName, ReplicatedTableConfigurationStore config)
@@ -262,6 +208,13 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             configuredTable = null;
 
+            if (string.IsNullOrEmpty(tableName))
+            {
+                // we may have a default rule configured for any table,
+                // but consider no name as false.
+                return false;
+            }
+
             ReplicatedTableConfiguredTable config = GetTable(tableName) ?? GetDefaultConfiguredTable();
 
             // Neither explicit config, nor default config
@@ -288,6 +241,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             tableList.RemoveAll(e => tableName.Equals(e.TableName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public int GetTableSize()
+        {
+            return tableList.Count;
         }
 
         private void ThrowIfViewIsMissing(ReplicatedTableConfiguredTable config)

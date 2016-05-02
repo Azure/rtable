@@ -94,6 +94,9 @@
     <Compile Include="JsonStore.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="RepairRTableTests.cs" />
+    <Compile Include="ReplicaInfoTest.cs" />
+    <Compile Include="ReplicatedTableConfigurationStoreTest.cs" />
+    <Compile Include="ReplicatedTableConfigurationTest.cs" />
     <Compile Include="RTableBatchOperationTests.cs" />
     <Compile Include="RTableConfigurationServiceTests.cs" />
     <Compile Include="RTableCreateTableTests.cs" />

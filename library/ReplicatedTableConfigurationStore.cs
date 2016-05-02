@@ -25,6 +25,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Collections.Generic;
     using System.Linq;
     using System.Runtime.Serialization;
+    using System.Text.RegularExpressions;
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
     public class ReplicatedTableConfigurationStore
@@ -139,7 +140,27 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // - Ensure its status is *None*
             ReplicaInfo candidateReplica = ReplicaChain[matchIndex];
+
+            var oldStatus = candidateReplica.Status;
             candidateReplica.Status = ReplicaStatus.None;
+
+            // First check it will be possible to modify the sequence
+            foreach (ReplicaInfo replica in GetCurrentReplicaChain())
+            {
+                // Change is not possible
+                if (replica.Status == ReplicaStatus.WriteOnly)
+                {
+                    // Restore previous status
+                    candidateReplica.Status = oldStatus;
+
+                    var msg = string.Format("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", viewName);
+
+                    ReplicatedTableLogger.LogError(msg);
+                    throw new Exception(msg);
+                }
+            }
+
+            // Do the change ...
 
             // - Move it to the front of the chain
             ReplicaChain.RemoveAt(matchIndex);
@@ -148,14 +169,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             // Set all active replicas to *ReadOnly*
             foreach (ReplicaInfo replica in GetCurrentReplicaChain())
             {
-                if (replica.Status == ReplicaStatus.WriteOnly)
-                {
-                    var msg = string.Format("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", viewName);
-
-                    ReplicatedTableLogger.LogError(msg);
-                    throw new Exception(msg);
-                }
-
                 replica.Status = ReplicaStatus.ReadOnly;
             }
 
@@ -205,6 +218,70 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Update view id
             ViewId++;
+        }
+
+        internal protected void ThrowIfChainIsNotValid(string viewName)
+        {
+            List<ReplicaInfo> chainList = GetCurrentReplicaChain();
+            if (chainList.Any())
+            {
+                /* RULE 1:
+                 * =======
+                 * Read replicas rule:
+                 *  - [R] replicas are contiguous from Tail backwards
+                 *  - [R] replica count >= 1
+                 */
+                string readPattern = "^W*R+$";
+
+                /* RULE 2:
+                 * =======
+                 * Write replicas rule:
+                 *  - [W] replicas are contiguous from Head onwards
+                 *  - [W] replica count = 0 or = ChainLength
+                 */
+                string writePattern = "^((R+)|(W+))$";
+
+                // Get replica sequences
+                string readSeq = "";
+                string writeSeq = "";
+
+                foreach (var replica in chainList)
+                {
+                    // Read sequence:
+                    if (replica.IsReadable())
+                    {
+                        readSeq += "R";
+                    }
+                    else
+                    {
+                        readSeq += "W";
+                    }
+
+                    // Write sequence:
+                    if (replica.IsWritable())
+                    {
+                        writeSeq += "W";
+                    }
+                    else
+                    {
+                        writeSeq += "R";
+                    }
+                }
+
+                // Verify RULE 1:
+                if (!Regex.IsMatch(readSeq, readPattern))
+                {
+                    var msg = string.Format("View:\'{0}\' has invalid Read chain:\'{1}\' !!!", viewName, readSeq);
+                    throw new Exception(msg);
+                }
+
+                // Verify RULE 2:
+                if (!Regex.IsMatch(writeSeq, writePattern))
+                {
+                    var msg = string.Format("View:\'{0}\' has invalid Write chain:\'{1}\' !!!", viewName, writeSeq);
+                    throw new Exception(msg);
+                }
+            }
         }
     }
 }
