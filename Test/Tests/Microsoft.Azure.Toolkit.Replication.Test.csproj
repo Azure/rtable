@@ -97,6 +97,7 @@
     <Compile Include="ReplicaInfoTest.cs" />
     <Compile Include="ReplicatedTableConfigurationStoreTest.cs" />
     <Compile Include="ReplicatedTableConfigurationTest.cs" />
+    <Compile Include="ReplicatedTableConfiguredTableTest.cs" />
     <Compile Include="RTableBatchOperationTests.cs" />
     <Compile Include="RTableConfigurationServiceTests.cs" />
     <Compile Include="RTableCreateTableTests.cs" />

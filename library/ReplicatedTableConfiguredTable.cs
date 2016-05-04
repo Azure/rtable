@@ -21,7 +21,10 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using System;
     using System.Runtime.Serialization;
+    using System.Collections.Generic;
+    using System.Linq;
 
     [DataContract(Namespace = "http://schemas.microsoft.com/windowsazure")]
     public class ReplicatedTableConfiguredTable
@@ -41,5 +44,48 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// </summary>
         [DataMember(IsRequired = true)]
         public bool UseAsDefault { get; set; }
+
+        // TODO: *** not yet supported ***
+        [DataMember]
+        public string PartitionOnProperty;
+
+        // TODO: *** not yet supported ***
+        [DataMember]
+        public Dictionary<string, string> PartitionsToViewMap;
+
+        /// <summary>
+        /// Returns True if the table refers that view
+        /// </summary>
+        /// <param name="viewName"></param>
+        /// <returns></returns>
+        internal protected bool IsViewReferenced(string viewName)
+        {
+            if (string.IsNullOrEmpty(viewName))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(ViewName) &&
+                ViewName.Equals(viewName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // Check partition map
+            if (PartitionsToViewMap == null)
+            {
+                return false;
+            }
+
+            KeyValuePair<string, string>
+            entry = PartitionsToViewMap.FirstOrDefault(x => x.Value.Equals(viewName, StringComparison.OrdinalIgnoreCase));
+
+            if (entry.Equals(default(KeyValuePair<string, string>)))
+            {
+                return false;
+            }
+
+            return !string.IsNullOrEmpty(entry.Key);
+        }
     }
 }

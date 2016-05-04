@@ -1,0 +1,125 @@
+{
+    'viewMap': [
+        {
+            'Key': 'view1',
+            'Value': {
+                'ConvertXStoreTableMode': false,
+                'LeaseDuration': 60,
+                'ReadViewHeadIndex': 2,
+                'ReplicaChain': [
+                    {
+                        'Status': 3,
+                        'StorageAccountKey': null,
+                        'StorageAccountName': 'main',
+                        'ViewInWhichAddedToChain': 1,
+                        'ViewWhenTurnedOff': 0
+                    }
+                ],
+                'Timestamp': '/Date(1449259685702)/',
+                'ViewId': 4
+            }
+        },
+        {
+            'Key': 'view2',
+            'Value': {
+                'ConvertXStoreTableMode': false,
+                'LeaseDuration': 60,
+                'ReadViewHeadIndex': 2,
+                'ReplicaChain': [
+                    {
+                        'Status': 3,
+                        'StorageAccountKey': null,
+                        'StorageAccountName': 'main2',
+                        'ViewInWhichAddedToChain': 3,
+                        'ViewWhenTurnedOff': 0
+                    },
+                    {
+                        'Status': 3,
+                        'StorageAccountKey': null,
+                        'StorageAccountName': 'main',
+                        'ViewInWhichAddedToChain': 1,
+                        'ViewWhenTurnedOff': 0
+                    }
+                ],
+                'Timestamp': '/Date(1449259685702)/',
+                'ViewId': 4
+            }
+        }
+    ],
+    'tableList': [
+        {
+            'ConvertToRTable': false,
+            'TableName': 'tbl1',
+            'UseAsDefault': false,
+            'ViewName': 'view2'
+        },
+        {
+            'ConvertToRTable': true,
+            'TableName': 'tbl2',
+            'UseAsDefault': false,
+            'ViewName': 'view1',
+            'PartitionsToViewMap': null
+        },
+        {
+            'ConvertToRTable': true,
+            'TableName': 'tbl3',
+            'UseAsDefault': false,
+            'ViewName': 'view1',
+            'PartitionsToViewMap': []
+        },
+        {
+            'ConvertToRTable': true,
+            'TableName': 'tbl4',
+            'UseAsDefault': false,
+            'ViewName': 'view1',
+            'PartitionsToViewMap': [
+                {
+                    'Key':'',
+		    'Value':'IgnoredView'
+                }
+            ]
+        },
+        {
+            'ConvertToRTable': true,
+            'TableName': 'tbl5',
+            'UseAsDefault': false,
+            'ViewName': 'view1',
+            'PartitionsToViewMap': [
+                {
+                    'Key':'',
+		    'Value':'IgnoredView'
+                },
+                {
+                    'Key':'1',
+		    'Value':'view1'
+                },
+                {
+                    'Key':'2',
+		    'Value':'view1'
+                }
+            ]
+        },
+        {
+            'ConvertToRTable': false,
+            'TableName': 'tbl6',
+            'UseAsDefault': false,
+            'ViewName': 'view1',
+            'PartitionsToViewMap': [
+                {
+                    'Key':'',
+		    'Value':'IgnoredView'
+                },
+                {
+                    'Key':'1',
+		    'Value':'view2'
+                },
+                {
+                    'Key':'2',
+		    'Value':'view2'
+                }
+            ]
+        },
+    ],
+    'LeaseDuration': 10,
+    'Id': '450a44a6-26fd-4ca2-89b1-32bf99af9248'
+}

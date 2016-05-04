@@ -100,7 +100,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return;
             }
 
-            ReplicatedTableConfiguredTable table = tableList.Find(e => viewName.Equals(e.ViewName, StringComparison.OrdinalIgnoreCase));
+            ReplicatedTableConfiguredTable table = tableList.Find(e => e.IsViewReferenced(viewName));
             if (table != null)
             {
                 var msg = string.Format("View:\'{0}\' is referenced by table:\'{1}\'! First, delete the table then the view.",
@@ -132,21 +132,19 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             foreach (ReplicatedTableConfiguredTable table in tableList)
             {
-                if (table.ConvertToRTable == false ||
-                    string.IsNullOrEmpty(table.ViewName) ||
-                    !table.ViewName.Equals(viewName, StringComparison.OrdinalIgnoreCase))
+                if (table.ConvertToRTable == false || !table.IsViewReferenced(viewName))
                 {
                     continue;
                 }
 
-                // Convertion mode: view shoud not have more than 1 replica
+                // Conversion mode: view shoud not have more than 1 replica
                 List<ReplicaInfo> chainList = config.GetCurrentReplicaChain();
                 if (chainList.Count <= 1)
                 {
                     continue;
                 }
 
-                var msg = string.Format("Table:\'{0}\' should not have a view:\'{1}\' with more than 1 replica since it is in Convertion mode!",
+                var msg = string.Format("Table:\'{0}\' should not have a view:\'{1}\' with more than 1 replica since it is in Conversion mode!",
                                         table.TableName,
                                         viewName);
                 throw new Exception(msg);
@@ -171,9 +169,11 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // 1 - If pointing a view, then the view must exist ?
             ThrowIfViewIsMissing(config);
+            ThrowIfAnyPartitionViewIsMissing(config);
 
-            // 2 - If table is in ConvertToRTable mode then view should have no more than 1 replica
-            ThrowIfViewHasManyReplicasInConvertionMode(config);
+            // 2 - If table is in ConvertToRTable mode then any referenced view should have no more than 1 replica
+            ThrowIfViewHasManyReplicasInConversionMode(config);
+            ThrowIfAnyPartitionViewHasManyReplicasInConversionMode(config);
 
             if (config.UseAsDefault == true)
             {
@@ -211,7 +211,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (string.IsNullOrEmpty(tableName))
             {
                 // we may have a default rule configured for any table,
-                // but consider no name as false.
+                // but consider "no-name" as false.
                 return false;
             }
 
@@ -227,6 +227,27 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (string.IsNullOrEmpty(config.ViewName))
             {
                 return false;
+            }
+
+            // check partition views ?
+            if (config.PartitionsToViewMap != null)
+            {
+                /*
+                 * Key = "" - View = ""          => Ignore
+                 * Key = "" - View = "viewName"  => Ignore
+                 * Key = "X" - View = ""         => FALSE (view is missing, btw this is invalid state)
+                 * Key = "Y" - View = "viewName" => TRUE
+                 */
+                foreach (var entry in config.PartitionsToViewMap.Where(e => !string.IsNullOrEmpty(e.Key)))
+                {
+                    string viewName = entry.Value;
+
+                    // Placeholder partition config i.e. a config with No View
+                    if (string.IsNullOrEmpty(viewName))
+                    {
+                        return false;
+                    }
+                }
             }
 
             configuredTable = config;
@@ -266,7 +287,57 @@ namespace Microsoft.Azure.Toolkit.Replication
             throw new Exception(msg);
         }
 
-        private void ThrowIfViewHasManyReplicasInConvertionMode(ReplicatedTableConfiguredTable config)
+        private void ThrowIfAnyPartitionViewIsMissing(ReplicatedTableConfiguredTable config)
+        {
+            // - no default view configured
+            if (string.IsNullOrEmpty(config.ViewName))
+            {
+                /*
+                 * Key = "" - View = ""         => Ignore
+                 * Key = "" - View = "viewName" => Ignore
+                 */
+                if (config.PartitionsToViewMap == null ||
+                    config.PartitionsToViewMap.All(x => string.IsNullOrEmpty(x.Key)))
+                {
+                    return;
+                }
+
+                /*
+                 * Key = "X" - View = ""         => Don't allow
+                 * Key = "Y" - View = "viewName" => Don't allow
+                 */
+                var msg = string.Format("Table:\'{0}\' can't have a partition view but no default view.", config.TableName);
+                throw new Exception(msg);
+            }
+
+            // We have a default view ...
+            // we assume it is configured, and therefore no need to re-check it here.
+
+            if (config.PartitionsToViewMap == null)
+            {
+                return;
+            }
+
+            /*
+             * Key = "X" - View = ""         => Error
+             * Key = "Y" - View = "viewName" => 'viewName' has to exist
+             */
+            foreach (var entry in config.PartitionsToViewMap.Where(e => !string.IsNullOrEmpty(e.Key)))
+            {
+                string viewName = entry.Value;
+
+                // the partition view has to exist
+                if (GetView(viewName) == null)
+                {
+                    var msg = string.Format("Table:\'{0}\' refers a missing partition view:\'{1}\'! First, create the view and then configure the table.",
+                                            config.TableName,
+                                            viewName);
+                    throw new Exception(msg);
+                }
+            }
+        }
+
+        private void ThrowIfViewHasManyReplicasInConversionMode(ReplicatedTableConfiguredTable config)
         {
             if (config.ConvertToRTable == false || string.IsNullOrEmpty(config.ViewName))
             {
@@ -276,18 +347,53 @@ namespace Microsoft.Azure.Toolkit.Replication
             ReplicatedTableConfigurationStore viewConfig = GetView(config.ViewName);
             // Assert (viewConfig != null)
 
-            // In Convertion mode, view should not have more than 1 replica
+            // In Conversion mode, view should not have more than 1 replica
             List<ReplicaInfo> chainList = viewConfig.GetCurrentReplicaChain();
             if (chainList.Count <= 1)
             {
                 return;
             }
 
-            var msg = string.Format("Table:\'{0}\' refers a view:\'{1}\' with more than 1 replica while in Convertion mode!",
+            var msg = string.Format("Table:\'{0}\' refers a view:\'{1}\' with more than 1 replica while in Conversion mode!",
                                     config.TableName,
                                     config.ViewName);
             throw new Exception(msg);
         }
+
+        private void ThrowIfAnyPartitionViewHasManyReplicasInConversionMode(ReplicatedTableConfiguredTable config)
+        {
+            if (config.ConvertToRTable == false || config.PartitionsToViewMap == null)
+            {
+                return;
+            }
+
+            /*
+             * Key = "" - View = ""          => Ignore
+             * Key = "" - View = "viewName"  => Ignore
+             * Key = "X" - View = ""         => Should never happen (already tken care by the flow)
+             * Key = "Y" - View = "viewName" => 'viewName' can't have more than 1 replica
+             */
+            foreach (var entry in config.PartitionsToViewMap.Where(e => !string.IsNullOrEmpty(e.Key)))
+            {
+                string viewName = entry.Value;
+
+                ReplicatedTableConfigurationStore viewConfig = GetView(viewName);
+                // Assert (viewConfig != null)
+
+                // In Conversion mode, view should not have more than 1 replica
+                List<ReplicaInfo> chainList = viewConfig.GetCurrentReplicaChain();
+                if (chainList.Count <= 1)
+                {
+                    continue;
+                }
+
+                var msg = string.Format("Table:\'{0}\' refers a partition view:\'{1}\' with more than 1 replica while in Conversion mode!",
+                                        config.TableName,
+                                        viewName);
+                throw new Exception(msg);
+            }
+        }
+
 
         /*
          * Helpers ...
@@ -369,9 +475,11 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     // 1 - each table refers an existing view
                     ThrowIfViewIsMissing(cfg);
+                    ThrowIfAnyPartitionViewIsMissing(cfg);
 
                     // 2 - and, each table in ConvertToRTable mode has no more than one replica
-                    ThrowIfViewHasManyReplicasInConvertionMode(cfg);
+                    ThrowIfViewHasManyReplicasInConversionMode(cfg);
+                    ThrowIfAnyPartitionViewHasManyReplicasInConversionMode(cfg);
                     return true;
                 });
 
