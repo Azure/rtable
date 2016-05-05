@@ -195,6 +195,7 @@
             {
                 TableName = "tabl2",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>(),
             });
 
@@ -202,6 +203,7 @@
             {
                 TableName = "tabl3",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "" },
@@ -212,6 +214,7 @@
             {
                 TableName = "tabl4",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view1" }, // this view is ignored since key is empty
@@ -222,6 +225,7 @@
             {
                 TableName = "tabl5",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "ignoredView" },
@@ -256,6 +260,7 @@
                 ConvertToRTable = true,
                 TableName = "tabl2",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>(),
             });
 
@@ -264,6 +269,7 @@
                 ConvertToRTable = true,
                 TableName = "tabl3",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "" },
@@ -275,6 +281,7 @@
                 ConvertToRTable = true,
                 TableName = "tabl4",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view1" }, // this view is ignored since key is empty
@@ -286,6 +293,7 @@
                 ConvertToRTable = true,
                 TableName = "tabl5",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "ignoredView" },
@@ -436,6 +444,7 @@
             {
                 TableName = "tabl2",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>(),
             });
 
@@ -443,6 +452,7 @@
             {
                 TableName = "tabl3",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "" },
@@ -453,6 +463,7 @@
             {
                 TableName = "tabl4",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view1" }, // this view is ignored since key is empty
@@ -463,6 +474,7 @@
             {
                 TableName = "tabl5",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "ignoredView" },
@@ -647,12 +659,36 @@
             };
             conf.SetTable(partitionedTable1);
 
+            // - no default view, partition views exist but partitioning is disable
+            partitionedTable1 = new ReplicatedTableConfiguredTable
+            {
+                TableName = "tabl1",
+                ViewName = "",
+
+                PartitionOnProperty = null,
+                PartitionsToViewMap = new Dictionary<string, string>(),
+            };
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetTable(partitionedTable1), "SetTable should fail if table partition map butpartitioning is disabled");
+            Assert.IsTrue(exception.Message == string.Format("Table:\'{0}\' can't have a partition view while partitioning is disabled!", partitionedTable1.TableName));
+
+            partitionedTable1 = new ReplicatedTableConfiguredTable
+            {
+                TableName = "tabl1",
+                ViewName = "",
+
+                PartitionOnProperty = "",
+                PartitionsToViewMap = new Dictionary<string, string>(),
+            };
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetTable(partitionedTable1), "SetTable should fail if table partition map butpartitioning is disabled");
+            Assert.IsTrue(exception.Message == string.Format("Table:\'{0}\' can't have a partition view while partitioning is disabled!", partitionedTable1.TableName));
+
             // - no default view, partition views is empty
             partitionedTable1 = new ReplicatedTableConfiguredTable
             {
                 TableName = "tabl1",
                 ViewName = "",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>(),
             };
             conf.SetTable(partitionedTable1);
@@ -663,6 +699,7 @@
                 TableName = "tabl1",
                 ViewName = "",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "" },
@@ -676,6 +713,7 @@
                 TableName = "tabl1",
                 ViewName = "",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view0" },
@@ -689,6 +727,7 @@
                 TableName = "tabl1",
                 ViewName = "",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view0" },
@@ -704,6 +743,7 @@
                 TableName = "tabl1",
                 ViewName = "",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "" },
@@ -727,12 +767,36 @@
             };
             conf.SetTable(partitionedTable1);
 
+            // - partition views but partitioning is disable
+            partitionedTable1 = new ReplicatedTableConfiguredTable
+            {
+                TableName = "tabl1",
+                ViewName = "DefaultView",
+
+                PartitionOnProperty = null,
+                PartitionsToViewMap = new Dictionary<string, string>(),
+            };
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetTable(partitionedTable1), "SetTable should fail if table partition map butpartitioning is disabled");
+            Assert.IsTrue(exception.Message == string.Format("Table:\'{0}\' can't have a partition view while partitioning is disabled!", partitionedTable1.TableName));
+
+            partitionedTable1 = new ReplicatedTableConfiguredTable
+            {
+                TableName = "tabl1",
+                ViewName = "DefaultView",
+
+                PartitionOnProperty = "",
+                PartitionsToViewMap = new Dictionary<string, string>(),
+            };
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetTable(partitionedTable1), "SetTable should fail if table partition map butpartitioning is disabled");
+            Assert.IsTrue(exception.Message == string.Format("Table:\'{0}\' can't have a partition view while partitioning is disabled!", partitionedTable1.TableName));
+
             // - no partition views
             partitionedTable1 = new ReplicatedTableConfiguredTable
             {
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>(),
             };
             conf.SetTable(partitionedTable1);
@@ -743,6 +807,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view0" }, // considered as not configured view
@@ -758,6 +823,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view0" }, // considered as not configured view
@@ -777,6 +843,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view0" }, // considered as not configured view
@@ -791,6 +858,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view0" },
@@ -820,6 +888,33 @@
             };
             conf.SetTable(partitionedTable1);
 
+            // - partition views but partitioning is disable
+            partitionedTable1 = new ReplicatedTableConfiguredTable
+            {
+                ConvertToRTable = true,
+
+                TableName = "tabl1",
+                ViewName = "DefaultView",
+
+                PartitionOnProperty = null,
+                PartitionsToViewMap = new Dictionary<string, string>(),
+            };
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetTable(partitionedTable1), "SetTable should fail if table partition map butpartitioning is disabled");
+            Assert.IsTrue(exception.Message == string.Format("Table:\'{0}\' can't have a partition view while partitioning is disabled!", partitionedTable1.TableName));
+
+            partitionedTable1 = new ReplicatedTableConfiguredTable
+            {
+                ConvertToRTable = true,
+
+                TableName = "tabl1",
+                ViewName = "DefaultView",
+
+                PartitionOnProperty = "",
+                PartitionsToViewMap = new Dictionary<string, string>(),
+            };
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetTable(partitionedTable1), "SetTable should fail if table partition map butpartitioning is disabled");
+            Assert.IsTrue(exception.Message == string.Format("Table:\'{0}\' can't have a partition view while partitioning is disabled!", partitionedTable1.TableName));
+
             // no partition views
             partitionedTable1 = new ReplicatedTableConfiguredTable
             {
@@ -828,6 +923,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>(),
             };
             conf.SetTable(partitionedTable1);
@@ -840,6 +936,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "" },
@@ -855,6 +952,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     {"", "ignoredView"},
@@ -870,6 +968,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "view1" },
@@ -893,6 +992,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "view1" },
@@ -921,6 +1021,7 @@
                 TableName = "tabl1",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "view1" },
@@ -939,6 +1040,7 @@
                 TableName = "*",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "view1" },
@@ -958,6 +1060,7 @@
                 TableName = "*",
                 ViewName = "DefaultView",
 
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "view1" },
@@ -1183,6 +1286,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>(),
             });
             Assert.IsFalse(conf.IsConfiguredTable("tabl1", out configuredTable));
@@ -1193,6 +1297,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "" },
@@ -1206,6 +1311,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view1" }, // this view is ignored since key is empty
@@ -1219,6 +1325,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "" },
@@ -1230,6 +1337,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "view1" },
@@ -1255,6 +1363,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>(),
             });
             Assert.IsTrue(conf.IsConfiguredTable("tabl1", out configuredTable));
@@ -1265,6 +1374,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "" },
@@ -1278,6 +1388,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view1" }, // this view is ignored since key is empty
@@ -1291,6 +1402,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "" },
@@ -1302,6 +1414,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "MissingView" },
@@ -1313,6 +1426,7 @@
             {
                 TableName = "tabl1",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "ignored" },
@@ -1346,6 +1460,7 @@
                 UseAsDefault = true,
                 TableName = "*",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>(),
             });
             Assert.IsTrue(conf.IsConfiguredTable("tabl2", out configuredTable));
@@ -1357,6 +1472,7 @@
                 UseAsDefault = true,
                 TableName = "*",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "" },
@@ -1371,6 +1487,7 @@
                 UseAsDefault = true,
                 TableName = "*",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "view1" }, // this view is ignored since key is empty
@@ -1385,6 +1502,7 @@
                 UseAsDefault = true,
                 TableName = "*",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "" },
@@ -1397,6 +1515,7 @@
                 UseAsDefault = true,
                 TableName = "*",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "1", "MissingView" },
@@ -1409,6 +1528,7 @@
                 UseAsDefault = true,
                 TableName = "*",
                 ViewName = "DefaultView",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "", "ignored" },
@@ -1849,6 +1969,21 @@
             catch (Exception ex)
             {
                 Assert.Fail("#Table5 - Received exception {0} while parsing {1}", ex.Message, configPath);
+            }
+
+            // 3 - We can't have a partition view map when partitioning is disabled.
+            configPath = Directory.GetCurrentDirectory() + "\\" + @"..\Tests\ConfigFiles\PartitionedTableWherePartitioningIsDisable.txt";
+            try
+            {
+                using (StreamReader sr = new StreamReader(configPath))
+                {
+                    exception = TestHelper.ExpectedException<Exception>(() => ReplicatedTableConfiguration.FromJson(sr.ReadToEnd()), "We can't have a partition view map when partitioning is disabled.");
+                    Assert.IsTrue(exception.Message == string.Format("Table:\'{0}\' can't have a partition view while partitioning is disabled!", "tbl3"));
+                }
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail("#Table6 - Received exception {0} while parsing {1}", ex.Message, configPath);
             }
 
             #endregion
@@ -2313,6 +2448,7 @@
 
                 TableName = "partitioned_tabl0",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view0" },
@@ -2325,6 +2461,7 @@
 
                 TableName = "partitioned_tabl1",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view1" },
@@ -2337,6 +2474,7 @@
 
                 TableName = "partitioned_tabl2",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view2" },
@@ -2349,6 +2487,7 @@
 
                 TableName = "partitioned_tabl3",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view3" },
@@ -2361,6 +2500,7 @@
 
                 TableName = "partitioned_tabl4",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view4" },
@@ -2373,6 +2513,7 @@
 
                 TableName = "partitioned_tabl5",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view5" },
@@ -2385,6 +2526,7 @@
 
                 TableName = "partitioned_tabl6",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view6" },
@@ -2691,6 +2833,7 @@
 
                 TableName = "partitioned_tabl0",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view0" },
@@ -2703,6 +2846,7 @@
 
                 TableName = "partitioned_tabl1",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view1" },
@@ -2715,6 +2859,7 @@
 
                 TableName = "partitioned_tabl2",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view2" },
@@ -2731,6 +2876,7 @@
 
                 TableName = "partitioned_tabl5",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view5" },
@@ -2743,6 +2889,7 @@
 
                 TableName = "partitioned_tabl6",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view6" },
@@ -3060,6 +3207,7 @@
 
                 TableName = "partitioned_tabl0",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view0" },
@@ -3072,6 +3220,7 @@
 
                 TableName = "partitioned_tabl1",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view1" },
@@ -3084,6 +3233,7 @@
 
                 TableName = "partitioned_tabl2",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view2" },
@@ -3096,6 +3246,7 @@
 
                 TableName = "partitioned_tabl3",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view3" },
@@ -3108,6 +3259,7 @@
 
                 TableName = "partitioned_tabl4",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view4" },
@@ -3120,6 +3272,7 @@
 
                 TableName = "partitioned_tabl5",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view5" },
@@ -3132,6 +3285,7 @@
 
                 TableName = "partitioned_tabl6",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view6" },
@@ -3439,6 +3593,7 @@
 
                 TableName = "partitioned_tabl0",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view0" },
@@ -3451,6 +3606,7 @@
 
                 TableName = "partitioned_tabl1",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view1" },
@@ -3463,6 +3619,7 @@
 
                 TableName = "partitioned_tabl2",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view2" },
@@ -3479,6 +3636,7 @@
 
                 TableName = "partitioned_tabl5",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view5" },
@@ -3491,6 +3649,7 @@
 
                 TableName = "partitioned_tabl6",
                 ViewName = "view0",
+                PartitionOnProperty = "X",
                 PartitionsToViewMap = new Dictionary<string, string>
                 {
                     { "X", "view6" },

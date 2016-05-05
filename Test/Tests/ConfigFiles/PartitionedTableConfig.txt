@@ -42,6 +42,7 @@
             'TableName': 'tbl3',
             'UseAsDefault': false,
             'ViewName': 'view1',
+            'PartitionOnProperty':'X',
             'PartitionsToViewMap': []
         },
         {
@@ -49,6 +50,7 @@
             'TableName': 'tbl4',
             'UseAsDefault': false,
             'ViewName': 'view1',
+            'PartitionOnProperty':'X',
             'PartitionsToViewMap': [
                 {
                     'Key':'',
@@ -61,6 +63,7 @@
             'TableName': 'tbl5',
             'UseAsDefault': false,
             'ViewName': 'view1',
+            'PartitionOnProperty':'X',
             'PartitionsToViewMap': [
                 {
                     'Key':'',

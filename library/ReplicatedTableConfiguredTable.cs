@@ -72,7 +72,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             // Check partition map
-            if (PartitionsToViewMap == null)
+            if (string.IsNullOrEmpty(PartitionOnProperty) ||
+                PartitionsToViewMap == null)
             {
                 return false;
             }
@@ -87,5 +88,29 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             return !string.IsNullOrEmpty(entry.Key);
         }
+
+        /// <summary>
+        /// Returns True if any view is null or empty
+        /// </summary>
+        /// <returns></returns>
+        internal protected bool IsAnyViewNullOrEmpty()
+        {
+            if (string.IsNullOrEmpty(ViewName))
+            {
+                return true;
+            }
+
+            /*
+             * Key = ""  - View = ""         => Ignore
+             * Key = ""  - View = "viewName" => Ignore
+             * Key = "X" - View = ""         => TRUE
+             * Key = "Y" - View = "viewName" => FALSE
+             */
+            return PartitionsToViewMap != null &&
+                   PartitionsToViewMap.Where(e => !string.IsNullOrEmpty(e.Key))
+                                      .Select(entry => entry.Value)
+                                      .Any(string.IsNullOrEmpty);
+        }
+
     }
 }

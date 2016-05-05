@@ -167,6 +167,10 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("TableName");
             }
 
+            // 0 - This to avoid handling corner cases. If Partitioning is disabled why bother with the partition view map ?
+            //     => simply enforce it is null so no extra validation is performed.
+            ThrowIfPartitioningIsDisabledAndPartitionViewIsConfigured(config);
+
             // 1 - If pointing a view, then the view must exist ?
             ThrowIfViewIsMissing(config);
             ThrowIfAnyPartitionViewIsMissing(config);
@@ -223,31 +227,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return false;
             }
 
-            // Placeholder config i.e. a config with No View
-            if (string.IsNullOrEmpty(config.ViewName))
+            if (config.IsAnyViewNullOrEmpty())
             {
                 return false;
-            }
-
-            // check partition views ?
-            if (config.PartitionsToViewMap != null)
-            {
-                /*
-                 * Key = "" - View = ""          => Ignore
-                 * Key = "" - View = "viewName"  => Ignore
-                 * Key = "X" - View = ""         => FALSE (view is missing, btw this is invalid state)
-                 * Key = "Y" - View = "viewName" => TRUE
-                 */
-                foreach (var entry in config.PartitionsToViewMap.Where(e => !string.IsNullOrEmpty(e.Key)))
-                {
-                    string viewName = entry.Value;
-
-                    // Placeholder partition config i.e. a config with No View
-                    if (string.IsNullOrEmpty(viewName))
-                    {
-                        return false;
-                    }
-                }
             }
 
             configuredTable = config;
@@ -394,6 +376,15 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
+        private void ThrowIfPartitioningIsDisabledAndPartitionViewIsConfigured(ReplicatedTableConfiguredTable config)
+        {
+            if (string.IsNullOrEmpty(config.PartitionOnProperty) && config.PartitionsToViewMap != null)
+            {
+                var msg = string.Format("Table:\'{0}\' can't have a partition view while partitioning is disabled!", config.TableName);
+                throw new Exception(msg);
+            }
+        }
+
 
         /*
          * Helpers ...
@@ -473,6 +464,10 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // Enforce that:
                 tableList.TrueForAll(cfg =>
                 {
+                    // 0 - This to avoid handling corner cases. If Partitioning is disabled why bother with the partition view map ?
+                    //     => simply enforce it is null so no extra validation is performed.
+                    ThrowIfPartitioningIsDisabledAndPartitionViewIsConfigured(cfg);
+
                     // 1 - each table refers an existing view
                     ThrowIfViewIsMissing(cfg);
                     ThrowIfAnyPartitionViewIsMissing(cfg);

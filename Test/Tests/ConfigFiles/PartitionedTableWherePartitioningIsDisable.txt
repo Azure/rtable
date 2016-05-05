@@ -21,48 +21,26 @@
         },
         {
             'ConvertToRTable': false,
-            'TableName': 'tbl2',
+            'TableName': 'tbl2A',
             'UseAsDefault': false,
-            'ViewName': '',
+            'ViewName': 'view1',
+            'PartitionOnProperty':null,
+            'PartitionsToViewMap': null
+        },
+        {
+            'ConvertToRTable': false,
+            'TableName': 'tbl2B',
+            'UseAsDefault': false,
+            'ViewName': 'view1',
+            'PartitionOnProperty':'',
             'PartitionsToViewMap': null
         },
         {
             'ConvertToRTable': false,
             'TableName': 'tbl3',
             'UseAsDefault': false,
-            'ViewName': '',
-            'PartitionOnProperty':'X',
+            'ViewName': 'view1',
             'PartitionsToViewMap': []
-        },
-        {
-            'ConvertToRTable': false,
-            'TableName': 'tbl4',
-            'UseAsDefault': false,
-            'ViewName': '',
-            'PartitionOnProperty':'X',
-            'PartitionsToViewMap': [
-                {
-                    'Key':'',
-		    'Value':'IgnoredView'
-                }
-            ]
-        },
-        {
-            'ConvertToRTable': false,
-            'TableName': 'tbl5',
-            'UseAsDefault': false,
-            'ViewName': '',
-            'PartitionOnProperty':'X',
-            'PartitionsToViewMap': [
-                {
-                    'Key':'',
-		    'Value':'IgnoredView'
-                },
-                {
-                    'Key':'1',
-		    'Value':'MissingView'
-                }
-            ]
         },
     ],
     'LeaseDuration': 10,

@@ -205,8 +205,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return false;
             }
 
-            // Placeholder config i.e. a config with No View
-            if (string.IsNullOrEmpty(config.ViewName))
+            if (config.IsAnyViewNullOrEmpty())
             {
                 return false;
             }
