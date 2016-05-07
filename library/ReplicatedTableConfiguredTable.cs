@@ -45,11 +45,9 @@ namespace Microsoft.Azure.Toolkit.Replication
         [DataMember(IsRequired = true)]
         public bool UseAsDefault { get; set; }
 
-        // TODO: *** not yet supported ***
         [DataMember]
         public string PartitionOnProperty;
 
-        // TODO: *** not yet supported ***
         [DataMember]
         public Dictionary<string, string> PartitionsToViewMap;
 
@@ -112,5 +110,53 @@ namespace Microsoft.Azure.Toolkit.Replication
                                       .Any(string.IsNullOrEmpty);
         }
 
+        /// <summary>
+        /// Returns the view to use for a given partition value (case insensitive)
+        /// If partition is null or not found in the map we'll use the default view
+        /// </summary>
+        /// <param name="partition"></param>
+        /// <returns></returns>
+        internal protected string GetViewForPartition(string partition = null)
+        {
+            if (string.IsNullOrEmpty(partition))
+            {
+                return ViewName;
+            }
+
+            if (!IsTablePartitioned())
+            {
+                return ViewName;
+            }
+
+            KeyValuePair<string, string>
+            entry = PartitionsToViewMap.FirstOrDefault(x => x.Key.Equals(partition, StringComparison.OrdinalIgnoreCase));
+
+            if(entry.Equals(default(KeyValuePair<string, string>)))
+            {
+                return ViewName;
+            }
+
+            return string.IsNullOrEmpty(entry.Value)
+                    ? ViewName
+                    : entry.Value;
+        }
+
+        /// <summary>
+        /// Returns True if table is partitioned i.e.
+        /// - partitioning is enabled and
+        /// - we have at least one valid partition entry (key != NullOrEmpty, value != NullOrEmpty)
+        /// </summary>
+        /// <returns></returns>
+        internal protected bool IsTablePartitioned()
+        {
+            if (string.IsNullOrEmpty(PartitionOnProperty) || PartitionsToViewMap == null)
+            {
+                return false;
+            }
+
+            return PartitionsToViewMap.Where(e => !string.IsNullOrEmpty(e.Key))
+                                      .Select(entry => entry.Value)
+                                      .Any(v => !string.IsNullOrEmpty(v));
+        }
     }
 }

@@ -219,7 +219,15 @@ namespace Microsoft.Azure.Toolkit.Replication
             ReplicatedTableConfiguredTable config;
             if (IsConfiguredTable(tableName, out config))
             {
-                return GetView(config.ViewName);
+                string partition = null;
+
+                if (config.IsTablePartitioned())
+                {
+                    // TODO: partition = row.GetProperty[PartitionOnProperty].GetValue ...
+                }
+
+                string viewToUse = config.GetViewForPartition(partition);
+                return GetView(viewToUse);
             }
 
             var msg = string.Format("Table={0}: is not configured!", tableName);
@@ -232,7 +240,15 @@ namespace Microsoft.Azure.Toolkit.Replication
             ReplicatedTableConfiguredTable config;
             if (IsConfiguredTable(tableName, out config))
             {
-                return IsViewStable(config.ViewName);
+                string partition = null;
+
+                if (config.IsTablePartitioned())
+                {
+                    // TODO: partition = row.GetProperty[PartitionOnProperty].GetValue ...
+                }
+
+                string viewnToUse = config.GetViewForPartition(partition);
+                return IsViewStable(viewnToUse);
             }
 
             var msg = string.Format("Table={0}: is not configured!", tableName);
