@@ -214,44 +214,46 @@ namespace Microsoft.Azure.Toolkit.Replication
             return true;
         }
 
-        public View GetTableView(string tableName)
+        public View GetTableView(string tableName, string viewToUse = null)
         {
             ReplicatedTableConfiguredTable config;
             if (IsConfiguredTable(tableName, out config))
             {
-                string partition = null;
-
-                if (config.IsTablePartitioned())
+                // Use table default view
+                if (string.IsNullOrEmpty(viewToUse))
                 {
-                    // TODO: partition = row.GetProperty[PartitionOnProperty].GetValue ...
+                    viewToUse = config.ViewName;
                 }
 
-                string viewToUse = config.GetViewForPartition(partition);
-                return GetView(viewToUse);
+                if (config.IsViewReferenced(viewToUse))
+                {
+                    return GetView(viewToUse);
+                }
             }
 
-            var msg = string.Format("Table={0}: is not configured!", tableName);
+            var msg = string.Format("Table={0}: is not configured or ViewToUse={1} is not referenced!", tableName, viewToUse);
             ReplicatedTableLogger.LogError(msg);
             throw new Exception(msg);
         }
 
-        public bool IsTableViewStable(string tableName)
+        public bool IsTableViewStable(string tableName, string viewToUse = null)
         {
             ReplicatedTableConfiguredTable config;
             if (IsConfiguredTable(tableName, out config))
             {
-                string partition = null;
-
-                if (config.IsTablePartitioned())
+                // Use table default view
+                if (string.IsNullOrEmpty(viewToUse))
                 {
-                    // TODO: partition = row.GetProperty[PartitionOnProperty].GetValue ...
+                    viewToUse = config.ViewName;
                 }
 
-                string viewnToUse = config.GetViewForPartition(partition);
-                return IsViewStable(viewnToUse);
+                if (config.IsViewReferenced(viewToUse))
+                {
+                    return IsViewStable(viewToUse);
+                }
             }
 
-            var msg = string.Format("Table={0}: is not configured!", tableName);
+            var msg = string.Format("Table={0}: is not configured or ViewToUse={1} is not referenced!", tableName, viewToUse);
             ReplicatedTableLogger.LogError(msg);
             throw new Exception(msg);
         }
@@ -384,6 +386,7 @@ namespace Microsoft.Azure.Toolkit.Replication
              **/
             #region Phase 4
 
+            // TODO: re-evaluate if we will support this API for partitioned tables ?
             configuration.EnableReadWriteOnReplicas(storageAccountName, failures.Select(r => r.ViewName).ToList());
 
             // - Write back configuration, refresh its Id with the new one,
@@ -460,6 +463,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     return new ReplicatedTableRepairResult(ReplicatedTableRepairCode.NotConfiguredTable, tableName);
                 }
 
+                // TODO: re-evaluate how we would Repair a partitioned table ?
                 viewName = tableConfig.ViewName;
 
                 List<ReplicaInfo> list = configuration.GetView(viewName).ReplicaChain;
