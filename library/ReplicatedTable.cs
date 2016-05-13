@@ -1986,8 +1986,14 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="maxBatchSize"></param>
         /// <returns></returns>
         public ReconfigurationStatus RepairTable(int viewIdToRecoverFrom, TableBatchOperation unfinishedOps,
-            long maxBatchSize = 100L)
+            long maxBatchSize = 100L, RepairRowDelegate filter = null)
         {
+            // By default all rows are taken
+            if (filter == null)
+            {
+                filter = (row => RepairRowActionType.RepairRow);
+            }
+
             ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
             if (this._configurationWrapper.IsViewStable())
             {
@@ -2022,7 +2028,25 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             foreach (DynamicReplicatedTableEntity entry in query)
             {
-                ReplicatedTableLogger.LogWarning("RepairReplica: repairing entity: Pk: {0}, Rk: {1}", entry.PartitionKey, entry.RowKey);
+                // What to do with this row ?
+                RepairRowActionType action = filter(entry);
+
+                switch (action)
+                {
+                    case RepairRowActionType.RepairRow:
+                        ReplicatedTableLogger.LogWarning("RepairReplica: RepairRow: Pk: {0}, Rk: {1}", entry.PartitionKey, entry.RowKey);
+                        break;
+
+                    case RepairRowActionType.SkipRow:
+                        ReplicatedTableLogger.LogWarning("RepairReplica: SkipRow: Pk: {0}, Rk: {1}", entry.PartitionKey, entry.RowKey);
+                        continue;
+
+                    case RepairRowActionType.InvalidRow:
+                    default:
+                        status = ReconfigurationStatus.PARTIAL_FAILURE;
+                        ReplicatedTableLogger.LogWarning("RepairReplica: InvalidRow: Pk: {0}, Rk: {1}", entry.PartitionKey, entry.RowKey);
+                        continue;
+                }
 
                 TableResult result = RepairRow(entry.PartitionKey, entry.RowKey, null);
 
