@@ -86,19 +86,18 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             if (txnView.IsEmpty || CurrentView.IsEmpty)
             {
-                throw new ReplicatedTableStaleViewException("Empty view.");
+                throw new ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes.EmptyView, "Empty view.");
             }
 
             if (CurrentView.ViewId != txnView.ViewId)
             {
-                throw new ReplicatedTableStaleViewException(string.Format("View id changed from {0} to {1}",
-                    CurrentView.ViewId,
-                    txnView.ViewId));
+                throw new ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes.ViewIdChanged,
+                                                            string.Format("View id changed from {0} to {1}", CurrentView.ViewId, txnView.ViewId));
             }
 
             if (viewMustBeWritable && !txnView.IsWritable())
             {
-                throw new Exception("View is not Writable");
+                throw new ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes.ViewIsNotWritable, "View is not Writable");
             }
         }
 
@@ -1430,6 +1429,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 CloudTable tail = GetTailTableClient().GetTableReference(TableName);
                 rows = tail.ExecuteQuery(query);
+
+                // TODO: Check consistency of viewId i.e. row._rtable_ViewId <= txnView.ViewId
+                // Ideally, return only rows that meet above condition.
+                // This would be time consuming ... and since such case is rare and won't happen in normal scenario =>
+                // we are not doing such extra filtering.
             }
             catch (Exception e)
             {
@@ -1502,10 +1506,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             // Check consistency of viewId between the currentView and existing entity.
             if (txnView.ViewId < readRow._rtable_ViewId)
             {
-                throw new ReplicatedTableStaleViewException(
-                        string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}",
-                        txnView.ViewId.ToString(),
-                        readRow._rtable_ViewId));
+                throw new ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId,
+                                                            string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}",
+                                                                          txnView.ViewId.ToString(),
+                                                                          readRow._rtable_ViewId));
             }
 
             return retrievedResult;

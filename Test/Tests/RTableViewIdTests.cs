@@ -131,6 +131,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             catch (ReplicatedTableStaleViewException ex)
             {
                 Console.WriteLine("Get this RTableStaleViewException: {0}", ex.Message);
+                Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
                 Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than", badViewId)), "Got unexpected exception message");
             }
 
@@ -147,6 +148,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             catch (ReplicatedTableStaleViewException ex)
             {
                 Console.WriteLine("Get this RTableStaleViewException: {0}", ex.Message);
+                Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
                 Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than", badViewId)), "Got unexpected exception message");
             }
 
@@ -163,6 +165,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             catch (ReplicatedTableStaleViewException ex)
             {
                 Console.WriteLine("Get this RTableStaleViewException: {0}", ex.Message);
+                Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
                 Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than", badViewId)), "Got unexpected exception message");
             }
 
@@ -179,6 +182,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             catch (ReplicatedTableStaleViewException ex)
             {
                 Console.WriteLine("Get this RTableStaleViewException: {0}", ex.Message);
+                Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
                 Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than", badViewId)), "Got unexpected exception message");
             }
 
@@ -195,6 +199,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             catch (ReplicatedTableStaleViewException ex)
             {
                 Console.WriteLine("Get this RTableStaleViewException: {0}", ex.Message);
+                Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
                 Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than", badViewId)), "Got unexpected exception message");
             }
 
@@ -211,6 +216,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             catch (ReplicatedTableStaleViewException ex)
             {
                 Console.WriteLine("Get this RTableStaleViewException: {0}", ex.Message);
+                Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
                 Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than", badViewId)), "Got unexpected exception message");
             }
         }
@@ -485,6 +491,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             catch (ReplicatedTableStaleViewException ex)
             {
                 Console.WriteLine("Get this RTableStaleViewException: {0}", ex.Message);
+                Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
                 Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than", badViewId)), "Got unexpected exception message");
             }
         }

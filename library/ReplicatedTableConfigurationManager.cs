@@ -171,7 +171,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             // Lock because both SetConnectionStringStrategy and connectionStringMap can be updated OOB!
             lock (connectionStringLock)
             {
+                DateTime startTime = DateTime.UtcNow;
                 views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.SetConnectionStringStrategy, out tableConfigList, out leaseDuration, out configId);
+                ReplicatedTableLogger.LogInformational("ParseBlob took {0}", DateTime.UtcNow - startTime);
+
                 if (views == null)
                 {
                     return;

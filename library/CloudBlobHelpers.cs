@@ -140,12 +140,16 @@ namespace Microsoft.Azure.Toolkit.Replication
             // read from all the blobs in parallel
             Parallel.For(0, numberOfBlobs, index =>
             {
+                DateTime startTime = DateTime.UtcNow;
+
                 T currentValue;
                 string currentETag;
 
                 resultArray[index] = TryReadBlob(blobs[index], out currentValue, out currentETag, ParseBlobFunc);
                 valuesArray[index] = currentValue;
                 eTagsArray[index] = currentETag;
+
+                ReplicatedTableLogger.LogInformational("TryReadBlob #{0} took {1}", index, DateTime.UtcNow - startTime);
             });
 
             values = valuesArray.ToList();

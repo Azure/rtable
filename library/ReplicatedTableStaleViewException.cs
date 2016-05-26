@@ -24,20 +24,33 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System;
     using Microsoft.WindowsAzure.Storage;
 
+    public enum ReplicatedTableViewErrorCodes
+    {
+        EmptyView,
+        ViewIdChanged,
+        ViewIsNotWritable,
+        ViewIdSmallerThanEntryViewId,
+    }
+
     public class ReplicatedTableStaleViewException : StorageException
     {
-        public ReplicatedTableStaleViewException()
+        public ReplicatedTableViewErrorCodes ErrorCode { get; private set; }
+
+        public ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes error)
         {
+            ErrorCode = error;
         }
 
-        public ReplicatedTableStaleViewException(string message)
+        public ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes error, string message)
             : base(message)
         {
+            ErrorCode = error;
         }
 
-        public ReplicatedTableStaleViewException(string message, Exception inner)
+        public ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes error, string message, Exception inner)
             : base(message, inner)
         {
+            ErrorCode = error;
         }
     }
 }
