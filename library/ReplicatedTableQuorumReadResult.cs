@@ -23,9 +23,11 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System.Collections.Generic;
     using System.Linq;
+    using System.Collections.ObjectModel;
 
     public enum ReplicatedTableQuorumReadCode
     {
+        NullObject,
         NotFound,
         UpdateInProgress,
         Exception,
@@ -36,7 +38,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
     public class ReplicatedTableQuorumReadResult
     {
-        public ReplicatedTableQuorumReadResult(ReplicatedTableQuorumReadCode code, List<ReplicatedTableReadBlobResult> results)
+        public ReplicatedTableQuorumReadResult(ReplicatedTableQuorumReadCode code, ReadOnlyCollection<ReplicatedTableReadBlobResult> results)
         {
             Code = code;
             Results = results;
@@ -44,7 +46,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public ReplicatedTableQuorumReadCode Code { get; private set; }
 
-        public List<ReplicatedTableReadBlobResult> Results { get; private set; }
+        public ReadOnlyCollection<ReplicatedTableReadBlobResult> Results { get; private set; }
 
         public override string ToString()
         {

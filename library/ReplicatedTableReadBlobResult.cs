@@ -23,7 +23,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     public enum ReadBlobCode
     {
-        NotFound = 0, // Must start at 0
+        NullObject = 0, // Must start at 0
+        NotFound,
         UpdateInProgress,
         StorageException,
         Exception,

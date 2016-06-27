@@ -52,7 +52,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             ReplicatedTableConfiguration configuration;
             List<string> eTags;
 
-            ReplicatedTableQuorumReadResult result = CloudBlobHelpers.TryReadBlobQuorum(
+            ReplicatedTableQuorumReadResult result = CloudBlobHelpers.TryReadBlobQuorumFast(
                                                                     blobs,
                                                                     out configuration,
                                                                     out eTags,
