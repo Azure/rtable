@@ -1533,9 +1533,10 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // Convert to an equivalent DynamicReplicatedTableEntity
                 DynamicTableEntity tableEntity = (DynamicTableEntity)retrievedResult.Result;
 
-                IReplicatedTableEntity readRow = new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag, tableEntity.Properties);
+                IReplicatedTableEntity readRow = this._configurationWrapper.IsConvertToRTableMode()
+                                                    ? new InitDynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag, tableEntity.Properties)
+                                                    : new DynamicReplicatedTableEntity(tableEntity.PartitionKey, tableEntity.RowKey, tableEntity.ETag, tableEntity.Properties);
                 readRow.ReadEntity(tableEntity.Properties, null);
-
                 retrievedResult.Result = readRow;
                 return readRow;
             }

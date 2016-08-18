@@ -152,6 +152,49 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.message, true); // check _rtable_ViewId
         }
 
+        [Test(Description = "Verify Retrieve to SampleXStoreEntity which doesn't inherit ReplicatedTableEntity")]
+        public void RetrieveAsSampleXStoreEntity()
+        {
+            string jobType = "jobType-RetrieveXStoreEntity";
+            string jobId = "jobId-RetrieveXStoreEntity";
+
+            //
+            // Modify the Json Config Blob to indicate NOT running convertXSToreTableMode anymore
+            //
+            Console.WriteLine("\n Setting convertXSToreTableMode to false (default state)...");
+            this.RefreshRTableEnvJsonConfigBlob(false);
+
+            Assert.False(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be False");
+
+            // 1 - Should throw KeyNotFoundException becasue the row is missing RTable meta.
+            KeyNotFoundException exception = TestHelper.ExpectedException<KeyNotFoundException>(
+                                                    () => this.RetrieveAsSampleXStoreEntity(jobType, jobId, this.message),
+                                                    "Expected KeyNotFoundException since the row doesn't have RTable meta and convert mode = False!");
+
+            Assert.IsTrue(exception.GetType() == typeof(KeyNotFoundException));
+            Assert.IsTrue(exception.Message == "The given key was not present in the dictionary.");
+
+            //
+            // Change it back to convertXSToreTableMode = true so rows without RTable meta are retrieved.
+            //
+            this.RefreshRTableEnvJsonConfigBlob(true);
+
+            Assert.True(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be True");
+
+
+            // 2 - Should not throw in convert mode = True eventhough RTable meta are missing
+            this.RetrieveAsSampleXStoreEntity(jobType, jobId, this.message);
+
+            this.PerformOperationAndValidate(TableOperationType.Replace, jobType, jobId, this.updatedMessage);
+
+            // 3 - The row has RTable meta now, and we can still retrieve it as SampleXStoreEntity
+            this.RetrieveAsSampleXStoreEntity(jobType, jobId, this.updatedMessage);
+
+            this.PerformOperationAndValidate(TableOperationType.Delete, jobType, jobId);
+            this.PerformInsertOperationAndValidate(jobType, jobId, this.message);
+            this.PerformRetrieveOperationAndValidate(jobType, jobId, this.message, true); // check _rtable_ViewId
+        }
+
         /// <summary>
         /// Initially, we have some XStore Table entities.
         /// Turn on ConvertXStoreTableMode.
