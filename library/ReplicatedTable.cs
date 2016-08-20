@@ -988,7 +988,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // Row is present at the replica
                 // Merge the row
                 ReplicatedTableEntity currentRow = (ReplicatedTableEntity) (retrievedResult.Result);
-                if (checkETag && (row.ETag != (currentRow._rtable_Version.ToString())))
+                if (checkETag &&  IsEtagMismatch(row, currentRow))
                 {
                     // Return the error code that Etag does not match with the input ETag
                     ReplicatedTableLogger.LogInformational(
@@ -1130,7 +1130,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             // Row is present at the replica
             // Replace the row 
             ReplicatedTableEntity currentRow = (ReplicatedTableEntity)(retrievedResult.Result);
-            if (checkETag && (row.ETag != (currentRow._rtable_Version.ToString())))
+            if (checkETag && IsEtagMismatch(row, currentRow))
             {
                 // Return the error code that Etag does not match with the input ETag
                 ReplicatedTableLogger.LogInformational("Replace: Row is not present at the head. ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
@@ -2438,7 +2438,27 @@ namespace Microsoft.Azure.Toolkit.Replication
             ReplicatedTableLogger.LogInformational("successCount={0} skippedCount={1} failedCount={2}", successCount, skippedCount, failedCount);
         }
 
+        private bool IsEtagMismatch(IReplicatedTableEntity row, IReplicatedTableEntity currentRow)
+        {
+            bool mismatch = (row.ETag != (currentRow._rtable_Version.ToString()));
+
+            if (this._configurationWrapper.IsConvertToRTableMode() == false)
+            {
+                return mismatch;
+            }
+
+            // Reading a row via XStore lib. then Saving it via RTable lib. results in ETag mismatch i.e. ConflictException
+            //
+            // Such case can happen even when ConvertMode == False.
+            // This work around is for ConvertMode == True.
+            // Therefore, always on-board a table with ConvertMode == True, first.
+            if (mismatch)
+            {
+                // This is to support "Live" on-boarding of tables to RTable
+                return row.ETag != currentRow.ETag;
+            }
+
+            return false;
+        }
     }
-
-
 }

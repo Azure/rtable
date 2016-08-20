@@ -46,7 +46,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private CloudTableClient xstoreCloudTableClient;
 
-        private CloudTable xstoreCloudTable;
+        protected CloudTable xstoreCloudTable;
 
         #region Helper functions
         protected void SetupXStoreTableEnv()

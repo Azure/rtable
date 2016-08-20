@@ -24,6 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
+    using System.Net;
 
     /// <summary>
     /// Created some XStore Table entities.
@@ -191,6 +192,171 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.RetrieveAsSampleXStoreEntity(jobType, jobId, this.updatedMessage);
 
             this.PerformOperationAndValidate(TableOperationType.Delete, jobType, jobId);
+            this.PerformInsertOperationAndValidate(jobType, jobId, this.message);
+            this.PerformRetrieveOperationAndValidate(jobType, jobId, this.message, true); // check _rtable_ViewId
+        }
+
+        [Test(Description = "Verify Replace doesn't throw ETag mismatch when turning RTable ON Live")]
+        public void RetrieveViaXStoreThenEnableRTableThenReplaceViaRTable()
+        {
+            // This issue happens when we transition such:
+            // 1. we Retrieve using an XStore lib.
+            // 2. switched to RTable lib.
+            // 3. then Replace the entry using RTable lib.
+            string jobType = "jobType-RetrieveXStoreEntity";
+            string jobId = "jobId-RetrieveXStoreEntity";
+
+            //
+            // Retrieve using XStore library
+            //
+            string partitionKey;
+            string rowKey;
+            SampleXStoreEntity.GenerateKeys(
+                this.GenerateJobType(jobType, 0),
+                this.GenerateJobId(jobId, 0, 0),
+                out partitionKey,
+                out rowKey);
+            TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
+            TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+
+            Assert.IsNotNull(retrieveResult, "retrieveResult = null");
+            SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
+
+            Assert.AreEqual(
+                this.GenerateMessage(this.message, 0, 0),
+                retrievedEntity.Message,
+                "Retrieve(): Message mismatch");
+
+
+            // update the entry
+            retrievedEntity.Message = this.GenerateMessage(this.updatedMessage, 0, 0);
+
+            //
+            // we switch to RTable and convertXSToreTableMode = true
+            //
+            Assert.True(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be True");
+
+            //
+            // Replace using RTable library
+            //
+            InitDynamicReplicatedTableEntity replaceTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
+
+            TableOperation replaceOperation = TableOperation.Replace(replaceTableEntity);
+            TableResult replaceResult = this.repTable.Execute(replaceOperation);
+            Assert.IsNotNull(replaceResult, "replaceResult = null");
+            this.PerformRetrieveOperationAndValidate(jobType, jobId, this.updatedMessage, true); // check _rtable_ViewId
+
+            this.PerformOperationAndValidate(TableOperationType.Delete, jobType, jobId);
+            this.PerformInsertOperationAndValidate(jobType, jobId, this.message);
+            this.PerformRetrieveOperationAndValidate(jobType, jobId, this.message, true); // check _rtable_ViewId
+        }
+
+        [Test(Description = "Verify Merge doesn't throw ETag mismatch when turning RTable ON Live")]
+        public void RetrieveViaXStoreThenEnableRTableThenMergeViaRTable()
+        {
+            // This issue happens when we transition such:
+            // 1. we Retrieve using an XStore lib.
+            // 2. switched to RTable lib.
+            // 3. then Merge the entry using RTable lib.
+            string jobType = "jobType-RetrieveXStoreEntity";
+            string jobId = "jobId-RetrieveXStoreEntity";
+
+            //
+            // Retrieve using XStore library
+            //
+            string partitionKey;
+            string rowKey;
+            SampleXStoreEntity.GenerateKeys(
+                this.GenerateJobType(jobType, 0),
+                this.GenerateJobId(jobId, 0, 0),
+                out partitionKey,
+                out rowKey);
+            TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
+            TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+
+            Assert.IsNotNull(retrieveResult, "retrieveResult = null");
+            SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
+
+            Assert.AreEqual(
+                this.GenerateMessage(this.message, 0, 0),
+                retrievedEntity.Message,
+                "Retrieve(): Message mismatch");
+
+
+            // update the entry
+            retrievedEntity.Message = this.GenerateMessage(this.updatedMessage, 0, 0);
+
+            //
+            // we switch to RTable and convertXSToreTableMode = true
+            //
+            Assert.True(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be True");
+
+            //
+            // Merge using RTable library
+            //
+            InitDynamicReplicatedTableEntity mergeTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
+
+            TableOperation mergeOperation = TableOperation.Merge(mergeTableEntity);
+            TableResult mergeResult = this.repTable.Execute(mergeOperation);
+            Assert.IsNotNull(mergeResult, "mergeResult = null");
+            this.PerformRetrieveOperationAndValidate(jobType, jobId, this.updatedMessage, true); // check _rtable_ViewId
+
+            this.PerformOperationAndValidate(TableOperationType.Delete, jobType, jobId);
+            this.PerformInsertOperationAndValidate(jobType, jobId, this.message);
+            this.PerformRetrieveOperationAndValidate(jobType, jobId, this.message, true); // check _rtable_ViewId
+        }
+
+        [Test(Description = "Verify Delete doesn't throw ETag mismatch when turning RTable ON Live")]
+        public void RetrieveViaXStoreThenEnableRTableThenDeleteViaRTable()
+        {
+            // This issue happens when we transition such:
+            // 1. we Retrieve using an XStore lib.
+            // 2. switched to RTable lib.
+            // 3. then Delete the entry using RTable lib.
+            string jobType = "jobType-RetrieveXStoreEntity";
+            string jobId = "jobId-RetrieveXStoreEntity";
+
+            //
+            // Retrieve using XStore library
+            //
+            string partitionKey;
+            string rowKey;
+            SampleXStoreEntity.GenerateKeys(
+                this.GenerateJobType(jobType, 0),
+                this.GenerateJobId(jobId, 0, 0),
+                out partitionKey,
+                out rowKey);
+            TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
+            TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+
+            Assert.IsNotNull(retrieveResult, "retrieveResult = null");
+            SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
+
+            Assert.AreEqual(
+                this.GenerateMessage(this.message, 0, 0),
+                retrievedEntity.Message,
+                "Retrieve(): Message mismatch");
+
+
+            //
+            // we switch to RTable and convertXSToreTableMode = true
+            //
+            Assert.True(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be True");
+
+            //
+            // Delete using RTable library
+            //
+            InitDynamicReplicatedTableEntity deleteTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
+
+            TableOperation deleteOperation = TableOperation.Delete(deleteTableEntity);
+            TableResult deleteResult = this.repTable.Execute(deleteOperation);
+            Assert.IsNotNull(deleteResult, "deleteResult = null");
+
+            retrieveOperation = TableOperation.Retrieve(partitionKey, rowKey);
+            retrieveResult = this.repTable.Execute(retrieveOperation);
+            Assert.IsNotNull(retrieveResult, "retrieveResult = null");
+            Assert.AreEqual(retrieveResult.HttpStatusCode, (int)HttpStatusCode.NotFound, "entry should not exist!");
+
             this.PerformInsertOperationAndValidate(jobType, jobId, this.message);
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.message, true); // check _rtable_ViewId
         }

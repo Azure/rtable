@@ -155,5 +155,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             return entity;
         }
+
+        public static InitDynamicReplicatedTableEntity ToInitDynamicReplicatedTableEntity(SampleXStoreEntity xstoreEntity)
+        {
+            IDictionary<string, EntityProperty> properties = new Dictionary<string, EntityProperty>();
+
+            // we could reflect, but keeping it simple.
+            properties.Add("JobType", new EntityProperty(xstoreEntity.JobType));
+            properties.Add("JobId", new EntityProperty(xstoreEntity.JobId));
+            properties.Add("Message", new EntityProperty(xstoreEntity.Message));
+
+            InitDynamicReplicatedTableEntity entity = new InitDynamicReplicatedTableEntity(
+                                                                xstoreEntity.PartitionKey,
+                                                                xstoreEntity.RowKey,
+                                                                xstoreEntity.ETag,
+                                                                properties);
+            return entity;
+        }
     }
 }
