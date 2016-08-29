@@ -110,7 +110,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             ReplicatedTableLogger.LogVerbose("CreateIfNotExists");
             View txnView = CurrentView;
-            ValidateTxnView(txnView);
+            ValidateTxnView(txnView, false);
 
             // Create individual table replicas if they are not created already 
             int tablesCreated = 0;
@@ -127,7 +127,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
             }
 
-            ValidateTxnView(txnView);
+            ValidateTxnView(txnView, false);
 
             return (tablesCreated > 0);
         }
@@ -138,7 +138,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         public bool Exists()
         {
             View txnView = CurrentView;
-            ValidateTxnView(txnView);
+            ValidateTxnView(txnView, false);
 
             // Return false if individual tables do not exist 
             foreach (var entry in txnView.Chain)
@@ -161,7 +161,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         public bool DeleteIfExists()
         {
             View txnView = CurrentView;
-            ValidateTxnView(txnView);
+            ValidateTxnView(txnView, false);
 
             replicasDeleted = 0;
 
