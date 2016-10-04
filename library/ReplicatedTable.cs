@@ -980,7 +980,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
             {
                 // Row is not present, return appropriate error code
-                ReplicatedTableLogger.LogInformational("Insert: Row is already present ");
+                ReplicatedTableLogger.LogInformational("MergeInternal: Row is already present ");
                 return new TableResult() {Result = null, Etag = null, HttpStatusCode = (int) HttpStatusCode.NotFound};
             }
             else
@@ -992,7 +992,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     // Return the error code that Etag does not match with the input ETag
                     ReplicatedTableLogger.LogInformational(
-                        "Merge: ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
+                        "MergeInternal: ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
                         row.ETag, currentRow._rtable_Version);
                     return new TableResult()
                     {
@@ -1013,15 +1013,21 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // Lock the head first by inserting the row
                 result = UpdateOrDeleteRow(tableClient, row);
                 ValidateTxnView(txnView);
-                if ((result == null) || (result.HttpStatusCode != (int) HttpStatusCode.NoContent))
+                if (result == null)
                 {
-                    ReplicatedTableLogger.LogError("Merge: Failed to lock the head. ");
+                    ReplicatedTableLogger.LogError("MergeInternal: Failed to lock the head. ");
                     return new TableResult()
                     {
                         Result = null,
                         Etag = null,
-                        HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
+                        HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
                     };
+                }
+
+                if (result.HttpStatusCode != (int) HttpStatusCode.NoContent)
+                {
+                    ReplicatedTableLogger.LogError("MergeInternal: Failed to take lock on head: {0}", result.HttpStatusCode);
+                    return result;
                 }
 
                 // Call Flush2PC to run 2PC on backup (non-head) replicas
@@ -1030,8 +1036,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                     (result.HttpStatusCode != (int) HttpStatusCode.NoContent))
                 {
                     // Failed, abort with error and let the application take care of it by reissuing it 
-                    // TO DO: Alternately, we could wait and retry after sometime using requestOptions. 
-                    ReplicatedTableLogger.LogError("Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
+                    // TO DO: Alternately, we could wait and retry after sometime using requestOptions.
+                    ReplicatedTableLogger.LogError("MergeInternal: Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
                     return new TableResult()
                     {
                         Result = null,
@@ -1123,7 +1129,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
             {
                 // Row is not present, return appropriate error code
-                ReplicatedTableLogger.LogInformational("Replace: Row is not present. ParitionKey={0} RowKey={1}", row.PartitionKey, row.RowKey);
+                ReplicatedTableLogger.LogInformational("ReplaceInternal: Row is not present. ParitionKey={0} RowKey={1}", row.PartitionKey, row.RowKey);
                 return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
             }
 
@@ -1133,7 +1139,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (checkETag && IsEtagMismatch(row, currentRow))
             {
                 // Return the error code that Etag does not match with the input ETag
-                ReplicatedTableLogger.LogInformational("Replace: Row is not present at the head. ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
+                ReplicatedTableLogger.LogInformational("ReplaceInternal: Row is not present at the head. ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
                                         row.ETag, currentRow._rtable_Version);
                 return new TableResult()
                 {
@@ -1153,9 +1159,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             // Lock the head first by inserting the row
             result = UpdateOrDeleteRow(tableClient, row);
             ValidateTxnView(txnView);
-            if ((result == null) || (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
+            if (result == null)
             {
-                ReplicatedTableLogger.LogError("Insert: Failed to lock the head. ");
+                ReplicatedTableLogger.LogError("ReplaceInternal: Failed to lock the head. ");
                 return new TableResult()
                 {
                     Result = null,
@@ -1164,14 +1170,20 @@ namespace Microsoft.Azure.Toolkit.Replication
                 };
             }
 
+            if (result.HttpStatusCode != (int)HttpStatusCode.NoContent)
+            {
+                ReplicatedTableLogger.LogError("ReplaceInternal: Failed to take lock on head: {0}", result.HttpStatusCode);
+                return result;
+            }
+
             // Call Flush2PC to run 2PC on the chain
             // If successful, it returns HttpStatusCode 204 (no content returned, when replaced in the second phase) 
             if (((result = Flush2PC(txnView, row, requestOptions, operationContext, result.Etag)) == null) ||
                 (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
             {
                 // Failed, abort with error and let the application take care of it by reissuing it 
-                // TO DO: Alternately, we could wait and retry after sometime using requestOptions. 
-                ReplicatedTableLogger.LogError("IOR: Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
+                // TO DO: Alternately, we could wait and retry after sometime using requestOptions.
+                ReplicatedTableLogger.LogError("ReplaceInternal: Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
                 return new TableResult()
                 {
                     Result = null,
@@ -1760,6 +1772,26 @@ namespace Microsoft.Azure.Toolkit.Replication
                     TableOperation top = TableOperation.Replace(row);
                     return table.Execute(top);
                 }
+            }
+            catch (StorageException e)
+            {
+                ReplicatedTableLogger.LogError("UpdateOrDeleteRow(): {0}", e);
+
+                var webException = e.InnerException as WebException;
+                if (webException != null && webException.Response != null)
+                {
+                    if (((HttpWebResponse)webException.Response).StatusCode == HttpStatusCode.PreconditionFailed)
+                    {
+                        return new TableResult()
+                        {
+                            Result = null,
+                            Etag = null,
+                            HttpStatusCode = (int)HttpStatusCode.Conflict
+                        };
+                    }
+                }
+
+                return null;
             }
             catch (Exception e)
             {
