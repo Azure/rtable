@@ -29,6 +29,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Linq;
     using System.Threading;
     using System.Collections.Generic;
+    using System.Net;
 
     [TestFixture]
     public class RTableQueryGenericTests : RTableLibraryTestBase
@@ -544,10 +545,36 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 foreach (BaseEntity ent in rtableQuery.ToList())
                 {
                     rtableCount++;
+
+                    Assert.IsTrue(ent.ETag != ent._rtable_Version.ToString(), "ETag is not virtualized when using CreateQuery()");
                 }
 
                 Assert.IsTrue(tableCount == rtableCount, "Query counts are different");
                 Assert.IsTrue(tableCount == 10, "Query counts are different");
+
+                // But, with "CreateReplicatedQuery" ETag is virtualized
+                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>().Where(x => x.PartitionKey == pk);
+
+                foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
+                {
+                    Assert.IsTrue(ent._rtable_Version == 0);
+                    Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+
+                    ent.A += "`";
+
+                    // Update should go fine since ETag is virtualized
+                    TableOperation operation = TableOperation.Replace(ent);
+                    TableResult result = localRTable.Execute(operation);
+                    Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent);
+                }
+
+                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>().Where(x => x.PartitionKey == pk);
+
+                foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
+                {
+                    Assert.IsTrue(ent._rtable_Version == 1);
+                    Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+                }
             }
             catch(Exception e)
             {
@@ -629,10 +656,36 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 foreach (BaseEntity ent in rtableQuery.ToList())
                 {
                     rtableCount++;
+
+                    Assert.IsTrue(ent.ETag != ent._rtable_Version.ToString(), "ETag is not virtualized when using CreateQuery()");
                 }
 
                 Assert.IsTrue(tableCount == rtableCount, "Query counts are different");
                 Assert.IsTrue(tableCount == 20, "Query counts are different");
+
+                // But, with "CreateReplicatedQuery" ETag is virtualized
+                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>();
+
+                foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
+                {
+                    Assert.IsTrue(ent._rtable_Version == 0);
+                    Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+
+                    ent.A += "`";
+
+                    // Update should go fine since ETag is virtualized
+                    TableOperation operation = TableOperation.Replace(ent);
+                    TableResult result = localRTable.Execute(operation);
+                    Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent);
+                }
+
+                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>();
+
+                foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
+                {
+                    Assert.IsTrue(ent._rtable_Version == 1);
+                    Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+                }
             }
             catch (Exception e)
             {

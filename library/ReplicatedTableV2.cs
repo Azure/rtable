@@ -126,6 +126,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             throw new NotImplementedException();
         }
 
+        public ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>()
+            where TElement : ITableEntity, new()
+        {
+            throw new NotImplementedException();
+        }
+
         public TableResult RepairRow(string partitionKey, string rowKey, IReplicatedTableEntity existingRow)
         {
             throw new NotImplementedException();

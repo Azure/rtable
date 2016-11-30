@@ -1474,6 +1474,43 @@ namespace Microsoft.Azure.Toolkit.Replication
         }
 
         /// <summary>
+        /// Same as CreateQuery but the ETag of each entry will be virtualized.
+        /// </summary>
+        /// <typeparam name="TElement"></typeparam>
+        /// <returns></returns>
+        public ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>()
+                where TElement : ITableEntity, new()
+        {
+            return new ReplicatedTableQuery<TElement>(CreateQuery<TElement>(), this._configurationWrapper.IsConvertToRTableMode());
+        }
+
+        internal static void VirtualizeEtagForReplicatedTableEntityInConvertMode(ITableEntity curr)
+        {
+            var row = curr as InitDynamicReplicatedTableEntity;
+            row.ETag = row._rtable_Version.ToString();
+        }
+
+        internal static void VirtualizeEtagForDynamicTableEntityInConvertMode(ITableEntity curr)
+        {
+            var row = curr as DynamicTableEntity;
+            row.ETag = row.Properties.ContainsKey("_rtable_Version")
+                            ? row.Properties["_rtable_Version"].Int64Value.ToString()
+                            : "0";
+        }
+
+        internal static void VirtualizeEtagForReplicatedTableEntity(ITableEntity curr)
+        {
+            var row = curr as ReplicatedTableEntity;
+            row.ETag = row._rtable_Version.ToString();
+        }
+
+        internal static void VirtualizeEtagForDynamicTableEntity(ITableEntity curr)
+        {
+            var row = curr as DynamicTableEntity;
+            row.ETag = row.Properties["_rtable_Version"].Int64Value.ToString();
+        }
+
+        /// <summary>
         /// Retrieve a row from a specific replica i.e. @index.
         /// No sanity check (avoiding reflection calls) so make sure argument operation == TableOperationType.Retrieve
         ///
