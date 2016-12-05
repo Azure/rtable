@@ -1,4 +1,4 @@
-﻿// azure-rtable ver. 0.9
+// azure-rtable ver. 0.9
 //
 // Copyright (c) Microsoft Corporation
 //
@@ -21,50 +21,33 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
-    using System;
     using System.Collections;
     using System.Collections.Generic;
-    using Microsoft.WindowsAzure.Storage.Table;
-
 
     /// <summary>
-    /// Implement an IEnumerator(T)
-    /// Wrapps an IEnumerator(T) object
+    /// Implement an IEnumerable(T)
+    /// Wrapps an IEnumerable(T) object
     /// </summary>
     /// <typeparam name="T"></typeparam>
-    public class ReplicatedTableEnumerator<T> : IEnumerator<T>
+    public class ReplicatedTableEnumerable<T> : IEnumerable<T>
     {
-        private readonly IEnumerator<T> _collection;
-        private readonly Action<ITableEntity> VirtualizeEtagFunc;
+        private readonly IEnumerable<T> _collection;
+        private readonly bool isConvertMode;
 
-        public ReplicatedTableEnumerator(IEnumerator<T> collection, bool isConvertMode)
+        public ReplicatedTableEnumerable(IEnumerable<T> collection, bool isConvertMode)
         {
             _collection = collection;
-            this.VirtualizeEtagFunc = ReplicatedTable.GetEtagVirtualizerFunc(isConvertMode, typeof(T));
+            this.isConvertMode = isConvertMode;
         }
 
-        public bool MoveNext() { return _collection.MoveNext(); }
-        public void Reset() { _collection.Reset(); }
-        void IDisposable.Dispose() { _collection.Dispose(); }
-        object IEnumerator.Current { get { return Current; } }
-
-        /// <summary>
-        /// Virtualize the ETag of the current entity
-        /// </summary>
-        public T Current
+        public IEnumerator<T> GetEnumerator()
         {
-            get
-            {
-                T curr = _collection.Current;
+            return new ReplicatedTableEnumerator<T>(_collection.GetEnumerator(), isConvertMode);
+        }
 
-                // Virtualize the Etag
-                VirtualizeEtagFunc(curr as ITableEntity);
-
-                // RTable returns a row only if row._rtable_ViewId <= txnView.ViewId
-                // Doing the same here, for each row, is time consuming.
-                // So we are not doing such validation here, as such is not a normal configuration.
-                return curr;
-            }
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
         }
     }
 }

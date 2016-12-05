@@ -54,52 +54,12 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public IEnumerator<TElement> GetEnumerator()
         {
-            return new ReplicatedTableEnumerator<TElement>(innerTableQuery.GetEnumerator(), GetEtagVirtualizerFunc());
+            return new ReplicatedTableEnumerator<TElement>(innerTableQuery.GetEnumerator(), isConvertMode);
         }
 
         IEnumerator IEnumerable.GetEnumerator()
         {
             return GetEnumerator();
-        }
-
-        /// <summary>
-        /// IMPORTANT:
-        ///     Etag virtualizer function will be called in a tight loop i.e. "for each returned entry" => it has to be optimal.
-        ///     That's why we are resolving all redundant checks here,
-        ///     and configuring the ReplicatedTableEnumerator(T) with the appropriate delegate.
-        /// </summary>
-        /// <returns></returns>
-        private Action<ITableEntity> GetEtagVirtualizerFunc()
-        {
-            if (isConvertMode)
-            {
-                if (typeof(TElement) == typeof(InitDynamicReplicatedTableEntity))
-                {
-                    return ReplicatedTable.VirtualizeEtagForReplicatedTableEntityInConvertMode;
-                }
-
-                if (typeof(TElement) == typeof(DynamicTableEntity) ||
-                    typeof(TElement).IsSubclassOf(typeof(DynamicTableEntity)))
-                {
-                    return ReplicatedTable.VirtualizeEtagForDynamicTableEntityInConvertMode;
-                }
-            }
-            else
-            {
-                if (typeof(TElement) == typeof(ReplicatedTableEntity) ||
-                    typeof(TElement).IsSubclassOf(typeof(ReplicatedTableEntity)))
-                {
-                    return ReplicatedTable.VirtualizeEtagForReplicatedTableEntity;
-                }
-
-                if (typeof(TElement) == typeof(DynamicTableEntity) ||
-                    typeof(TElement).IsSubclassOf(typeof(DynamicTableEntity)))
-                {
-                    return ReplicatedTable.VirtualizeEtagForDynamicTableEntity;
-                }
-            }
-
-            throw new ArgumentException(string.Format("EntityType ({0}) is not supported", typeof(TElement)));
         }
     }
 

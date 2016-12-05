@@ -362,13 +362,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                         entity.JobId,
                         string.Format(updatedMessageTemplate, m))
                     {
-                        ETag = entity._rtable_Version.ToString()
+                        ETag = entity.ETag
                     };
                     batchOperation.Replace(replaceEntity);
                 }
                 else if (opTypes[m] == TableOperationType.Delete)
                 {
-                    entity.ETag = entity._rtable_Version.ToString();
                     batchOperation.Delete(entity);
                 }
                 else
@@ -1064,7 +1063,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                 entity.JobId,
                                 string.Format(replaceMessageTemplate, m))
                             {
-                                ETag = entity._rtable_Version.ToString()
+                                ETag = entity.ETag
                             };
                             // add the operation to the batch operation
 

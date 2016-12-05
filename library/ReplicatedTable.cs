@@ -1441,18 +1441,13 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 CloudTable tail = GetTailTableClient().GetTableReference(TableName);
                 rows = tail.ExecuteQuery(query);
-
-                // TODO: Check consistency of viewId i.e. row._rtable_ViewId <= txnView.ViewId
-                // Ideally, return only rows that meet above condition.
-                // This would be time consuming ... and since such case is rare and won't happen in normal scenario =>
-                // we are not doing such extra filtering.
             }
             catch (Exception e)
             {
                 ReplicatedTableLogger.LogError("Error in ExecuteQuery: caught exception {0}", e);
             }
 
-            return rows;
+            return new ReplicatedTableEnumerable<TElement>(rows, this._configurationWrapper.IsConvertToRTableMode());
         }
 
         public TableQuery<TElement> CreateQuery<TElement>()
@@ -1484,7 +1479,51 @@ namespace Microsoft.Azure.Toolkit.Replication
             return new ReplicatedTableQuery<TElement>(CreateQuery<TElement>(), this._configurationWrapper.IsConvertToRTableMode());
         }
 
-        internal static void VirtualizeEtagForReplicatedTableEntityInConvertMode(ITableEntity curr)
+        /// <summary>
+        /// IMPORTANT:
+        ///     Etag virtualizer function will be called in a tight loop i.e. "for each returned entry" => it has to be optimal.
+        ///     This factory method returns the appropriate delegate to be configure the ReplicatedTableEnumerator(T).
+        /// </summary>
+        /// <returns></returns>
+        internal static Action<ITableEntity> GetEtagVirtualizerFunc(bool isConvertMode, Type type)
+        {
+            if (isConvertMode)
+            {
+                if (type == typeof(InitDynamicReplicatedTableEntity))
+                {
+                    return ReplicatedTable.VirtualizeEtagForInitDynamicReplicatedTableEntity;
+                }
+
+                if (type.IsSubclassOf(typeof(ReplicatedTableEntity)))
+                {
+                    return VirtualizeEtagForReplicatedTableEntity;
+                }
+
+                if (type == typeof(DynamicTableEntity) ||
+                    type.IsSubclassOf(typeof(DynamicTableEntity)))
+                {
+                    return ReplicatedTable.VirtualizeEtagForDynamicTableEntityInConvertMode;
+                }
+            }
+            else
+            {
+                if (type == typeof(ReplicatedTableEntity) ||
+                    type.IsSubclassOf(typeof(ReplicatedTableEntity)))
+                {
+                    return ReplicatedTable.VirtualizeEtagForReplicatedTableEntity;
+                }
+
+                if (type == typeof(DynamicTableEntity) ||
+                    type.IsSubclassOf(typeof(DynamicTableEntity)))
+                {
+                    return ReplicatedTable.VirtualizeEtagForDynamicTableEntity;
+                }
+            }
+
+            throw new ArgumentException(string.Format("EntityType ({0}) is not supported", type));
+        }
+
+        internal static void VirtualizeEtagForInitDynamicReplicatedTableEntity(ITableEntity curr)
         {
             var row = curr as InitDynamicReplicatedTableEntity;
             row.ETag = row._rtable_Version.ToString();

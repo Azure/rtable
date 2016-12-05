@@ -11,17 +11,17 @@
     // Needed to access protected members ...
     class ReplicatedTableConfigurationAccessor : ReplicatedTableConfiguration
     {
-        public void MoveReplicaToHeadAndSetViewToReadOnly(string storageAccountName)
+        public new void MoveReplicaToHeadAndSetViewToReadOnly(string storageAccountName)
         {
             base.MoveReplicaToHeadAndSetViewToReadOnly(storageAccountName);
         }
 
-        public void EnableWriteOnReplicas(string storageAccountName)
+        public new void EnableWriteOnReplicas(string storageAccountName)
         {
             base.EnableWriteOnReplicas(storageAccountName);
         }
 
-        public void EnableReadWriteOnReplicas(string storageAccountName, List<string> viewsToSkip)
+        public new void EnableReadWriteOnReplicas(string storageAccountName, List<string> viewsToSkip)
         {
             base.EnableReadWriteOnReplicas(storageAccountName, viewsToSkip);
         }

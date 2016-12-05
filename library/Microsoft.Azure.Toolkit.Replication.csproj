@@ -71,6 +71,7 @@
   <ItemGroup>
     <Compile Include="IReplicatedLogger.cs" />
     <Compile Include="IReplicatedTableConfigurationWrapper.cs" />
+    <Compile Include="ReplicatedTableEnumerable.cs" />
     <Compile Include="ReplicatedTableEnumerator.cs" />
     <Compile Include="ReplicatedTableEtwLogger.cs" />
     <Compile Include="ReplicatedTableConfigurationWrapper.cs" />

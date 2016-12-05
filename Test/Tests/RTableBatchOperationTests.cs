@@ -273,7 +273,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             IEnumerable<DynamicReplicatedTableEntity> allEntities = this.repTable.ExecuteQuery<DynamicReplicatedTableEntity>(query);
             foreach (DynamicReplicatedTableEntity entity in allEntities)
             {
-                entity.ETag = entity._rtable_Version.ToString();
                 // Add delete
                 batch.Delete(entity);
             }

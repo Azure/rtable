@@ -11,27 +11,27 @@
     // Needed to access protected members ...
     class ReplicatedTableConfigurationStoreAccessor : ReplicatedTableConfigurationStore
     {
-        public void SanitizeWithCurrentView(View currentView)
+        public new void SanitizeWithCurrentView(View currentView)
         {
             base.SanitizeWithCurrentView(currentView);
         }
 
-        public void MoveReplicaToHeadAndSetViewToReadOnly(string viewName, string storageAccountName)
+        public new void MoveReplicaToHeadAndSetViewToReadOnly(string viewName, string storageAccountName)
         {
             base.MoveReplicaToHeadAndSetViewToReadOnly(viewName, storageAccountName);
         }
 
-        public void EnableWriteOnReplicas(string viewName, string headStorageAccountName)
+        public new void EnableWriteOnReplicas(string viewName, string headStorageAccountName)
         {
             base.EnableWriteOnReplicas(viewName, headStorageAccountName);
         }
 
-        public void EnableReadWriteOnReplica(string viewName, string headStorageAccountName)
+        public new void EnableReadWriteOnReplica(string viewName, string headStorageAccountName)
         {
             base.EnableReadWriteOnReplica(viewName, headStorageAccountName);
         }
 
-        public void ThrowIfChainIsNotValid(string viewName)
+        public new void ThrowIfChainIsNotValid(string viewName)
         {
             base.ThrowIfChainIsNotValid(viewName);
         }

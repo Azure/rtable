@@ -8,22 +8,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     // Needed to access protected members ...
     class ReplicatedTableConfiguredTableAccessor : ReplicatedTableConfiguredTable
     {
-        public bool IsViewReferenced(string viewName)
+        public new bool IsViewReferenced(string viewName)
         {
             return base.IsViewReferenced(viewName);
         }
 
-        public bool IsAnyViewNullOrEmpty()
+        public new bool IsAnyViewNullOrEmpty()
         {
             return base.IsAnyViewNullOrEmpty();
         }
 
-        public string GetViewForPartition(string partition = null)
+        public new string GetViewForPartition(string partition = null)
         {
             return base.GetViewForPartition(partition);
         }
 
-        public bool IsTablePartitioned()
+        public new bool IsTablePartitioned()
         {
             return base.IsTablePartitioned();
         }
