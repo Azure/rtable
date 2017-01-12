@@ -1329,12 +1329,15 @@ namespace Microsoft.Azure.Toolkit.Replication
             // If this row needs repair due to an unstable view, do it now
             //
             TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
-            if (repairRowTableResult.HttpStatusCode != (int) HttpStatusCode.OK
-                && repairRowTableResult.HttpStatusCode != (int) HttpStatusCode.NoContent)
+            if (repairRowTableResult == null ||
+                (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK && repairRowTableResult.HttpStatusCode != (int) HttpStatusCode.NoContent))
             {
                 ReplicatedTableLogger.LogError(
                     "FlushAndRetrieve(): RepairRow() returned Unexpected StatusCode {0}. ParitionKey={1} RowKey={2}",
-                    repairRowTableResult.HttpStatusCode, row.PartitionKey, row.RowKey);
+                    (repairRowTableResult != null) ? repairRowTableResult.HttpStatusCode.ToString() : "null",
+                    row.PartitionKey,
+                    row.RowKey);
+
                 return new TableResult()
                 {
                     Result = null,
@@ -1666,13 +1669,18 @@ namespace Microsoft.Azure.Toolkit.Replication
             // "tail" sequentially
             for (int index = 1; index <= txnView.TailIndex; index++)
             {
-                if ((result = InsertUpdateOrDeleteRow(txnView, index, row, eTagsStrings[index], requestOptions, operationContext)) ==
-                    null)
+                result = InsertUpdateOrDeleteRow(txnView, index, row, eTagsStrings[index], requestOptions, operationContext);
+
+                if (result == null ||
+                    (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent))
                 {
                     // Failed in the middle, abort with error
                     ReplicatedTableLogger.LogError(
-                        "F2PC: Failed during prepare phase in 2PC at replica with index: {0} for row with row key: {1}",
-                        index, row.RowKey);
+                        "F2PC: Failed during prepare phase in 2PC at replica with index: {0} for row with row key: {1} with result: {2}",
+                        index,
+                        row.RowKey,
+                        (result != null) ? result.HttpStatusCode.ToString() : "null");
+
                     return null;
                 }
 
@@ -1699,7 +1707,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // It is possible that UpdateInsertOrDeleteRow() returns result.Result = null
                 // It happens when the Head entry is _rtable_Tombstone and the Tail entry is gone already.
                 // So, just check for "result == null" and return error
-                if (result == null)
+                if (result == null ||
+                    (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent))
                 {
                     // Failed in the middle, abort with error
                     ReplicatedTableLogger.LogError(
@@ -1856,15 +1865,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                 var webException = e.InnerException as WebException;
                 if (webException != null && webException.Response != null)
                 {
-                    if (((HttpWebResponse)webException.Response).StatusCode == HttpStatusCode.PreconditionFailed)
+                    return new TableResult()
                     {
-                        return new TableResult()
-                        {
-                            Result = null,
-                            Etag = null,
-                            HttpStatusCode = (int)HttpStatusCode.Conflict
-                        };
-                    }
+                        Result = null,
+                        Etag = null,
+                        HttpStatusCode = e.RequestInformation.HttpStatusCode
+                    };
                 }
 
                 return null;
@@ -2163,8 +2169,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 TableResult result = RepairRow(entry.PartitionKey, entry.RowKey, null);
 
-                if (result.HttpStatusCode != (int)HttpStatusCode.OK &&
-                    result.HttpStatusCode != (int)HttpStatusCode.NoContent)
+                if (result == null ||
+                    (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent))
                 {
                     status = ReconfigurationStatus.PARTIAL_FAILURE;
                 }
@@ -2181,8 +2187,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 TableResult result = RepairRow(extraEntity.PartitionKey, extraEntity.RowKey, null);
 
-                if (result.HttpStatusCode != (int)HttpStatusCode.OK &&
-                    result.HttpStatusCode != (int)HttpStatusCode.NoContent)
+                if (result == null ||
+                    (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent))
                 {
                     status = ReconfigurationStatus.PARTIAL_FAILURE;
                 }
