@@ -1291,7 +1291,6 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrReplace);
-            TableOperation top = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
             View txnView = CurrentView;
             ValidateTxnView(txnView);
 
@@ -1300,13 +1299,24 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
             {
                 // Row is not present at the head, insert the row
-                return InsertInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
+                TableResult insertResult = InsertInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
+                if (insertResult == null)
+                {
+                    return null;
+                }
+
+                if (insertResult.HttpStatusCode != (int) HttpStatusCode.Conflict)
+                {
+                    return insertResult;
+                }
+
+                // Got a conflict at insert, move on with a replace
+                retrievedResult = FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, false);
             }
-            else
-            {
-                // Row is present at the replica, replace the row
-                return ReplaceInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
-            }
+
+            // Row is present at the replica, replace the row
+            row.ETag = "*";
+            return ReplaceInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
         }
 
 
