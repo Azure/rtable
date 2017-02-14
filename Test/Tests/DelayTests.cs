@@ -18,6 +18,7 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using Microsoft.Azure.Toolkit.Replication;
@@ -32,6 +33,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Net;
     using System.Text;
     using System.Threading;
+    using System.Threading.Tasks;
 
     /// <summary>
     /// HttpMablger's Delay behavior is used in this set of tests. 
@@ -273,5 +275,123 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.ExecuteCreateRowAndValidate(entityPartitionKey, entityRowKey);
         }
 
+        /// <summary>
+        /// Call InsertOrReplace() from 2 threads concurrently, at least one should succeed.
+        /// </summary>
+        [Test(Description = "Call InsertOrReplace() API from 2 threads concurrently, at least one should succeed.")]
+        public void A00DelayTwoConflictingInsertOrReplaceCalls()
+        {
+            this.rtableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(this.repTable);
+
+            string entityPartitionKey = "jobType-DelayInsertOrReplaceRowHeadTest";
+            string entityRowKey = "jobId-DelayInsertOrReplaceRowHeadTest";
+
+            this.ForceDeleteEntryFromStorageTablesDirectly(entityPartitionKey, entityRowKey);
+
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[0];
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            int delayInMs = 3000;
+            int insertRequestCount = 0;
+            int conflictResponseCount = 0;
+            bool secondUpsertConflicted = false;
+            int failedCallIndex = -1;
+
+            // Delay bahavior
+            ProxyBehavior[] behaviors = new[]
+            {
+                // Delay Insert calls so they end up conflicting
+                TamperBehaviors.TamperAllRequestsIf(
+                    (session =>
+                    {
+                        Interlocked.Increment(ref insertRequestCount);
+
+                        while (insertRequestCount != 2)
+                        {
+                            Console.WriteLine("insertRequestCount={0}. Waiting on count to reach 2 ...", insertRequestCount);
+                            Thread.Sleep(delayInMs);
+                        }
+                    }),
+                    (session =>
+                    {
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("POST") &&
+                            session.GetRequestBodyAsString().Contains("\"_rtable_Operation\":\"Insert\""))
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    })),
+
+                // Delay conflict response
+                DelayBehaviors.DelayAllResponsesIf(
+                    delayInMs,
+                    (session =>
+                    {
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.GetRequestBodyAsString().Contains("\"_rtable_Operation\":\"Insert\""))
+                        {
+                            if (session.responseCode == (int) HttpStatusCode.Conflict)
+                            {
+                                Interlocked.Increment(ref conflictResponseCount);
+
+                                return true;
+                            }
+                        }
+
+                        return false;
+                    })),
+            };
+
+            using (new HttpMangler(false, behaviors))
+            {
+                Parallel.For(0, 2, (index) =>
+                {
+                    var entry = new SampleRTableEntity(entityPartitionKey, entityRowKey, string.Format("upsert message {0}", index));
+                    try
+                    {
+                        this.rtableWrapper.InsertOrReplaceRow(entry);
+                    }
+                    catch (RTableConflictException)
+                    {
+                        if (secondUpsertConflicted)
+                        {
+                            // should never reach here
+                            throw;
+                        }
+
+                        // That's possible, but that's the Replace step of upsert which conflicted with ongoing write
+                        // can't do anything, client should retry on conflict
+                        secondUpsertConflicted = true;
+                    }
+                });
+            }
+
+            // got 2 inserts?
+            Assert.AreEqual(2, insertRequestCount, "Two insert calls expected!");
+
+            // got one conflict?
+            Assert.AreEqual(1, conflictResponseCount, "One conflict response expected!");
+
+            // at least one upsert would have succeeded
+            SampleRTableEntity upsertedEntity = this.rtableWrapper.ReadEntity(entityPartitionKey, entityRowKey);
+            Assert.NotNull(upsertedEntity, "at least one upsert should have succeeded");
+
+            // second upsert failed?
+            if (secondUpsertConflicted)
+            {
+                Assert.AreEqual(1, upsertedEntity._rtable_Version, "one upsert succeeded so version should be = 1");
+                Assert.AreEqual(upsertedEntity.Message, string.Format("upsert message {0}", (1 - failedCallIndex)));
+            }
+            else
+            {
+                Assert.AreEqual(2, upsertedEntity._rtable_Version, "both upserts succeeded so version should be = 2");
+            }
+
+
+            // After recovery from delay, confirm that we can update the row.
+            //this.ExecuteReplaceRowAndValidate(entityPartitionKey, entityRowKey);
+        }
     }
 }

@@ -327,6 +327,55 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(newCustomer.Email, customer.Email, "customer.Email mismatch");            
         }
 
+        [Test(Description = "TableOperation Upsert (InsertOrReplace) API")]
+        public void RTableUpsert()
+        {
+            string firstName = "FirstName01";
+            string lastName = "LastName01";
+            string email = "email01@company.com";
+            string phone = "1-800-123-0001";
+
+            // Insert entity
+            var customer = new CustomerEntity(firstName, lastName)
+            {
+                Email = email,
+                PhoneNumber = phone,
+            };
+
+            // Upsert when entry doesn't exist => Insert
+            Console.WriteLine("Performing an Upsert when entry doesn't exist i.e. insert (customer)");
+            TableOperation operation = TableOperation.InsertOrReplace(customer);
+            TableResult result = this.repTable.Execute(operation);
+            Assert.AreNotEqual(result, null);
+            ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
+
+            Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
+            Assert.AreNotEqual(null, result.Result, "result.Result = null");
+            Assert.AreEqual("1", result.Etag, "result.Etag mismatch");
+            Assert.AreEqual(false, row._rtable_RowLock, "row._rtable_RowLock mismatch");
+            Assert.AreEqual(1, row._rtable_Version, "row._rtable_Version mismatch");
+            Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
+            Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
+
+
+            // Upsert on existing entry => Replace
+            Console.WriteLine("Performing an Upsert on existing entry i.e. replace (customer)");
+            customer.Email = "email02@company.com";
+            customer.PhoneNumber = "1-800-123-0002";
+            operation = TableOperation.InsertOrReplace(customer);
+            result = this.repTable.Execute(operation);
+            Assert.AreNotEqual(result, null);
+            row = (ReplicatedTableEntity)result.Result;
+
+            Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
+            Assert.AreNotEqual(null, result.Result, "result.Result = null");
+            Assert.AreEqual("2", result.Etag, "result.Etag mismatch");
+            Assert.AreEqual(false, row._rtable_RowLock, "row._rtable_RowLock mismatch");
+            Assert.AreEqual(2, row._rtable_Version, "row._rtable_Version mismatch");
+            Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
+            Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
+        }
+
         [Test(Description = "TableOperation Insert API")]
         public void RTableInsertRetrieveSync()
         {
