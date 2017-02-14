@@ -330,8 +330,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description = "TableOperation Upsert (InsertOrReplace) API")]
         public void RTableUpsert()
         {
-            string firstName = "FirstName01";
-            string lastName = "LastName01";
+            string firstName = "FirstName01_upsert";
+            string lastName = "LastName01_upsert";
             string email = "email01@company.com";
             string phone = "1-800-123-0001";
 
