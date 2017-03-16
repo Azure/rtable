@@ -103,8 +103,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     public class RTableCRUDPerfTests : RTableWrapperTestBase
     {
         // Sampling size = NumberOfPartitions * NumberOfRowsPerPartition
-        private const int NumberOfPartitions = 10;
-        private const int NumberOfRowsPerPartition = 5;
+        private const int NumberOfPartitions = 5;
+        private const int NumberOfRowsPerPartition = 2;
 
         private List<CustomerEntity> entries = null;
 
@@ -505,6 +505,74 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             ReplicatedTableQuery<CustomerEntity> query = rtable.CreateReplicatedQuery<CustomerEntity>();
             return query.AsEnumerable();
+        }
+
+        #endregion
+
+
+        #region RTable "Stable Two-Replicas" Test
+
+        /// <summary>
+        /// Test RTable API when "Stable Two-Replicas" to get perf. numbers
+        /// </summary>
+        [Test(Description = "RTable Stable Two-Replicas CRUD perf. numbers")]
+        public void RTableStableTwoReplicaCRUDTest()
+        {
+            try
+            {
+                string tableName = this.GenerateRandomTableName("RTable2Perf");
+                this.SetupRTableEnv(tableName, true, "", new List<int> { 0, 1 });
+                Console.WriteLine("tableName = {0}", tableName);
+
+                // two-replica and stable?
+                View view = this.configurationService.GetTableView(tableName);
+                Assert.IsTrue(view != null && view.Chain != null && view.Chain.Count == 2 && view.IsStable);
+                // convert mode is Off ? yes, because we can't have more than 1 replica while in convert mode!
+
+                ReplicatedTable rtable = this.repTable;
+
+                Console.WriteLine("[C]reate stats ...");
+                entries = ShuffleList(entries);
+                DataSampling createStats = CreateEntriesStats(rtable, entries);
+
+                Console.WriteLine("[R]etrieve stats ...");
+                entries = ShuffleList(entries);
+                DataSampling retrieveStats = RetrieveEntriesPerf(rtable, entries);
+
+                Console.WriteLine("[U]pdate stats ...");
+                entries = ShuffleList(entries);
+                DataSampling updateStats = UpdateEntriesPerf(rtable, entries);
+
+                Console.WriteLine("[D]elete stats ...");
+                entries = ShuffleList(entries);
+                DataSampling deleteStats = DeleteEntriesPerf(rtable, entries);
+
+
+                //// TODO: Add perf. tests for LINQ query ...
+
+
+                IEnumerable<CustomerEntity> customers = GetCustomerEntities(rtable);
+                Assert.AreEqual(customers.Count(), 0);
+
+                var report = new StringBuilder();
+                report.AppendLine("RTable Stable Two-Replicas CRUD perf (ms)");
+                report.AppendFormat("{0}\n", createStats.ToString());
+                report.AppendFormat("{0}\n", retrieveStats.ToString());
+                report.AppendFormat("{0}\n", updateStats.ToString());
+                report.AppendFormat("{0}\n", deleteStats.ToString());
+                report.AppendLine("End report.");
+
+                Console.WriteLine(report);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("{0}", ex);
+                Assert.Fail();
+            }
+            finally
+            {
+                base.DeleteAllRtableResources();
+            }
         }
 
         #endregion
