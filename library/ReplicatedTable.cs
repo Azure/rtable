@@ -1727,11 +1727,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                         row.RowKey);
                     break;
                 }
-
-                //
-                // TODO: commit on the head can fail due to Etag mismatch because repair might have updated the Etag. refresh view??
-                // check that the row version is still what is expected and then re-issue the commit
-                //
             }
 
             return result;

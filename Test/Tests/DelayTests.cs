@@ -297,7 +297,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             bool secondUpsertConflicted = false;
             int failedCallIndex = -1;
 
-            // Delay bahavior
+            // Delay behavior
             ProxyBehavior[] behaviors = new[]
             {
                 // Delay Insert calls so they end up conflicting
@@ -392,6 +392,148 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // After recovery from delay, confirm that we can update the row.
             //this.ExecuteReplaceRowAndValidate(entityPartitionKey, entityRowKey);
+        }
+
+        /// <summary>
+        /// Execute an Update entity in a Replicated mode, which the chain is not stable.
+        /// Before commit to the head is executed, a RepairRow happens.
+        /// The RepairRow is a NOP since the entry has the right ViewId.
+        /// After that, the commit to the head is executed.
+        /// </summary>
+        [Test(Description = "Issue a RepairRow in middle of an Update i.e. before commit to the head is done")]
+        public void RepairMidAnUpdate()
+        {
+            this.rtableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(this.repTable);
+
+            // Not-Stable chain
+            // Reconfigure RTable so Head is WriteOnly.
+            View view = this.configurationService.GetTableView(this.repTable.TableName);
+
+            ReplicatedTableConfiguration config;
+            ReplicatedTableQuorumReadResult readStatus = this.configurationService.RetrieveConfiguration(out config);
+            Assert.IsTrue(readStatus.Code == ReplicatedTableQuorumReadCode.Success);
+
+            // Set Head as WriteOnly mode
+            ReplicatedTableConfigurationStore viewConfg = config.GetView(view.Name);
+            viewConfg.ReplicaChain[0].Status = ReplicaStatus.WriteOnly;
+            config.SetView(view.Name, viewConfg);
+
+            // Upload RTable config back
+            this.configurationService.UpdateConfiguration(config);
+
+            // Sanity: Replicated mode and chain Not-Stable
+            view = this.configurationService.GetTableView(this.repTable.TableName);
+            Assert.IsTrue(view != null && view.Chain.Count > 1, "Two replicas should be used.");
+            Assert.IsFalse(view.IsStable);
+
+
+            // Insert one entry
+            Console.WriteLine("Inserting entry ...");
+            string entityPartitionKey = "jobType-RepairMidAnUpdate-Replace";
+            string entityRowKey = "jobId-RepairMidAnUpdate-Replace";
+            var entry = new SampleRTableEntity(entityPartitionKey, entityRowKey, "message");
+            this.rtableWrapper.InsertRow(entry);
+
+
+            // 1 - Launch a RepairRow task in wait mode ...
+            bool triggerRepair = false;
+            bool repaireDone = false;
+            bool headAfterRepairWasLocked = false;
+
+            TableResult repairResult = null;
+            Task.Run(() =>
+            {
+                ReplicatedTable repairTable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+
+                while (!triggerRepair)
+                {
+                    Thread.Sleep(5);
+                }
+
+                Console.WriteLine("RepairRow started ...");
+                repairResult = repairTable.RepairRow(entry.PartitionKey, entry.RowKey, null);
+                Console.WriteLine("RepairRow completed with HttpStatus={0}", repairResult == null ? "NULL" : repairResult.HttpStatusCode.ToString());
+
+                // Check the entry at the Head is still locked i.e. RepairRow was NOP
+                headAfterRepairWasLocked = HeadIsLocked(entry);
+
+                Console.WriteLine("Signal the commit to Head job");
+                repaireDone = true;
+            });
+
+
+            // 2 - Configure Mangler ...
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[0];
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            ProxyBehavior[] behaviors = new[]
+            {
+                TamperBehaviors.TamperAllRequestsIf(
+                    (session =>
+                    {
+                        Console.WriteLine("Delaying commit to the Head ... => signal RepairRow job");
+
+                        // Let RepairRow task go through
+                        triggerRepair = true;
+
+                        int iter = 0;
+                        while (!repaireDone)
+                        {
+                            // TODO: break the loop after couple of iteration ...
+
+                            Thread.Sleep(100);
+                            Console.WriteLine("Waiting on RepairRow to finish ({0}) ...", ++iter);
+                        }
+
+                        Console.WriteLine("Request a commit to the head");
+                    }),
+                    (session =>
+                    {
+                        // Commit on head i.e. a PUT with RowLock == false
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            session.GetRequestBodyAsString().Contains("\"_rtable_RowLock\":false"))
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    }))
+            };
+
+            using (new HttpMangler(false, behaviors))
+            {
+                Console.WriteLine("Updating entry ...");
+                entry = this.rtableWrapper.FindRow(entry.PartitionKey, entry.RowKey);
+                entry.Message = "updated message";
+
+                this.rtableWrapper.ReplaceRow(entry);
+            }
+
+            Assert.IsTrue(triggerRepair);
+            Assert.IsTrue(repairResult != null && repairResult.HttpStatusCode == (int)HttpStatusCode.OK, "Repair failed.");
+            Assert.IsTrue(repaireDone);
+            Assert.IsTrue(headAfterRepairWasLocked);
+
+            Console.WriteLine("DONE. Test passed.");
+        }
+
+        private bool HeadIsLocked(SampleRTableEntity entry)
+        {
+            CloudTable table = this.cloudTableClients[0].GetTableReference(this.repTable.TableName);
+
+            TableOperation retrieveOperation = TableOperation.Retrieve<SampleRTableEntity>(entry.PartitionKey, entry.RowKey);
+            TableResult retrieveResult = table.Execute(retrieveOperation);
+
+            if (retrieveResult == null ||
+                retrieveResult.HttpStatusCode != (int)HttpStatusCode.OK ||
+                retrieveResult.Result == null)
+            {
+                return false;
+            }
+
+            SampleRTableEntity head = (SampleRTableEntity)retrieveResult.Result;
+            return head._rtable_RowLock == true;
         }
     }
 }
