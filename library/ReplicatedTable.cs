@@ -998,7 +998,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     {
                         Result = null,
                         Etag = null,
-                        HttpStatusCode = (int) HttpStatusCode.Conflict
+                        HttpStatusCode = (int)HttpStatusCode.PreconditionFailed
                     };
                 }
 
@@ -1139,13 +1139,13 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (checkETag && IsEtagMismatch(row, currentRow))
             {
                 // Return the error code that Etag does not match with the input ETag
-                ReplicatedTableLogger.LogInformational("ReplaceInternal: Row is not present at the head. ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
+                ReplicatedTableLogger.LogInformational("ReplaceInternal: ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
                                         row.ETag, currentRow._rtable_Version);
                 return new TableResult()
                 {
                     Result = null,
                     Etag = null,
-                    HttpStatusCode = (int)HttpStatusCode.Conflict
+                    HttpStatusCode = (int)HttpStatusCode.PreconditionFailed
                 };
             }
 
@@ -2566,7 +2566,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return mismatch;
             }
 
-            // Reading a row via XStore lib. then Saving it via RTable lib. results in ETag mismatch i.e. ConflictException
+            // Reading a row via XStore lib. then Saving it via RTable lib. results in ETag mismatch i.e. PreconditionFailed
             //
             // Such case can happen even when ConvertMode == False.
             // This work around is for ConvertMode == True.
