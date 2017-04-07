@@ -55,16 +55,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return "";
             }
 
-            int index = 0;
-            string msg = Results.Aggregate("\n",
-                                          (current, result) =>
-                                          {
-                                              if (!string.IsNullOrEmpty(current))
-                                              {
-                                                  current += "\n";
-                                              }
-                                              return current + string.Format("Blob #{0} -> {1}", index++, result.ToString());
-                                          });
+            // IMPORTANT: foreach()/LINQ throws when "Results" changes (race condition).
+            string msg = null;
+            for (int index = 0; index < Results.Count; index++)
+            {
+                msg += "\n";
+                msg += string.Format("Blob #{0} -> {1}", index, Results[index]);
+            }
 
             return string.Format("QuorumReadResult Code: {0}, Message: {1}", Code, msg);
         }
