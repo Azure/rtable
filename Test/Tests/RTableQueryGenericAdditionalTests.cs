@@ -256,8 +256,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private void ExecuteQueryAndAssertResults(CloudTable table, string filter, int expectedResults)
         {
+            var resultSet = this.repTable.ExecuteQuery(new TableQuery<ComplexEntity>().Where(filter));
+            foreach (var row in resultSet)
+            {
+                Assert.AreEqual(row.ETag, row._rtable_Version.ToString());
+            }
+
             Assert.AreEqual(expectedResults, table.ExecuteQuery(new TableQuery<ComplexEntity>().Where(filter)).Count());
-            Assert.AreEqual(expectedResults, this.repTable.ExecuteQuery(new TableQuery<ComplexEntity>().Where(filter)).Count());
+            Assert.AreEqual(expectedResults, resultSet.Count());
         }
                 
         //private static BaseEntity GenerateRandomEntity(string pk)

@@ -99,6 +99,8 @@ Please feel free to open bugs and issues on GitHub.
 For information about contributing to Azure open source projects, see the general 
 guidance, including the legal CLA requirement, here: http://azure.github.io/guidelines.html#cla
 
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
+
 # License
 
 azure-rtable ver. 0.9

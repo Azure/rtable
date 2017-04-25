@@ -24,6 +24,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
+    using System.Linq;
+    using System.Net;
 
     /// <summary>
     /// This cs file only tests the ConvertXStoreTable() API.
@@ -67,6 +69,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Set up RTable and its wrapper that uses only one storage account.
             //
             this.SetupRTableEnv(this.xstoreTableName, true, "", this.actualStorageAccountsUsed, true);
+
+            Assert.True(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be True");
         }
 
         [TestFixtureTearDown]
@@ -78,6 +82,15 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description = "Call RTable's ConvertXStoreTable() API to convert existing XStore entity to RTable entity")]
         public void ConvertXStoreTable()
         {
+            // BEFORE:
+            // LINQ query in convert mode, using "CreateReplicatedQuery" => ETag is virtualized
+            IQueryable<InitDynamicReplicatedTableEntity> virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>();
+            foreach (var ent in virtualizedRtableQuery)
+            {
+                Assert.IsTrue(ent.ETag == "0", "ETag is virtualized when using CreateReplicatedQuery()");
+            }
+
+
             string jobType = "jobType-ReplaceXStoreEntity";
             string jobId = "jobId-ReplaceXStoreEntity";
 
@@ -101,7 +114,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(0, failedCount, "Number of failed converted entries does NOT match");
 
             // Retrieve all entries and confirm that _rtable_ViewId are ok.
-        }
 
+            // AFTER:
+            // LINQ query in convert mode, using "CreateReplicatedQuery" => ETag is virtualized
+            virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>();
+            foreach (var ent in virtualizedRtableQuery.ToList())
+            {
+                Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+            }
+        }
     }
 }

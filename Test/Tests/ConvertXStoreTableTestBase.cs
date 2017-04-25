@@ -46,7 +46,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private CloudTableClient xstoreCloudTableClient;
 
-        private CloudTable xstoreCloudTable;
+        protected CloudTable xstoreCloudTable;
 
         #region Helper functions
         protected void SetupXStoreTableEnv()
@@ -179,6 +179,56 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                         this.GenerateMessage(entityMessage, i, j),
                         replacedEntity.Message,
                         "After Replace(): Message mismatch");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Retrieve an SampleXStoreEntity which doesn't inherit ReplicatedTableEntity through RTable in convert mode
+        /// </summary>
+        /// <param name="jobType"></param>
+        /// <param name="jobId"></param>
+        /// <param name="entityMessage"></param>
+        protected void RetrieveAsSampleXStoreEntity(
+            string jobType,
+            string jobId,
+            string entityMessage)
+        {
+            for (int i = 0; i < this.numberOfPartitions; i++)
+            {
+                for (int j = 0; j < this.numberOfRowsPerPartition; j++)
+                {
+                    //
+                    // Retrieve
+                    //
+                    string partitionKey;
+                    string rowKey;
+                    SampleXStoreEntity.GenerateKeys(
+                        this.GenerateJobType(jobType, i),
+                        this.GenerateJobId(jobId, i, j),
+                        out partitionKey,
+                        out rowKey);
+                    TableOperation retrieveOperation = TableOperation.Retrieve(partitionKey, rowKey);
+                    TableResult retrieveResult = this.repTable.Execute(retrieveOperation);
+
+                    Assert.IsNotNull(retrieveResult, "retrieveResult = null");
+                    DynamicReplicatedTableEntity dynamicReplicatedTableEntity = retrieveResult.Result as DynamicReplicatedTableEntity;
+                    Assert.IsNotNull(dynamicReplicatedTableEntity, "dynamicReplicatedTableEntity = null");
+
+                    SampleXStoreEntity retrievedEntity = SampleXStoreEntity.ToSampleXStoreEntity(dynamicReplicatedTableEntity);
+
+                    Assert.AreEqual(
+                        this.GenerateJobType(jobType, i),
+                        retrievedEntity.JobType,
+                        "JobType mismatch");
+                    Assert.AreEqual(
+                        this.GenerateJobId(jobId, i, j),
+                        retrievedEntity.JobId,
+                        "JobId mismatch");
+                    Assert.AreEqual(
+                        this.GenerateMessage(entityMessage, i, j),
+                        retrievedEntity.Message,
+                        "Message mismatch");
                 }
             }
         }

@@ -53,6 +53,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// </summary>
         public static int LockTimeoutInSeconds = 60;
 
+        /// <summary>
+        /// Time after which we check if we have a Quorum or no ?
+        /// </summary>
+        public static int QuorumPollingInMilliSeconds = 50;
+
         public static string ShortConnectioStringTemplate =
             @"DefaultEndpointsProtocol={0};AccountName={1};AccountKey={2};";
 

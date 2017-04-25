@@ -68,6 +68,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 int j = 0; // counting the number of rows per partition
                 foreach (var retrievedEntity in allRows)
                 {
+                    Assert.AreEqual(
+                            retrievedEntity.ETag,
+                            retrievedEntity._rtable_Version.ToString(),
+                            "Etag mismatch");
+
                     this.ValidateRetrievedRTableEntity(retrievedEntity, jobType, jobId, entityMessage, i, j, checkViewId);
                     rowKeys.Add(retrievedEntity.RowKey);
                     j++;
@@ -162,14 +167,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     {
                         try
                         {
-                            SampleRTableEntity retrievedEntity = this.rtableWrapper.FindRow(partitionKey, oneEntry.RowKey);
+                            SampleRTableEntity retrievedEntity = oneEntry;
                             Console.WriteLine("attempts={0}. partitionKey={1} rowKey={2}. Calling {3} API...",
-                                attempts, partitionKey, oneEntry.RowKey, opType);
+                                attempts, partitionKey, retrievedEntity.RowKey, opType);
                             switch (opType)
                             {
                                 case TableOperationType.Delete:
                                     {
-                                        retrievedEntity.ETag = retrievedEntity._rtable_Version.ToString(); // set ETag
                                         this.rtableWrapper.DeleteRow(retrievedEntity);
                                     }
                                     break;
@@ -183,7 +187,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                 case TableOperationType.Merge:
                                     {
                                         retrievedEntity.Message = this.GenerateMessage(updatedEntityMessage, i, j);
-                                        retrievedEntity.ETag = retrievedEntity._rtable_Version.ToString(); // set ETag
                                         this.rtableWrapper.MergeRow(retrievedEntity);
                                         rowKeys.Add(retrievedEntity.RowKey);
                                     }
@@ -191,7 +194,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                 case TableOperationType.Replace:
                                     {
                                         retrievedEntity.Message = this.GenerateMessage(updatedEntityMessage, i, j);
-                                        retrievedEntity.ETag = retrievedEntity._rtable_Version.ToString(); // set ETag
                                         this.rtableWrapper.ReplaceRow(retrievedEntity);
                                         rowKeys.Add(retrievedEntity.RowKey);
                                     }

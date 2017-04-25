@@ -69,9 +69,15 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="IReplicatedLogger.cs" />
     <Compile Include="IReplicatedTableConfigurationWrapper.cs" />
+    <Compile Include="ReplicatedTableEnumerable.cs" />
+    <Compile Include="ReplicatedTableEnumerator.cs" />
+    <Compile Include="ReplicatedTableEtwLogger.cs" />
     <Compile Include="ReplicatedTableConfigurationWrapper.cs" />
     <Compile Include="ReplicatedTableConfigurationV2Wrapper.cs" />
+    <Compile Include="ReplicatedTableEventListener.cs" />
+    <Compile Include="ReplicatedTableQueryProvider.cs" />
     <Compile Include="ReplicatedTableQuorumReadResult.cs" />
     <Compile Include="ReplicatedTableQuorumWriteResult.cs" />
     <Compile Include="ReplicatedTableReadBlobResult.cs" />
@@ -103,6 +109,7 @@
     <Compile Include="ReplicatedTableConfigurationStore.cs" />
     <Compile Include="ReplicatedTableEventSource.cs" />
     <Compile Include="ReplicatedTableConfiguredTable.cs" />
+    <Compile Include="ReplicatedTableV2.cs" />
     <Compile Include="ReplicatedTableWriteBlobResult.cs" />
     <Compile Include="SecureStringHelper.cs" />
     <Compile Include="View.cs" />

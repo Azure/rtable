@@ -32,4 +32,19 @@ namespace Microsoft.Azure.Toolkit.Replication
         TABLE_NOT_FOUND = 16,
         FAILURE = 32
     }
+
+    // Enum for actions to take on a given row during repair row.
+    public enum RepairRowActionType
+    {
+        RepairRow,
+        SkipRow,
+        InvalidRow,
+    }
+
+    /// <summary>
+    /// Caller can pass to RepairTable API a delegate to filter which rows to repair and which to skip.
+    /// </summary>
+    /// <param name="row"></param>
+    /// <returns></returns>
+    public delegate RepairRowActionType RepairRowDelegate(DynamicReplicatedTableEntity row);
 }

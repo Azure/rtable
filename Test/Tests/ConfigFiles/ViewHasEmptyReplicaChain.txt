@@ -1,0 +1,40 @@
+{
+    'viewMap': [
+        {
+            'Key': 'view1',
+            'Value': {
+                'ConvertXStoreTableMode': false,
+                'LeaseDuration': 60,
+                'ReadViewHeadIndex': 2,
+                'ReplicaChain': [ ],
+                'Timestamp': '/Date(1449259685702)/',
+                'ViewId': 4
+            }
+        },
+        {
+            'Key': 'ViewHasEmptyReplicaChain',
+            'Value': {
+                'ConvertXStoreTableMode': false,
+                'LeaseDuration': 60,
+                'ReadViewHeadIndex': 2,
+                'ReplicaChain': null,
+                'Timestamp': '/Date(1449259685702)/',
+                'ViewId': 4
+            }
+        },
+        {
+            'Key': 'view2',
+            'Value': {
+                'ConvertXStoreTableMode': false,
+                'LeaseDuration': 60,
+                'ReadViewHeadIndex': 2,
+                'ReplicaChain': [],
+                'Timestamp': '/Date(1449259685702)/',
+                'ViewId': 4
+            }
+        }
+    ],
+    'tableList': [],
+    'LeaseDuration': 10,
+    'Id': '450a44a6-26fd-4ca2-89b1-32bf99af9248'
+}

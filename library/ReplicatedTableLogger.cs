@@ -21,40 +21,44 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using System.Collections.Generic;
+    using System.Diagnostics.Tracing;
+
     public static class ReplicatedTableLogger
     {
-        private static ReplicatedTableEventSource eventSource = new ReplicatedTableEventSource();
+        private static List<IReplicatedLogger> loggers = new List<IReplicatedLogger>();
+
+        public static void Subscribe(IReplicatedLogger log)
+        {
+            if (log != null)
+            {
+                loggers.Add(log);
+            }
+        }
+
+        public static void Unsubscribe(IReplicatedLogger log)
+        {
+            loggers.Remove(log);
+        }
 
         public static void LogError(string format, params object[] args)
         {
-            if (ReplicatedTableLogger.eventSource.IsEnabled())
-            {
-                ReplicatedTableLogger.eventSource.Error(string.Format(format, args));
-            }
+            loggers.ForEach(log => log.LogMessage(EventLevel.Error, format, args));
         }
 
         public static void LogWarning(string format, params object[] args)
         {
-            if (ReplicatedTableLogger.eventSource.IsEnabled())
-            {
-                ReplicatedTableLogger.eventSource.Warning(string.Format(format, args));
-            }
+            loggers.ForEach(log => log.LogMessage(EventLevel.Warning, format, args));
         }
 
         public static void LogInformational(string format, params object[] args)
         {
-            if (ReplicatedTableLogger.eventSource.IsEnabled())
-            {
-                ReplicatedTableLogger.eventSource.Informational(string.Format(format, args));
-            }
+            loggers.ForEach(log => log.LogMessage(EventLevel.Informational, format, args));
         }
 
         public static void LogVerbose(string format, params object[] args)
         {
-            if (ReplicatedTableLogger.eventSource.IsEnabled())
-            {
-                ReplicatedTableLogger.eventSource.Verbose(string.Format(format, args));
-            }
+            loggers.ForEach(log => log.LogMessage(EventLevel.Verbose, format, args));
         }
     }
 }

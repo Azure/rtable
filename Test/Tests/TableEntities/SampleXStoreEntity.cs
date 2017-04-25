@@ -18,10 +18,12 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using Microsoft.WindowsAzure.Storage.Table;
     using System;
+    using System.Collections.Generic;
 
     /// <summary>
     /// Exactly the same as SampleRTableEntity, except this class is an "XStore Table Entity"
@@ -134,6 +136,41 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         public static string GenerateRandomMessage()
         {
             return string.Format("{0:MM/dd/yyyy HH:mm:ss.fff} {1}", DateTime.UtcNow, Guid.NewGuid());
+        }
+
+        public static SampleXStoreEntity ToSampleXStoreEntity(DynamicReplicatedTableEntity dynamicReplicatedTableEntity)
+        {
+            var entity = new SampleXStoreEntity()
+            {
+                PartitionKey = dynamicReplicatedTableEntity.PartitionKey,
+                RowKey = dynamicReplicatedTableEntity.RowKey,
+                Timestamp = dynamicReplicatedTableEntity.Timestamp,
+                ETag = dynamicReplicatedTableEntity.ETag
+            };
+
+            // we could reflect, but keeping it simple.
+            entity.JobType = dynamicReplicatedTableEntity.Properties["JobType"].StringValue;
+            entity.JobId = dynamicReplicatedTableEntity.Properties["JobId"].StringValue;
+            entity.Message = dynamicReplicatedTableEntity.Properties["Message"].StringValue;
+
+            return entity;
+        }
+
+        public static InitDynamicReplicatedTableEntity ToInitDynamicReplicatedTableEntity(SampleXStoreEntity xstoreEntity)
+        {
+            IDictionary<string, EntityProperty> properties = new Dictionary<string, EntityProperty>();
+
+            // we could reflect, but keeping it simple.
+            properties.Add("JobType", new EntityProperty(xstoreEntity.JobType));
+            properties.Add("JobId", new EntityProperty(xstoreEntity.JobId));
+            properties.Add("Message", new EntityProperty(xstoreEntity.Message));
+
+            InitDynamicReplicatedTableEntity entity = new InitDynamicReplicatedTableEntity(
+                                                                xstoreEntity.PartitionKey,
+                                                                xstoreEntity.RowKey,
+                                                                xstoreEntity.ETag,
+                                                                properties);
+            return entity;
         }
     }
 }

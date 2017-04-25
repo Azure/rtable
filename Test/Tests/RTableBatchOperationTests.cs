@@ -273,7 +273,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             IEnumerable<DynamicReplicatedTableEntity> allEntities = this.repTable.ExecuteQuery<DynamicReplicatedTableEntity>(query);
             foreach (DynamicReplicatedTableEntity entity in allEntities)
             {
-                entity.ETag = entity._rtable_Version.ToString();
                 // Add delete
                 batch.Delete(entity);
             }
@@ -826,7 +825,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
             catch (StorageException)
             {
-                TestHelper.ValidateResponse(opContext, 1, (int)HttpStatusCode.BadRequest, new string[] { "EntityTooLarge" }, "The entity is larger than the maximum allowed size (1MB).");
+                TestHelper.ValidateResponse(opContext, 2, (int)HttpStatusCode.BadRequest, new string[] { "EntityTooLarge" }, "The entity is larger than the maximum allowed size (1MB).");
             }
         }
         
@@ -859,7 +858,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 //TestHelper.ValidateResponse(opContext, 1, (int)HttpStatusCode.BadRequest, new string[] { "ContentLengthExceeded" }, "The content length for the requested operation has exceeded the limit (4MB).");
                 TestHelper.ValidateResponse(
                     opContext, 
-                    1, 
+                    2, 
                     (int)HttpStatusCode.RequestEntityTooLarge, 
                     new string[] { "RequestBodyTooLarge" }, 
                     "The request body is too large and exceeds the maximum permissible limit"
@@ -1010,7 +1009,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
             catch (StorageException)
             {
-                TestHelper.ValidateResponse(opContext, 1, (int)HttpStatusCode.BadRequest, new string[] { "PropertyNameTooLong" }, "The property name exceeds the maximum allowed length (255).");
+                TestHelper.ValidateResponse(opContext, 2, (int)HttpStatusCode.BadRequest, new string[] { "PropertyNameTooLong" }, "The property name exceeds the maximum allowed length (255).");
             }
         }
         #endregion Boundary Conditions

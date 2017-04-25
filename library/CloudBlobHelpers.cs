@@ -31,6 +31,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.Storage.Blob;
+    using System.Collections.ObjectModel;
 
     public class CloudBlobHelpers
     {
@@ -128,6 +129,55 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
+        public static async Task<ReplicatedTableReadBlobResult> TryReadBlobAsync<T>(CloudBlockBlob blob, Action<T, string> callback, Func<string, T> ParseBlobFunc, CancellationToken ct)
+            where T : class
+        {
+            try
+            {
+                string content = await blob.DownloadTextAsync(ct);
+                if (content == Constants.ConfigurationStoreUpdatingText)
+                {
+                    return new ReplicatedTableReadBlobResult(ReadBlobCode.UpdateInProgress, "Blob update in progress ...");
+                }
+
+                // ParseBlobFunc != null
+                T configuration = ParseBlobFunc(content);
+                string eTag = blob.Properties.ETag;
+
+                // callback != null
+                callback(configuration, eTag);
+
+                return new ReplicatedTableReadBlobResult(ReadBlobCode.Success, "");
+            }
+            catch (StorageException e)
+            {
+                var msg = string.Format("Error reading blob: {0}. StorageException: {1}", blob.Uri, e.Message);
+                ReplicatedTableLogger.LogError(msg);
+
+                if (e.RequestInformation != null &&
+                    e.RequestInformation.HttpStatusCode == (int)HttpStatusCode.NotFound)
+                {
+                    return new ReplicatedTableReadBlobResult(ReadBlobCode.NotFound, msg);
+                }
+
+                return new ReplicatedTableReadBlobResult(ReadBlobCode.StorageException, msg);
+            }
+            catch (OperationCanceledException)
+            {
+                var msg = string.Format("TryReadBlobAsync cancelled ({0})", blob.Uri);
+                ReplicatedTableLogger.LogInformational(msg);
+
+                return new ReplicatedTableReadBlobResult(ReadBlobCode.Exception, msg);
+            }
+            catch (Exception e)
+            {
+                var msg = string.Format("Error reading blob: {0}. Exception: {1}", blob.Uri, e.Message);
+                ReplicatedTableLogger.LogError(msg);
+
+                return new ReplicatedTableReadBlobResult(ReadBlobCode.Exception, msg);
+            }
+        }
+
         public static List<ReplicatedTableReadBlobResult> TryReadAllBlobs<T>(List<CloudBlockBlob> blobs, out List<T> values, out List<string> eTags, Func<string, T> ParseBlobFunc)
                     where T : class
         {
@@ -140,12 +190,16 @@ namespace Microsoft.Azure.Toolkit.Replication
             // read from all the blobs in parallel
             Parallel.For(0, numberOfBlobs, index =>
             {
+                DateTime startTime = DateTime.UtcNow;
+
                 T currentValue;
                 string currentETag;
 
                 resultArray[index] = TryReadBlob(blobs[index], out currentValue, out currentETag, ParseBlobFunc);
                 valuesArray[index] = currentValue;
                 eTagsArray[index] = currentETag;
+
+                ReplicatedTableLogger.LogInformational("TryReadBlob #{0} took {1}", index, DateTime.UtcNow - startTime);
             });
 
             values = valuesArray.ToList();
@@ -167,7 +221,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Find majority ...
             int quorumIndex;
-            ReplicatedTableQuorumReadResult majority = FindMajority(resultArray, valuesArray, out quorumIndex);
+            ReplicatedTableQuorumReadResult majority = FindMajority(resultArray.AsReadOnly(), valuesArray.AsReadOnly(), out quorumIndex);
 
             if (majority.Code == ReplicatedTableQuorumReadCode.Success)
             {
@@ -178,7 +232,115 @@ namespace Microsoft.Azure.Toolkit.Replication
             return majority;
         }
 
-        private static ReplicatedTableQuorumReadResult FindMajority<T>(List<ReplicatedTableReadBlobResult> resultArray, List<T> valuesArray, out int quorumIndex)
+        public static ReplicatedTableQuorumReadResult TryReadBlobQuorumFast<T>(List<CloudBlockBlob> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
+            where T : class
+        {
+            value = default(T);
+            eTags = null;
+
+            int numberOfBlobs = blobs.Count;
+
+            var valuesArray = new List<T>(new T[numberOfBlobs]);
+            var eTagsArray = new List<string>(new string[numberOfBlobs]);
+            var resultArray = new List<ReplicatedTableReadBlobResult>(new ReplicatedTableReadBlobResult[numberOfBlobs]);
+
+            var cancel = new CancellationTokenSource();
+
+
+            /*
+             * Read async all the blobs in parallel
+             */
+            Parallel.For(0, numberOfBlobs, async (index) =>
+            {
+                valuesArray[index] = default(T);
+                eTagsArray[index] = null;
+                resultArray[index] = new ReplicatedTableReadBlobResult(ReadBlobCode.NullObject, "downloaded not started yet!");
+
+                DateTime startTime = DateTime.UtcNow;
+
+                resultArray[index] = await TryReadBlobAsync(
+                                                blobs[index],
+                                                (currentValue, currentETag) =>
+                                                {
+                                                    valuesArray[index] = currentValue;
+                                                    eTagsArray[index] = currentETag;
+                                                },
+                                                ParseBlobFunc,
+                                                cancel.Token);
+
+                if (resultArray[index].Code == ReadBlobCode.Success)
+                {
+                    ReplicatedTableLogger.LogInformational("TryReadBlobAsync #{0} took {1}", index, DateTime.UtcNow - startTime);
+                }
+            });
+
+
+            /*
+             * Poll for "Quorum" progress ...
+             */
+            ReplicatedTableQuorumReadResult majority;
+            int quorumIndex;
+
+            do
+            {
+                Thread.Sleep(Constants.QuorumPollingInMilliSeconds);
+
+
+                // "resultArray" may change OOB just after Evaluate Quorum step below.
+                // In such case, we may exit the loop because all blobs are retrieved, while "majority" has a stale value!
+                // Therefore, we have to determine, before Evaluate Quorum step, if we'll exit the loop or no.
+                //      If Exist, then "majority" would be final.
+                //      If No, then we'll loop to compute the latest, unless we break because we already have Quorum without all blobs.
+                bool allBlobsRetrieved = true;
+
+                // IMPORTANT: foreach()/LINQ throws when "resultArray" changes (race condition).
+                for (int result = 0; result < resultArray.Count; result++)
+                {
+                    if (resultArray[result].Code == ReadBlobCode.NullObject)
+                    {
+                        allBlobsRetrieved = false;
+                        break;
+                    }
+                }
+
+
+                // Evaluate Quorum ...
+                majority = FindMajority(resultArray.AsReadOnly(), valuesArray.AsReadOnly(), out quorumIndex);
+
+                if (majority.Code == ReplicatedTableQuorumReadCode.NotFound ||
+                    majority.Code == ReplicatedTableQuorumReadCode.UpdateInProgress ||
+                    majority.Code == ReplicatedTableQuorumReadCode.Exception ||
+                    majority.Code == ReplicatedTableQuorumReadCode.Success)
+                {
+                    // Quorum => cancel tasks and exit
+                    cancel.Cancel();
+                    break;
+                }
+                //else
+                if (allBlobsRetrieved)
+                {
+                    // All blobs 'were' retrieved => exit
+                    break;
+                }
+
+                // keep polling ...
+
+            } while (true);
+
+
+            cancel = null;
+
+
+            if (majority.Code == ReplicatedTableQuorumReadCode.Success)
+            {
+                value = valuesArray[quorumIndex];
+                eTags = eTagsArray;
+            }
+
+            return majority;
+        }
+
+        private static ReplicatedTableQuorumReadResult FindMajority<T>(ReadOnlyCollection<ReplicatedTableReadBlobResult> resultArray, ReadOnlyCollection<T> valuesArray, out int quorumIndex)
             where T : class
         {
             quorumIndex = -1;
@@ -187,9 +349,17 @@ namespace Microsoft.Azure.Toolkit.Replication
             int quorum = (numberOfBlobs / 2) + 1;
 
             int[] counters = new int[Enum.GetNames(typeof(ReadBlobCode)).Length];
-            foreach (var result in resultArray)
+
+            // IMPORTANT: foreach()/LINQ throws when "resultArray" changes (race condition).
+            for (int result = 0; result < resultArray.Count; result++)
             {
-                counters[(int)result.Code]++;
+                counters[(int)resultArray[result].Code]++;
+            }
+
+            // - NullObject
+            if (counters[(int)ReadBlobCode.NullObject] >= quorum)
+            {
+                return new ReplicatedTableQuorumReadResult(ReplicatedTableQuorumReadCode.NullObject, resultArray);
             }
 
             // - NotFound
@@ -228,7 +398,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 int matchCount = 1;
 
                 // optimization to skip over the value if it is the same as the previous one we checked for quorum
-                if (index > 0 && valuesArray[index - 1] == valuesArray[index])
+                if (index > 0 && valuesArray[index] == valuesArray[index - 1])
                 {
                     continue;
                 }
@@ -263,7 +433,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Find majority ...
             int quorumIndex;
-            ReplicatedTableQuorumReadResult majority = FindMajority(resultArray, valuesArray, out quorumIndex);
+            ReplicatedTableQuorumReadResult majority = FindMajority(resultArray.AsReadOnly(), valuesArray.AsReadOnly(), out quorumIndex);
             string readDetails = majority.ToString();
 
             switch (majority.Code)
@@ -294,6 +464,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 case ReplicatedTableQuorumReadCode.BlobsNotInSyncOrTransitioning:
                     return new ReplicatedTableQuorumWriteResult(ReplicatedTableQuorumWriteCode.BlobsNotInSyncOrTransitioning, readDetails);
 
+                case ReplicatedTableQuorumReadCode.NullObject:
                 default:
                 {
                     var msg = string.Format("Unexpected value majority=\'{0}\' ", majority.Code);

@@ -32,7 +32,16 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             this._tableName = tableName;
             this._service = service;
+
+            // i.e. use the table default view
+            ViewToUse = null;
         }
+
+        /// <summary>
+        /// Caller sets the view to use explicitly ...
+        /// Needed for partitioned table where we want to run RTable APIs on a selected replica-chain.
+        /// </summary>
+        internal string ViewToUse { get; set; }
 
         public TimeSpan GetLockTimeout()
         {
@@ -46,17 +55,17 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public View GetReadView()
         {
-            return this._service.GetTableView(this._tableName);
+            return this._service.GetTableView(this._tableName, ViewToUse);
         }
 
         public View GetWriteView()
         {
-            return this._service.GetTableView(this._tableName);
+            return this._service.GetTableView(this._tableName, ViewToUse);
         }
 
         public bool IsViewStable()
         {
-            return this._service.IsTableViewStable(this._tableName);
+            return this._service.IsTableViewStable(this._tableName, ViewToUse);
         }
 
         public bool IsConvertToRTableMode()

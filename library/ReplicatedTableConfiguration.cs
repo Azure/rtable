@@ -75,6 +75,10 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             ThrowIfViewIsNotValid(viewName, config);
 
+            // In case this is an update to an existing view,
+            // the view should not break any existing constraint.
+            ThrowIfViewBreaksTableConstraint(viewName, config);
+
             viewMap.Remove(viewName);
             viewMap.Add(viewName, config);
         }
@@ -96,7 +100,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return;
             }
 
-            ReplicatedTableConfiguredTable table = tableList.Find(e => viewName.Equals(e.ViewName, StringComparison.OrdinalIgnoreCase));
+            ReplicatedTableConfiguredTable table = tableList.Find(e => e.IsViewReferenced(viewName));
             if (table != null)
             {
                 var msg = string.Format("View:\'{0}\' is referenced by table:\'{1}\'! First, delete the table then the view.",
@@ -108,6 +112,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             viewMap.Remove(viewName);
         }
 
+        public int GetViewSize()
+        {
+            return viewMap.Count;
+        }
+
         private void ThrowIfViewIsNotValid(string viewName, ReplicatedTableConfigurationStore config)
         {
             if (config.ReplicaChain == null || config.ReplicaChain.Any(replica => replica == null))
@@ -116,65 +125,29 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new Exception(msg);
             }
 
-            List<ReplicaInfo> chainList = config.GetCurrentReplicaChain();
-            if (chainList.Any())
+            config.ThrowIfChainIsNotValid(viewName);
+        }
+
+        private void ThrowIfViewBreaksTableConstraint(string viewName, ReplicatedTableConfigurationStore config)
+        {
+            foreach (ReplicatedTableConfiguredTable table in tableList)
             {
-                /* RULE 1:
-                 * =======
-                 * Read replicas rule:
-                 *  - [R] replicas are contiguous from Tail backwards
-                 *  - [R] replica count >= 1
-                 */
-                string readPattern = "^W*R+$";
-
-                /* RULE 2:
-                 * =======
-                 * Write replicas rule:
-                 *  - [W] replicas are contiguous from Head onwards
-                 *  - [W] replica count = 0 or = ChainLength
-                 */
-                string writePattern = "^((R+)|(W+))$";
-
-                // Get replica sequences
-                string readSeq = "";
-                string writeSeq = "";
-
-                foreach (var replica in chainList)
+                if (table.ConvertToRTable == false || !table.IsViewReferenced(viewName))
                 {
-                    // Read sequence:
-                    if (replica.IsReadable())
-                    {
-                        readSeq += "R";
-                    }
-                    else
-                    {
-                        readSeq += "W";
-                    }
-
-                    // Write sequence:
-                    if (replica.IsWritable())
-                    {
-                        writeSeq += "W";
-                    }
-                    else
-                    {
-                        writeSeq += "R";
-                    }
+                    continue;
                 }
 
-                // Verify RULE 1:
-                if (!Regex.IsMatch(readSeq, readPattern))
+                // Conversion mode: view shoud not have more than 1 replica
+                List<ReplicaInfo> chainList = config.GetCurrentReplicaChain();
+                if (chainList.Count <= 1)
                 {
-                    var msg = string.Format("View:\'{0}\' has invalid Read chain:\'{1}\' !!!", viewName, readSeq);
-                    throw new Exception(msg);
+                    continue;
                 }
 
-                // Verify RULE 2:
-                if (!Regex.IsMatch(writeSeq, writePattern))
-                {
-                    var msg = string.Format("View:\'{0}\' has invalid Write chain:\'{1}\' !!!", viewName, writeSeq);
-                    throw new Exception(msg);
-                }
+                var msg = string.Format("Table:\'{0}\' should not have a view:\'{1}\' with more than 1 replica since it is in Conversion mode!",
+                                        table.TableName,
+                                        viewName);
+                throw new Exception(msg);
             }
         }
 
@@ -194,8 +167,17 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("TableName");
             }
 
-            // If pointing a view, then the view must exist ?
+            // 0 - This to avoid handling corner cases. If Partitioning is disabled why bother with the partition view map ?
+            //     => simply enforce it is null so no extra validation is performed.
+            ThrowIfPartitioningIsDisabledAndPartitionViewIsConfigured(config);
+
+            // 1 - If pointing a view, then the view must exist ?
             ThrowIfViewIsMissing(config);
+            ThrowIfAnyPartitionViewIsMissing(config);
+
+            // 2 - If table is in ConvertToRTable mode then any referenced view should have no more than 1 replica
+            ThrowIfViewHasManyReplicasInConversionMode(config);
+            ThrowIfAnyPartitionViewHasManyReplicasInConversionMode(config);
 
             if (config.UseAsDefault == true)
             {
@@ -230,6 +212,13 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             configuredTable = null;
 
+            if (string.IsNullOrEmpty(tableName))
+            {
+                // we may have a default rule configured for any table,
+                // but consider "no-name" as false.
+                return false;
+            }
+
             ReplicatedTableConfiguredTable config = GetTable(tableName) ?? GetDefaultConfiguredTable();
 
             // Neither explicit config, nor default config
@@ -238,8 +227,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return false;
             }
 
-            // Placeholder config i.e. a config with No View
-            if (string.IsNullOrEmpty(config.ViewName))
+            if (config.IsAnyViewNullOrEmpty())
             {
                 return false;
             }
@@ -256,6 +244,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             tableList.RemoveAll(e => tableName.Equals(e.TableName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        public int GetTableSize()
+        {
+            return tableList.Count;
         }
 
         private void ThrowIfViewIsMissing(ReplicatedTableConfiguredTable config)
@@ -275,6 +268,123 @@ namespace Microsoft.Azure.Toolkit.Replication
                                     config.ViewName);
             throw new Exception(msg);
         }
+
+        private void ThrowIfAnyPartitionViewIsMissing(ReplicatedTableConfiguredTable config)
+        {
+            // - no default view configured
+            if (string.IsNullOrEmpty(config.ViewName))
+            {
+                /*
+                 * Key = "" - View = ""         => Ignore
+                 * Key = "" - View = "viewName" => Ignore
+                 */
+                if (config.PartitionsToViewMap == null ||
+                    config.PartitionsToViewMap.All(x => string.IsNullOrEmpty(x.Key)))
+                {
+                    return;
+                }
+
+                /*
+                 * Key = "X" - View = ""         => Don't allow
+                 * Key = "Y" - View = "viewName" => Don't allow
+                 */
+                var msg = string.Format("Table:\'{0}\' can't have a partition view but no default view.", config.TableName);
+                throw new Exception(msg);
+            }
+
+            // We have a default view ...
+            // we assume it is configured, and therefore no need to re-check it here.
+
+            if (config.PartitionsToViewMap == null)
+            {
+                return;
+            }
+
+            /*
+             * Key = "X" - View = ""         => Error
+             * Key = "Y" - View = "viewName" => 'viewName' has to exist
+             */
+            foreach (var entry in config.PartitionsToViewMap.Where(e => !string.IsNullOrEmpty(e.Key)))
+            {
+                string viewName = entry.Value;
+
+                // the partition view has to exist
+                if (GetView(viewName) == null)
+                {
+                    var msg = string.Format("Table:\'{0}\' refers a missing partition view:\'{1}\'! First, create the view and then configure the table.",
+                                            config.TableName,
+                                            viewName);
+                    throw new Exception(msg);
+                }
+            }
+        }
+
+        private void ThrowIfViewHasManyReplicasInConversionMode(ReplicatedTableConfiguredTable config)
+        {
+            if (config.ConvertToRTable == false || string.IsNullOrEmpty(config.ViewName))
+            {
+                return;
+            }
+
+            ReplicatedTableConfigurationStore viewConfig = GetView(config.ViewName);
+            // Assert (viewConfig != null)
+
+            // In Conversion mode, view should not have more than 1 replica
+            List<ReplicaInfo> chainList = viewConfig.GetCurrentReplicaChain();
+            if (chainList.Count <= 1)
+            {
+                return;
+            }
+
+            var msg = string.Format("Table:\'{0}\' refers a view:\'{1}\' with more than 1 replica while in Conversion mode!",
+                                    config.TableName,
+                                    config.ViewName);
+            throw new Exception(msg);
+        }
+
+        private void ThrowIfAnyPartitionViewHasManyReplicasInConversionMode(ReplicatedTableConfiguredTable config)
+        {
+            if (config.ConvertToRTable == false || config.PartitionsToViewMap == null)
+            {
+                return;
+            }
+
+            /*
+             * Key = "" - View = ""          => Ignore
+             * Key = "" - View = "viewName"  => Ignore
+             * Key = "X" - View = ""         => Should never happen (already tken care by the flow)
+             * Key = "Y" - View = "viewName" => 'viewName' can't have more than 1 replica
+             */
+            foreach (var entry in config.PartitionsToViewMap.Where(e => !string.IsNullOrEmpty(e.Key)))
+            {
+                string viewName = entry.Value;
+
+                ReplicatedTableConfigurationStore viewConfig = GetView(viewName);
+                // Assert (viewConfig != null)
+
+                // In Conversion mode, view should not have more than 1 replica
+                List<ReplicaInfo> chainList = viewConfig.GetCurrentReplicaChain();
+                if (chainList.Count <= 1)
+                {
+                    continue;
+                }
+
+                var msg = string.Format("Table:\'{0}\' refers a partition view:\'{1}\' with more than 1 replica while in Conversion mode!",
+                                        config.TableName,
+                                        viewName);
+                throw new Exception(msg);
+            }
+        }
+
+        private void ThrowIfPartitioningIsDisabledAndPartitionViewIsConfigured(ReplicatedTableConfiguredTable config)
+        {
+            if (string.IsNullOrEmpty(config.PartitionOnProperty) && config.PartitionsToViewMap != null)
+            {
+                var msg = string.Format("Table:\'{0}\' can't have a partition view while partitioning is disabled!", config.TableName);
+                throw new Exception(msg);
+            }
+        }
+
 
         /*
          * Helpers ...
@@ -330,7 +440,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             /*
              * 2 - Tables config validation
              */
-
             // - Enforce tableList not null
             if (tableList == null)
             {
@@ -352,20 +461,78 @@ namespace Microsoft.Azure.Toolkit.Replication
                     throw new Exception(msg);
                 }
 
-                // - Enforce tables refering existing views
+                // Enforce that:
                 tableList.TrueForAll(cfg =>
                 {
+                    // 0 - This to avoid handling corner cases. If Partitioning is disabled why bother with the partition view map ?
+                    //     => simply enforce it is null so no extra validation is performed.
+                    ThrowIfPartitioningIsDisabledAndPartitionViewIsConfigured(cfg);
+
+                    // 1 - each table refers an existing view
                     ThrowIfViewIsMissing(cfg);
+                    ThrowIfAnyPartitionViewIsMissing(cfg);
+
+                    // 2 - and, each table in ConvertToRTable mode has no more than one replica
+                    ThrowIfViewHasManyReplicasInConversionMode(cfg);
+                    ThrowIfAnyPartitionViewHasManyReplicasInConversionMode(cfg);
                     return true;
                 });
 
                 // - Enforce no more than 1 default configured table (rule)
                 if (tableList.Count(cfg => cfg.UseAsDefault) > 1)
                 {
-                    var msg = string.Format("Can't have more than 1 configured table as a default!");
+                    string msg = "Can't have more than 1 configured table as a default!";
                     throw new Exception(msg);
                 }
+            }
+        }
 
+        internal protected void MoveReplicaToHeadAndSetViewToReadOnly(string storageAccountName)
+        {
+            // Assert (storageAccountName != null)
+
+            foreach (var entry in viewMap)
+            {
+                var viewName = entry.Key;
+                var viewConf = entry.Value;
+
+                viewConf.MoveReplicaToHeadAndSetViewToReadOnly(viewName, storageAccountName);
+            }
+        }
+
+        internal protected void EnableWriteOnReplicas(string storageAccountName)
+        {
+            // Assert (storageAccountName != null)
+
+            foreach (var entry in viewMap)
+            {
+                var viewName = entry.Key;
+                var viewConf = entry.Value;
+
+                viewConf.EnableWriteOnReplicas(viewName, storageAccountName);
+
+                // Resulting view should not break any existing constraint.
+                ThrowIfViewBreaksTableConstraint(viewName, viewConf);
+            }
+        }
+
+        internal protected void EnableReadWriteOnReplicas(string storageAccountName, List<string> viewsToSkip)
+        {
+            // Assert (storageAccountName != null)
+            // Assert viewsToSkip ! null
+
+            foreach (var entry in viewMap)
+            {
+                var viewName = entry.Key;
+                var viewConf = entry.Value;
+
+                if (viewsToSkip.Any(v => v == viewName))
+                {
+                    // skip view
+                    continue;
+                }
+
+                viewConf.EnableReadWriteOnReplica(viewName, storageAccountName);
             }
         }
 

@@ -25,8 +25,6 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Collections.Generic;
     using System.Linq;
     using System.Security;
-    using System.Threading;
-    using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Blob;
     using Microsoft.WindowsAzure.Storage.Table;
 
@@ -36,13 +34,14 @@ namespace Microsoft.Azure.Toolkit.Replication
         private List<ConfigurationStoreLocationInfo> blobLocations;
         private bool useHttps;
         private Dictionary<string, CloudBlockBlob> blobs = new Dictionary<string, CloudBlockBlob>();
-        private Dictionary<string, SecureString> connectionStringMap = null;
         private readonly IReplicatedTableConfigurationParser blobParser;
         private Dictionary<string, View> viewMap = new Dictionary<string, View>();
         private Dictionary<string, ReplicatedTableConfiguredTable> tableMap = new Dictionary<string, ReplicatedTableConfiguredTable>();
         private ReplicatedTableConfiguredTable defaultConfiguredRule = null;
         private Guid currentRunningConfigId = Guid.Empty;
 
+        private readonly object connectionStringLock = new object();
+        private Dictionary<string, SecureString> connectionStringMap = null;
         private Action<ReplicaInfo> SetConnectionStringStrategy;
 
         /// <summary>
@@ -167,11 +166,19 @@ namespace Microsoft.Azure.Toolkit.Replication
             List<ReplicatedTableConfiguredTable> tableConfigList;
             int leaseDuration;
             Guid configId;
+            List<View> views;
 
-            List<View> views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), SetConnectionStringStrategy, out tableConfigList, out leaseDuration, out configId);
-            if (views == null)
+            // Lock because both SetConnectionStringStrategy and connectionStringMap can be updated OOB!
+            lock (connectionStringLock)
             {
-                return;
+                DateTime startTime = DateTime.UtcNow;
+                views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.SetConnectionStringStrategy, out tableConfigList, out leaseDuration, out configId);
+                ReplicatedTableLogger.LogInformational("ParseBlob took {0}", DateTime.UtcNow - startTime);
+
+                if (views == null)
+                {
+                    return;
+                }
             }
 
             lock (this)
@@ -268,7 +275,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             set
             {
-                lock (this)
+                lock (connectionStringLock)
                 {
                     connectionStringMap = value;
 

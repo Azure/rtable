@@ -52,7 +52,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             ReplicatedTableConfiguration configuration;
             List<string> eTags;
 
-            ReplicatedTableQuorumReadResult result = CloudBlobHelpers.TryReadBlobQuorum(
+            ReplicatedTableQuorumReadResult result = CloudBlobHelpers.TryReadBlobQuorumFast(
                                                                     blobs,
                                                                     out configuration,
                                                                     out eTags,
@@ -84,6 +84,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 if (view.IsEmpty)
                 {
+                    ReplicatedTableLogger.LogError("ViewName={0} is empty, skipping ...", view.Name);
                     continue;
                 }
 
@@ -99,6 +100,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             if (!viewList.Any())
             {
+                ReplicatedTableLogger.LogError("Config has no active Views !");
                 return null;
             }
 

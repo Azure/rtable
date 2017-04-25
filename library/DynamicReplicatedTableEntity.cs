@@ -211,13 +211,13 @@ namespace Microsoft.Azure.Toolkit.Replication
             // Write ReplicatedTable meta data
             Dictionary<string, EntityProperty> prop = new Dictionary<string, EntityProperty>(Properties);
 
-            prop.Add("_rtable_RowLock", new EntityProperty((bool?)_rtable_RowLock));
-            prop.Add("_rtable_Version", new EntityProperty((long?)_rtable_Version));
-            prop.Add("_rtable_Tombstone", new EntityProperty((bool?)_rtable_Tombstone));
-            prop.Add("_rtable_ViewId", new EntityProperty((long?)_rtable_ViewId));
-            prop.Add("_rtable_Operation", new EntityProperty((string)_rtable_Operation));
-            prop.Add("_rtable_BatchId", new EntityProperty((Guid?)_rtable_BatchId));
-            prop.Add("_rtable_LockAcquisition", new EntityProperty((DateTimeOffset)_rtable_LockAcquisition));
+            prop["_rtable_RowLock"] = new EntityProperty((bool?)_rtable_RowLock);
+            prop["_rtable_Version"] = new EntityProperty((long?)_rtable_Version);
+            prop["_rtable_Tombstone"] = new EntityProperty((bool?)_rtable_Tombstone);
+            prop["_rtable_ViewId"] = new EntityProperty((long?)_rtable_ViewId);
+            prop["_rtable_Operation"] = new EntityProperty((string)_rtable_Operation);
+            prop["_rtable_BatchId"] = new EntityProperty((Guid?)_rtable_BatchId);
+            prop["_rtable_LockAcquisition"] = new EntityProperty((DateTimeOffset)_rtable_LockAcquisition);
 
             return prop;
         }

@@ -1,0 +1,19 @@
+{
+    'ConvertXStoreTableMode': true,
+    'LeaseDuration': 60,
+    'ReadViewHeadIndex': 1,
+    'ReplicaChain': [
+        {
+            'StorageAccountKey': 'AccKey1',
+            'StorageAccountName': 'AccName1',
+            'ViewInWhichAddedToChain': 1
+        },
+        {
+            'StorageAccountKey': 'AccKey2',
+            'StorageAccountName': 'AccName2',
+            'ViewInWhichAddedToChain': 1
+        }
+    ],
+    'Timestamp': '/Date(1460152261966)/',
+    'ViewId': 58
+}
