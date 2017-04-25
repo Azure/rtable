@@ -30,6 +30,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Storage.Table;
     using System.Threading.Tasks;
+    using System.Threading;
 
     public class ReplicatedTable : IReplicatedTable
     {
@@ -1150,7 +1151,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             CloudTableClient tableClient = txnView[txnView.WriteHeadIndex];
-            row.ETag = (row.ETag != "*") ? retrievedResult.Etag : row.ETag;
+            row.ETag = retrievedResult.Etag;
             row._rtable_RowLock = true;
             row._rtable_LockAcquisition = DateTime.UtcNow;
             row._rtable_Version = currentRow._rtable_Version + 1;
@@ -1291,32 +1292,57 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrReplace);
-            View txnView = CurrentView;
-            ValidateTxnView(txnView);
+            TableResult result;
 
-            TableResult retrievedResult = FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, false);
+            //
+            // InsertOrReplace would normally not fail due to a conflict.
+            // However, RTable can return a conflict because it needs to enforce strict
+            // ordering of write operations.
+            // if the operation replace returns a conflict, we will retry the operation up to 
+            // five times. 
+            //
 
-            if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
+            int retryLimit = 5;
+
+            do
             {
-                // Row is not present at the head, insert the row
-                TableResult insertResult = InsertInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
-                if (insertResult == null)
+                if (retryLimit-- < 5)
                 {
-                    return null;
+                    // if this is second try or later, sleep until the conflict is resolved
+                    Thread.Sleep(new Random().Next(50, 150));
                 }
 
-                if (insertResult.HttpStatusCode != (int) HttpStatusCode.Conflict)
+                View txnView = CurrentView;
+                ValidateTxnView(txnView);
+                TableResult retrievedResult = FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, false);
+
+                if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
                 {
-                    return insertResult;
+                    // Row is not present at the head, insert the row
+                    TableResult insertResult = InsertInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
+                    if (insertResult == null)
+                    {
+                        return null;
+                    }
+
+                    if (insertResult.HttpStatusCode != (int)HttpStatusCode.Conflict)
+                    {
+                        return insertResult;
+                    }
+
+                    // Got a conflict at insert, move on with a replace
+                    retrievedResult = null;
                 }
 
-                // Got a conflict at insert, move on with a replace
-                retrievedResult = null;
-            }
+                // Row is present at the replica, replace the row
+                row.ETag = "*";
+                result = ReplaceInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
 
-            // Row is present at the replica, replace the row
-            row.ETag = "*";
-            return ReplaceInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
+            } while (retryLimit > 0 &&
+                result != null &&
+                result.HttpStatusCode == (int)HttpStatusCode.Conflict);
+
+            return result;
         }
 
 
