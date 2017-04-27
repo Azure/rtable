@@ -48,7 +48,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         private const string JobId = "jobId-RandomTableOperationTest";
         private const string OriginalMessage = "message";
 
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
             this.LoadTestConfiguration();
@@ -76,7 +76,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.PerformInsertOperationAndValidate(JobType, JobId, OriginalMessage);
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();

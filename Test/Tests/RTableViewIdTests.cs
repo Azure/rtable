@@ -39,12 +39,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     /// Then, try to call some API with a new viewId, which may be smaller or larger than the original viewId.
     /// </summary>
     [TestFixture]
+    [Parallelizable(ParallelScope.None)]
     public class RTableViewIdTests : HttpManglerTestBase
     {
         private string tableName;
         List<ReplicaInfo> replicas = new List<ReplicaInfo>();
 
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {            
             this.LoadTestConfiguration();
@@ -58,7 +59,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();

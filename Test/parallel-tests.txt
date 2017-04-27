@@ -1,10 +1,13 @@
-Microsoft.Azure.Toolkit.Replication.Test.RTableConfigurationServiceTests
-Microsoft.Azure.Toolkit.Replication.Test.ConvertXStoreTableAPITests
 Microsoft.Azure.Toolkit.Replication.Test.ConvertXStoreTableOperationTests
 Microsoft.Azure.Toolkit.Replication.Test.RepairRTableTests
+Microsoft.Azure.Toolkit.Replication.Test.ReplicaInfoTest
+Microsoft.Azure.Toolkit.Replication.Test.ReplicatedTableConfigurationStoreTest
+Microsoft.Azure.Toolkit.Replication.Test.ReplicatedTableConfigurationTest
+Microsoft.Azure.Toolkit.Replication.Test.ReplicatedTableConfiguredTableTest
 Microsoft.Azure.Toolkit.Replication.Test.RTableBatchOperationTests
 Microsoft.Azure.Toolkit.Replication.Test.RTableConfigurationServiceTests
 Microsoft.Azure.Toolkit.Replication.Test.RTableCreateTableTests
+Microsoft.Azure.Toolkit.Replication.Test.RTableCRUDPerfTests
 Microsoft.Azure.Toolkit.Replication.Test.RTableCRUDUnitTests
 Microsoft.Azure.Toolkit.Replication.Test.RTableQueryableTests
 Microsoft.Azure.Toolkit.Replication.Test.RTableQueryGenericAdditionalTests

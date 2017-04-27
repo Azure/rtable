@@ -66,7 +66,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <summary>
         /// Call this helper function to set up RTable before running any tests.
         /// </summary>
-        protected void TestFixtureSetupInternal()
+        protected void OneTimeSetUpInternal()
         {
             this.LoadTestConfiguration();
             string tableName = this.GenerateRandomTableName();

@@ -1,4 +1,5 @@
-Microsoft.Azure.Toolkit.Replication.Test.RTableViewIdTests
 Microsoft.Azure.Toolkit.Replication.Test.DelayTests
+Microsoft.Azure.Toolkit.Replication.Test.RTableViewIdTests
 Microsoft.Azure.Toolkit.Replication.Test.ShortOutageTests
 Microsoft.Azure.Toolkit.Replication.Test.ThrottlingTests
+Microsoft.Azure.Toolkit.Replication.Test.ViewChangeTests

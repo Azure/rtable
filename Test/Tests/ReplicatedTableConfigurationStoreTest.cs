@@ -40,12 +40,12 @@
     [TestFixture]
     public class ReplicatedTableConfigurationStoreTest
     {
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
         }

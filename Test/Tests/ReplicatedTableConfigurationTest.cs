@@ -30,13 +30,13 @@
     [TestFixture]
     public class ReplicatedTableConfigurationTest : RTableLibraryTestBase
     {
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
             LoadTestConfiguration();
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
         }

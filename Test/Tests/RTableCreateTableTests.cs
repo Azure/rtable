@@ -26,7 +26,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
     public class RTableCreateTableTests : RTableLibraryTestBase
     {
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
             this.LoadTestConfiguration();

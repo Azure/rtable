@@ -38,15 +38,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     /// The scenario is this: 
     /// </summary>
     [TestFixture]
+    [Parallelizable(ParallelScope.None)]
     public class ThrottlingTests : HttpManglerTestBase
     {
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {                    
-            this.TestFixtureSetupInternal();
+            this.OneTimeSetUpInternal();
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();

@@ -45,7 +45,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private ReplicatedTable repComplexTable = null;
 
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
             this.LoadTestConfiguration();
@@ -115,7 +115,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.repComplexTable.ExecuteBatch(complexBatch);            
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();
