@@ -47,15 +47,23 @@ namespace Microsoft.Azure.Toolkit.Replication
         [DataMember(IsRequired = true, Order = 3)]
         internal protected Guid Id { get; set; }
 
+        [DataMember(IsRequired = false, Order = 4)]
+        internal protected bool Instrumentation { get; set; }
+
         public ReplicatedTableConfiguration()
         {
             Id = Guid.NewGuid();
             LeaseDuration = Constants.LeaseDurationInSec;
         }
 
-        override public Guid GetConfigId()
+        public override Guid GetConfigId()
         {
             return Id;
+        }
+
+        public bool GetInstrumentationFlag()
+        {
+            return Instrumentation;
         }
 
         /*

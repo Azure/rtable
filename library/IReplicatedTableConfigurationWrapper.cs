@@ -36,5 +36,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         bool IsViewStable();
 
         bool IsConvertToRTableMode();
+
+        bool IsIntrumentationEnabled();
     }
 }

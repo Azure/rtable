@@ -110,6 +110,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
+        public bool IsIntrumentationEnabled()
+        {
+            return this.configManager.IsIntrumenationEnabled();
+        }
+
         public void UpdateConfiguration(List<ReplicaInfo> replicaChain, int readViewHeadIndex, bool convertXStoreTableMode = false, long viewId = 0)
         {
             View currentView = GetWriteView();

@@ -37,12 +37,14 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="tableConfigList"></param>
         /// <param name="leaseDuration"></param>
         /// <param name="configId"></param>
+        /// <param name="instrumentation"></param>
         /// <returns></returns>
         List<View> ParseBlob(
                         List<CloudBlockBlob> blobs,
                         Action<ReplicaInfo> SetConnectionString,
                         out List<ReplicatedTableConfiguredTable> tableConfigList,
                         out int leaseDuration,
-                        out Guid configId);
+                        out Guid configId,
+                        out bool instrumentation);
     }
 }

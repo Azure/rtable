@@ -39,6 +39,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         private Dictionary<string, ReplicatedTableConfiguredTable> tableMap = new Dictionary<string, ReplicatedTableConfiguredTable>();
         private ReplicatedTableConfiguredTable defaultConfiguredRule = null;
         private Guid currentRunningConfigId = Guid.Empty;
+        private volatile bool instrumentation = false;
 
         private readonly object connectionStringLock = new object();
         private Dictionary<string, SecureString> connectionStringMap = null;
@@ -167,12 +168,13 @@ namespace Microsoft.Azure.Toolkit.Replication
             int leaseDuration;
             Guid configId;
             List<View> views;
+            bool instrumentationFlag;
 
             // Lock because both SetConnectionStringStrategy and connectionStringMap can be updated OOB!
             lock (connectionStringLock)
             {
                 DateTime startTime = DateTime.UtcNow;
-                views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.SetConnectionStringStrategy, out tableConfigList, out leaseDuration, out configId);
+                views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.SetConnectionStringStrategy, out tableConfigList, out leaseDuration, out configId, out instrumentationFlag);
                 ReplicatedTableLogger.LogInformational("ParseBlob took {0}", DateTime.UtcNow - startTime);
 
                 if (views == null)
@@ -223,6 +225,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // - Update current config Id
                 currentRunningConfigId = configId;
+
+                // update instrumentation flag
+                this.instrumentation = instrumentationFlag;
 
                 UpdateTimer();
             }
@@ -321,6 +326,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             return !view.IsEmpty && view.IsStable;
         }
 
+        internal protected bool IsIntrumenationEnabled()
+        {
+            // Not adding lock here as it is not critical to add lock here
+            return instrumentation;
+        }
 
         /*
          * Configured tables functions:
@@ -339,7 +349,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     return this.tableMap[tableName];
                 }
 
-                return defaultConfiguredRule;
+                return defaultConfiguredRule;                
             }
         }
 
