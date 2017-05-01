@@ -24,7 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System;
     using System.Threading;
 
-    public class RetryPolicy
+    public static class RetryPolicy
     {
         /// <summary>
         /// Returns a behavior that

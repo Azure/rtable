@@ -111,7 +111,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             ReplicatedTableLogger.LogVerbose("CreateIfNotExists");
 
-            using (new StopWatchInternal("Table create if not exists ", this._configurationWrapper, this.TableName))
+            using (new StopWatchInternal(this.TableName, "CreateIfNotExists", this._configurationWrapper))
             {
                 View txnView = CurrentView;
                 ValidateTxnView(txnView, false);
@@ -143,7 +143,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         //        : false if any replica doesnt exist        
         public bool Exists()
         {
-            using (new StopWatchInternal("Table exists check ", this._configurationWrapper, this.TableName))
+            using (new StopWatchInternal(this.TableName, "Exists", this._configurationWrapper))
             {
                 View txnView = CurrentView;
                 ValidateTxnView(txnView, false);
@@ -169,7 +169,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         // It sets the number of replicas deleted for the caller to check.
         public bool DeleteIfExists()
         {
-            using (new StopWatchInternal("Table delete if exists ", _configurationWrapper,this.TableName))
+            using (new StopWatchInternal(this.TableName, "DeleteIfExists", _configurationWrapper))
             {
                 View txnView = CurrentView;
                 ValidateTxnView(txnView, false);
@@ -218,8 +218,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             TableOperationType opTypeValue = GetOpType(operation);
 
-            using (new StopWatchInternal("Table Operation execution " + opTypeValue.ToString() +
-                                         " ", this._configurationWrapper, this.TableName))
+            using (new StopWatchInternal(this.TableName, opTypeValue.ToString(), this._configurationWrapper))
             {
                 switch (opTypeValue)
                 {
@@ -644,9 +643,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new InvalidOperationException("Cannot execute an empty batch operation");
             }
 
-            using (
-                new StopWatchInternal("Execute Batch Operation with " + batch.Count + " operations",
-                    this._configurationWrapper, this.TableName))
+            using (new StopWatchInternal(this.TableName, "ExecuteBatch (size=" + batch.Count + ")", this._configurationWrapper))
             {
 
                 //   Extract operations from the batch and transform them to ReplicatedTable operations.
@@ -1125,8 +1122,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             TableResult result;
             ReplicatedTableEntity currentRow = null;
-            using (
-                new StopWatchInternal("Clutter before actual write starts", this._configurationWrapper, this.TableName))
+            using (new StopWatchInternal(this.TableName, "ReplaceInternal (internal)", this._configurationWrapper))
             {
                 bool checkETag = false;
                 if (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace) &&
@@ -1505,7 +1501,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
             where TElement : ITableEntity, new()
         {
-            using (new StopWatchInternal("Execute Query :", this._configurationWrapper, this.TableName))
+            using (new StopWatchInternal(this.TableName, "ExecuteQuery", this._configurationWrapper))
             {
                 IEnumerable<TElement> rows = Enumerable.Empty<TElement>();
 
@@ -1526,7 +1522,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         public TableQuery<TElement> CreateQuery<TElement>()
                 where TElement : ITableEntity, new()
         {
-            using (new StopWatchInternal("Create Query ", this._configurationWrapper, this.TableName))
+            using (new StopWatchInternal(this.TableName, "CreateQuery", this._configurationWrapper))
             {
                 TableQuery<TElement> query = new TableQuery<TElement>();
 
@@ -2175,7 +2171,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         public ReconfigurationStatus RepairTable(int viewIdToRecoverFrom, TableBatchOperation unfinishedOps,
             long maxBatchSize = 100L, RepairRowDelegate filter = null)
         {
-            using (new StopWatchInternal("Repair Table ", this._configurationWrapper, this.TableName))
+            using (new StopWatchInternal(this.TableName, "RepairTable", this._configurationWrapper))
             {
                 // By default all rows are taken
                 if (filter == null)
@@ -2371,7 +2367,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <returns></returns>
         public TableResult RepairRow(string partitionKey, string rowKey, IReplicatedTableEntity existingRow)
         {
-            using(new StopWatchInternal("Repair Row ", _configurationWrapper, this.TableName))
+            using (new StopWatchInternal(this.TableName, "RepairRow", _configurationWrapper))
             {
                 View txnView = CurrentView;
                 ValidateTxnView(txnView);

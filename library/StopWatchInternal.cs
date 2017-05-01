@@ -26,17 +26,19 @@ namespace Microsoft.Azure.Toolkit.Replication
     public class StopWatchInternal : IDisposable
     {
         private readonly Stopwatch _stopWatch;
+        private readonly string _tableName;
         private readonly string _context;
 
         private bool _disposed = false;
 
-        public StopWatchInternal(string context, IReplicatedTableConfigurationWrapper replicatedTableConfigurationWrapper, string tableName)
+        public StopWatchInternal(string tableName, string context, IReplicatedTableConfigurationWrapper replicatedTableConfigurationWrapper)
         {
+            this._tableName = tableName;
             this._context = context;
 
             if (replicatedTableConfigurationWrapper.IsIntrumentationEnabled())
             {
-                ReplicatedTableLogger.LogVerbose("{0} started", context);
+                ReplicatedTableLogger.LogVerbose("[Instrumentation] {0}:{1} started", _tableName, _context);
 
                 _stopWatch = Stopwatch.StartNew();
             }
@@ -60,7 +62,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     _stopWatch.Stop();
 
-                    ReplicatedTableLogger.LogVerbose("[Instrumentation] {0} : {1} ms", _context, _stopWatch.ElapsedMilliseconds);
+                    ReplicatedTableLogger.LogVerbose("[Instrumentation] {0}:{1} took {2} ms", _tableName, _context, _stopWatch.ElapsedMilliseconds);
                 }
             }
 
