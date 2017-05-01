@@ -1342,17 +1342,13 @@ namespace Microsoft.Azure.Toolkit.Replication
             // five times.
             //
 
+            var rnd = new Random((int)DateTime.UtcNow.Ticks);
             int retryLimit = 10;
 
-            var rnd = new Random();
+            Func<bool> RetryIf = RetryPolicy.RetryWithDelayIf(() => rnd.Next(50, 150), () => --retryLimit > 0);
+
             do
             {
-                if (retryLimit-- < 10)
-                {
-                    // if this is second try or later, sleep until the conflict is resolved
-                    Thread.Sleep(rnd.Next(50, 150));
-                }
-
                 View txnView = CurrentView;
                 ValidateTxnView(txnView);
                 result = FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, false);
@@ -1369,9 +1365,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                     result = ReplaceInternal(txnView, operation, result, requestOptions, operationContext);
                 }
 
-            } while (retryLimit > 0 &&
-                     result != null &&
-                     (result.HttpStatusCode == (int) HttpStatusCode.Conflict || result.HttpStatusCode == (int) HttpStatusCode.PreconditionFailed));
+            } while (result != null &&
+                     (result.HttpStatusCode == (int) HttpStatusCode.Conflict || result.HttpStatusCode == (int) HttpStatusCode.PreconditionFailed) &&
+                     RetryIf());
 
             return result;
         }
