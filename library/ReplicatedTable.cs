@@ -1330,7 +1330,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         public TableResult InsertOrReplace(TableOperation operation, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
+            IReplicatedTableEntity row = (IReplicatedTableEntity) GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrReplace);
             TableResult result;
 
@@ -1338,49 +1338,40 @@ namespace Microsoft.Azure.Toolkit.Replication
             // InsertOrReplace would normally not fail due to a conflict.
             // However, RTable can return a conflict because it needs to enforce strict
             // ordering of write operations.
-            // if the operation replace returns a conflict, we will retry the operation up to 
-            // five times. 
+            // if the operation replace returns a conflict, we will retry the operation up to
+            // five times.
             //
 
-            int retryLimit = 5;
+            int retryLimit = 10;
 
+            var rnd = new Random();
             do
             {
-                if (retryLimit-- < 5)
+                if (retryLimit-- < 10)
                 {
                     // if this is second try or later, sleep until the conflict is resolved
-                    Thread.Sleep(new Random().Next(50, 150));
+                    Thread.Sleep(rnd.Next(50, 150));
                 }
 
                 View txnView = CurrentView;
                 ValidateTxnView(txnView);
-                TableResult retrievedResult = FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, false);
+                result = FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, false);
 
-                if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
+                if (result.HttpStatusCode == (int) HttpStatusCode.NotFound)
                 {
                     // Row is not present at the head, insert the row
-                    TableResult insertResult = InsertInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
-                    if (insertResult == null)
-                    {
-                        return null;
-                    }
-
-                    if (insertResult.HttpStatusCode != (int)HttpStatusCode.Conflict)
-                    {
-                        return insertResult;
-                    }
-
-                    // Got a conflict at insert, move on with a replace
-                    retrievedResult = null;
+                    result = InsertInternal(txnView, operation, result, requestOptions, operationContext);
+                }
+                else if (result.HttpStatusCode == (int) HttpStatusCode.OK)
+                {
+                    // Row is present at the replica, replace the row
+                    row.ETag = "*";
+                    result = ReplaceInternal(txnView, operation, result, requestOptions, operationContext);
                 }
 
-                // Row is present at the replica, replace the row
-                row.ETag = "*";
-                result = ReplaceInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
-
             } while (retryLimit > 0 &&
-                result != null &&
-                result.HttpStatusCode == (int)HttpStatusCode.Conflict);
+                     result != null &&
+                     (result.HttpStatusCode == (int) HttpStatusCode.Conflict || result.HttpStatusCode == (int) HttpStatusCode.PreconditionFailed));
 
             return result;
         }
@@ -1491,7 +1482,10 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     // If flush is successful, return the result from the head.
                     result = retrievedResult;
-                    if (virtualizeEtag) result.Etag = readRow._rtable_Version.ToString();
+                    if (virtualizeEtag)
+                    {
+                        result.Etag = readRow._rtable_Version.ToString();
+                    }
                 }
             }
             else

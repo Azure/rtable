@@ -395,6 +395,283 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         }
 
         /// <summary>
+        /// Call InsertOrReplace() API from 2 threads concurrently, before thread-1 commits to the head, thread-2 tries to lock the head
+        /// Thread-2 reads the head before thread-1 has locked it.
+        /// Thread-1 will succeed to commit
+        /// Thread-2 will succeed to commit, after retrying
+        /// </summary>
+        [Test(Description = "Call InsertOrReplace() API from 2 threads concurrently, before thread-1 commits to the head, thread-2 tries to lock the head")]
+        public void A00TwoInsertOrReplaceCallsConflictingOnTheHead()
+        {
+            this.rtableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(this.repTable);
+
+            string entityPartitionKey = "jobType-DelayInsertOrReplaceRowHeadTest";
+            string entityRowKey = "jobId-DelayInsertOrReplaceRowHeadTest";
+
+            this.ForceDeleteEntryFromStorageTablesDirectly(entityPartitionKey, entityRowKey);
+
+            // Insert one entry
+            Console.WriteLine("Inserting entry ...");
+            var entry = new SampleRTableEntity(entityPartitionKey, entityRowKey, "insert message");
+            this.rtableWrapper.InsertRow(entry);
+
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[0];
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            int delayInMs = 3000;
+            bool firstWritterInitiatingCommit = false;
+            bool secondWritterTriedLockingHead = false;
+
+            // Delay behavior
+            ProxyBehavior[] behaviors = new[]
+            {
+                // Writter-1 tampering
+                TamperBehaviors.TamperAllRequestsIf(
+                    (session =>
+                    {
+                        int iter = 0;
+
+                        // Signal Writter-2
+                        firstWritterInitiatingCommit = true;
+
+                        // Blobk commit to head ... until Writter-2 try to lock the head
+                        while (!secondWritterTriedLockingHead)
+                        {
+                            Console.WriteLine("Writter-1 waiting on Writter-2 to try to lock the Head (#{0})", iter);
+                            Thread.Sleep(delayInMs);
+
+                            if (++iter > 10)
+                            {
+                                break;
+                            }
+                        }
+                    }),
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Writter-1 committing to head
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"_rtable_Operation\":\"Replace\"") &&
+                            body.Contains("\"_rtable_RowLock\":false") &&
+                            body.Contains("\"Message\":\"upsert message 0\"")
+                        )
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    })),
+
+                // Writter-2 tampering
+                TamperBehaviors.TamperAllRequestsIf(
+                    (session =>
+                    {
+                        // Block till Writter-1 issues a commit to head
+                        while (!firstWritterInitiatingCommit)
+                        {
+                            Console.WriteLine("Writter-2 waiting on Writter-1 to issue a commit to head");
+                            Thread.Sleep(delayInMs);
+                        }
+                    }),
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Writter-2 locking the head
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"_rtable_Operation\":\"Replace\"") &&
+                            body.Contains("\"_rtable_RowLock\":true") &&
+                            body.Contains("\"Message\":\"upsert message 1\"")
+                        )
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    })),
+
+                // Delay Writter-2 lock-to-the-head's response, so Writter-1 can continue with its commit.
+                DelayBehaviors.DelayAllResponsesIf(
+                    delayInMs,
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Writter-2 locking the head response
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"_rtable_Operation\":\"Replace\"") &&
+                            body.Contains("\"_rtable_RowLock\":true") &&
+                            body.Contains("\"Message\":\"upsert message 1\"")
+                        )
+                        {
+                            // Signal Writter-1 so it can continue with commit to head
+                            secondWritterTriedLockingHead = true;
+                            return true;
+                        }
+
+                        return false;
+                    })),
+            };
+
+            // Launch 2 concurrent Upserts
+            var results = new TableResult[2];
+            using (new HttpMangler(false, behaviors))
+            {
+                Parallel.For(0, 2, (index) =>
+                {
+                    entry = new SampleRTableEntity(entityPartitionKey, entityRowKey, string.Format("upsert message {0}", index));
+
+                    try
+                    {
+                        var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+
+                        TableOperation operation = TableOperation.InsertOrReplace(entry);
+                        results[index] = table.Execute(operation);
+                    }
+                    catch (AggregateException ex)
+                    {
+                        Console.WriteLine(ex);
+                    }
+                });
+            }
+
+            // Writter-1 suceed?
+            Assert.AreEqual((int)HttpStatusCode.NoContent, results[0].HttpStatusCode, "Writter-1 expected to suceed!");
+
+            // Writter-2 suceeded?
+            Assert.AreEqual((int)HttpStatusCode.NoContent, results[1].HttpStatusCode, "Writter-2 expected to suceed!");
+
+            // Writter-2 upsert succeeded
+            SampleRTableEntity upsertedEntity = this.rtableWrapper.ReadEntity(entityPartitionKey, entityRowKey);
+            Assert.NotNull(upsertedEntity, "Writter-2 upsert succeeded");
+            Assert.AreEqual(upsertedEntity.Message, string.Format("upsert message {0}", 1), "Writter-2 upsert succeeded");
+        }
+
+        /// <summary>
+        /// Call InsertOrReplace() and Delete concurrently, Delete locks the head first
+        /// Delete will succeed
+        /// Then, InsertOrReplace succeeds, after retrying
+        /// </summary>
+        [Test(Description = "Call InsertOrReplace() and Delete concurrently, Delete locks the head first")]
+        public void A00InsertOrReplaceCallConflictingWithDeleteOnTheHead()
+        {
+            this.rtableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(this.repTable);
+
+            string entityPartitionKey = "jobType-DelayInsertOrReplaceWhileDelete";
+            string entityRowKey = "jobType-DelayInsertOrReplaceWhileDelete";
+
+            this.ForceDeleteEntryFromStorageTablesDirectly(entityPartitionKey, entityRowKey);
+
+            // Insert one entry
+            Console.WriteLine("Inserting entry ...");
+            var entry = new SampleRTableEntity(entityPartitionKey, entityRowKey, "insert message");
+            this.rtableWrapper.InsertRow(entry);
+
+            // 1 - Launch an Upsert task in wait mode ...
+            bool deleteLockedHead = false;
+
+            TableResult upsertResult = null;
+            var upsertTask = Task.Run(() =>
+            {
+                while (!deleteLockedHead)
+                {
+                    Thread.Sleep(5);
+                }
+
+                try
+                {
+                    entry = new SampleRTableEntity(entityPartitionKey, entityRowKey, "upsert message");
+                    var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+
+                    TableOperation upserOperation = TableOperation.InsertOrReplace(entry);
+
+                    Console.WriteLine("Upsert started ...");
+                    upsertResult = table.Execute(upserOperation);
+                    Console.WriteLine("Upsert completed with HttpStatus={0}", upsertResult == null ? "NULL" : upsertResult.HttpStatusCode.ToString());
+                }
+                catch (AggregateException ex)
+                {
+                    Console.WriteLine(ex);
+                }
+            });
+
+
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[0];
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            int delayInMs = 5;
+
+            // Delay behavior
+            ProxyBehavior[] behaviors = new[]
+            {
+                DelayBehaviors.DelayAllResponsesIf(
+                    delayInMs,
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        Console.WriteLine(body);
+
+                        // Delete locking the head response
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"_rtable_Operation\":\"Replace\"") &&
+                            body.Contains("\"_rtable_RowLock\":true") &&
+                            body.Contains("\"_rtable_Tombstone\":true"))
+                        {
+                            // Signal upsert we locked the head, so it can continue ...
+                            deleteLockedHead = true;
+                            return true;
+                        }
+
+                        return false;
+                    })),
+            };
+
+            // Launch a delete
+            using (new HttpMangler(false, behaviors))
+            {
+                try
+                {
+                    var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+
+                    // Retrieve entity
+                    TableOperation retrieveOperation = TableOperation.Retrieve<SampleRTableEntity>(entry.PartitionKey, entry.RowKey);
+                    TableResult retrieveResult = table.Execute(retrieveOperation);
+
+                    Assert.IsNotNull(retrieveResult, "retrieveResult = null");
+                    Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
+                    Assert.IsNotNull((SampleRTableEntity)retrieveResult.Result, "Retrieve: customer = null");
+
+
+                    // Delete entity
+                    TableOperation deleteOperation = TableOperation.Delete((SampleRTableEntity)retrieveResult.Result);
+                    TableResult deleteResult = table.Execute(deleteOperation);
+
+                    Assert.IsNotNull(deleteResult, "deleteResult = null");
+                    Assert.AreEqual((int)HttpStatusCode.NoContent, deleteResult.HttpStatusCode, "deleteResult.HttpStatusCode mismatch");
+                }
+                catch (AggregateException ex)
+                {
+                    Console.WriteLine(ex);
+                }
+            }
+
+            // wait on upsert to finish ...
+            upsertTask.Wait();
+
+            // Upsert suceeded?
+            Assert.AreEqual((int)HttpStatusCode.NoContent, upsertResult.HttpStatusCode, "Upsert expected to suceed!");
+            SampleRTableEntity upsertedEntity = this.rtableWrapper.ReadEntity(entityPartitionKey, entityRowKey);
+            Assert.NotNull(upsertedEntity, "upsert should succeed");
+            Assert.AreEqual(upsertedEntity.Message, "upsert message", "upsert should succeeded");
+        }
+
+        /// <summary>
         /// Execute an Update entity in a Replicated mode, which the chain is not stable.
         /// Before commit to the head is executed, a RepairRow happens.
         /// The RepairRow is a NOP since the entry has the right ViewId.
