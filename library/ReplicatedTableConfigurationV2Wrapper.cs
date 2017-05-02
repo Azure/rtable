@@ -72,5 +72,10 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             return this._service.ConvertToRTable(this._tableName);
         }
+
+        public bool IsIntrumentationEnabled()
+        {
+            return this._service.IsIntrumentationEnabled();
+        }
     }
 }

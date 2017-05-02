@@ -111,7 +111,9 @@
     <Compile Include="ReplicatedTableConfiguredTable.cs" />
     <Compile Include="ReplicatedTableV2.cs" />
     <Compile Include="ReplicatedTableWriteBlobResult.cs" />
+    <Compile Include="RetryPolicy.cs" />
     <Compile Include="SecureStringHelper.cs" />
+    <Compile Include="StopWatchInternal.cs" />
     <Compile Include="View.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -998,5 +998,28 @@
                 Assert.Fail("#Test2 - Received exception {0} while parsing {1}", ex.Message, configPath);
             }
         }
+
+        [Test(Description = "Testing Instrumentation Flag sent in the config")]
+        public void TestInstrumentationFlagV1()
+        {
+            var testConfigWithNoInstrumentation =
+                @"{'ConvertXStoreTableMode': true, 'LeaseDuration': 60, 'ReadViewHeadIndex': 1, 'ReplicaChain': '', 'Timestamp': '/Date(1460152261966)/', 'ViewId': 58}";
+            var conf = JsonStore<ReplicatedTableConfigurationStore>.Deserialize(testConfigWithNoInstrumentation); 
+            Assert.IsNotNull(conf);
+            Assert.AreEqual(false, conf.Instrumentation);
+
+
+            var testConfigWithInstrumentation =
+               @"{'ConvertXStoreTableMode': true, 'LeaseDuration': 60, 'ReadViewHeadIndex': 1, 'ReplicaChain': '', 'Timestamp': '/Date(1460152261966)/', 'ViewId': 58, 'Instrumentation': false}";
+            conf = JsonStore<ReplicatedTableConfigurationStore>.Deserialize(testConfigWithInstrumentation);
+            Assert.IsNotNull(conf);
+            Assert.AreEqual(false, conf.Instrumentation);
+
+            var testConfigWithInstrumentationAsTrue =
+               @"{'ConvertXStoreTableMode': true, 'LeaseDuration': 60, 'ReadViewHeadIndex': 1, 'ReplicaChain': '', 'Timestamp': '/Date(1460152261966)/', 'ViewId': 58, 'Instrumentation': true}";
+            conf = JsonStore<ReplicatedTableConfigurationStore>.Deserialize(testConfigWithInstrumentationAsTrue);
+            Assert.IsNotNull(conf);
+            Assert.AreEqual(true, conf.Instrumentation);
+        }
     }
 }

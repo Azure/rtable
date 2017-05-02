@@ -36,6 +36,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.Timestamp = DateTime.UtcNow;
             this.ViewId = 1; // minimum ViewId is 1.
             this.ReplicaChain = new List<ReplicaInfo>();
+            this.Instrumentation = false;
         }
 
         [DataMember(IsRequired = true)]
@@ -55,6 +56,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         [DataMember(IsRequired = true)]
         public DateTime Timestamp { get; set; }
+
+        [DataMember(IsRequired = false)]
+        public bool Instrumentation { get; set; }
 
         public override int GetHashCode()
         {
