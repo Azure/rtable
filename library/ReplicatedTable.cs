@@ -724,7 +724,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                     requestOptions, operationContext);
                 if (retrievedResult == null)
                 {
-                    // service unavailable
                     return null;
                 }
                 else if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.OK && retrievedResult.Result != null)
@@ -1648,6 +1647,27 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     return null;
                 }
+            }
+            catch (StorageException se)
+            {
+                ReplicatedTableLogger.LogError("Storage Exception: {0} from replicaIndex :{1}", se, index);
+                var innerException = se.InnerException as WebException;
+                if (innerException != null)
+                {
+                    var statusCode = ((HttpWebResponse) innerException.Response).StatusCode;
+                    switch (statusCode)
+                    {
+                        case HttpStatusCode.BadRequest:
+                        {
+                            throw se;
+                        }
+
+                        default:
+                            return null;
+                    }
+                }
+                return null;
+
             }
             catch (Exception e)
             {

@@ -106,6 +106,7 @@
     <Compile Include="RTableQueryableTests.cs" />
     <Compile Include="RTableQueryGenericAdditionalTests.cs" />
     <Compile Include="RTableQueryGenericTests.cs" />
+    <Compile Include="RTableRetrieveTests.cs" />
     <Compile Include="RTableStressTests.cs" />
     <Compile Include="RTableTestConfiguration.cs">
       <DependentUpon>RTableTestConfiguration.xsd</DependentUpon>
@@ -162,6 +163,9 @@
       <Project>{6EB781C5-6D91-48F0-8F79-EC1E4EDAAF7B}</Project>
       <Name>AzureStorageMangler</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
