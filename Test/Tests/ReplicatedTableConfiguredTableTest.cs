@@ -32,12 +32,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     [TestFixture]
     public class ReplicatedTableConfiguredTableTest
     {
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
         }

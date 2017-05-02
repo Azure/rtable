@@ -42,15 +42,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     /// In other words, the system can resume normal operation after a short outage.
     /// </summary>
     [TestFixture]
+    [Parallelizable(ParallelScope.None)]
     public class ShortOutageTests : HttpManglerTestBase
     {
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
-            this.TestFixtureSetupInternal();
+            this.OneTimeSetUpInternal();
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();

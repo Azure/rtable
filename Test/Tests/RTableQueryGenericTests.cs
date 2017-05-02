@@ -39,7 +39,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private CloudTable currentTable = null;
         
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
             this.LoadTestConfiguration();
@@ -73,7 +73,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
         
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();

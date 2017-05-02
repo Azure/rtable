@@ -42,7 +42,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     {    
         private List<string> entityNames = null;
 
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
             //
@@ -83,7 +83,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.True(this.configurationWrapper.IsConvertToRTableMode(), "Convert flag should be True");
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();

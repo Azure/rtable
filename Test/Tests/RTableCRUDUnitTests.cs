@@ -31,7 +31,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     [TestFixture]
     public class RTableCRUDUnitTests : RTableWrapperTestBase
     {
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
             this.LoadTestConfiguration();
@@ -40,7 +40,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.SetupRTableEnv(tableName, true, "", new List<int> { 0 });
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();

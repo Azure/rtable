@@ -39,15 +39,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     /// HttpMablger's Delay behavior is used in this set of tests. 
     /// </summary>
     [TestFixture]
+    [Parallelizable(ParallelScope.None)]
     public class DelayTests : HttpManglerTestBase
     {
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
-            this.TestFixtureSetupInternal();
+            this.OneTimeSetUpInternal();
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();

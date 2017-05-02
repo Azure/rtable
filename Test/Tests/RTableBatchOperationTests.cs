@@ -35,7 +35,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     public class RTableBatchOperationTests : RTableLibraryTestBase
     {
 
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
             this.LoadTestConfiguration();
@@ -43,7 +43,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.SetupRTableEnv(tableName);
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             base.DeleteAllRtableResources();

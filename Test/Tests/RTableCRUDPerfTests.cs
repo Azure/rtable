@@ -108,7 +108,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private List<CustomerEntity> entries = null;
 
-        [TestFixtureSetUp]
+        [OneTimeSetUp]
         public void TestFixtureSetup()
         {
             this.LoadTestConfiguration();
@@ -121,7 +121,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [TestFixtureTearDown]
+        [OneTimeTearDown]
         public void TestFixtureTearDown()
         {
             // nothing for now
