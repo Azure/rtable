@@ -1852,6 +1852,28 @@
             #endregion
         }
 
+        [Test(Description = "Testing Instrumentation Flag sent in the config")]
+        public void TestInstrumentationFlag()
+        {
+            var testConfigWithNoInstrumentation =
+                @"{'viewMap': null, 'tableList': null, 'LeaseDuration': 10, 'Id': '450a44a6-26fd-4ca2-89b1-32bf99af9248'}";
+            var conf = ReplicatedTableConfiguration.FromJson(testConfigWithNoInstrumentation);
+            Assert.IsNotNull(conf);
+            Assert.AreEqual(false, conf.GetInstrumentationFlag());        
+
+            var testConfigWithInstrumentation =
+               @"{'viewMap': null, 'tableList': null, 'LeaseDuration': 10, 'Id': '450a44a6-26fd-4ca2-89b1-32bf99af9248', 'Instrumentation': false}";
+            conf = ReplicatedTableConfiguration.FromJson(testConfigWithInstrumentation);
+            Assert.IsNotNull(conf);
+            Assert.AreEqual(false, conf.GetInstrumentationFlag());
+
+            var testConfigWithInstrumentationAsTrue =
+               @"{'viewMap': null, 'tableList': null, 'LeaseDuration': 10, 'Id': '450a44a6-26fd-4ca2-89b1-32bf99af9248', 'Instrumentation': true}";
+            conf = ReplicatedTableConfiguration.FromJson(testConfigWithInstrumentationAsTrue);
+            Assert.IsNotNull(conf);
+            Assert.AreEqual(true, conf.GetInstrumentationFlag());
+        }
+
         [Test(Description = "Test FromJson() with Partitioning feature")]
         public void TestFromJsonWithPartitioningFeature()
         {

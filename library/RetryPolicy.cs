@@ -22,49 +22,30 @@
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
+    using System.Threading;
 
-    public class ReplicatedTableConfigurationWrapper : IReplicatedTableConfigurationWrapper
+    public static class RetryPolicy
     {
-        private readonly ReplicatedTableConfigurationService _service;
-
-        public ReplicatedTableConfigurationWrapper(ReplicatedTableConfigurationService service)
+        /// <summary>
+        /// Returns a behavior that
+        ///     - returns true after a 'delay' if the specified 'condition' is true.
+        ///     - returns false if the specified 'condition' is false.
+        /// </summary>
+        /// <param name="delay">not null delay function</param>
+        /// <param name="condition">not null condition function</param>
+        /// <returns>A behavior.</returns>
+        public static Func<bool> RetryWithDelayIf(Func<int> delay, Func<bool> condition)
         {
-            this._service = service;
-        }
+            return () =>
+            {
+                if (condition())
+                {
+                    Thread.Sleep(delay());
+                    return true;
+                }
 
-        public TimeSpan GetLockTimeout()
-        {
-            return this._service.LockTimeout;
-        }
-
-        public void SetLockTimeout(TimeSpan value)
-        {
-            this._service.LockTimeout = value;
-        }
-
-        public View GetReadView()
-        {
-            return this._service.GetReadView();
-        }
-
-        public View GetWriteView()
-        {
-            return this._service.GetWriteView();
-        }
-
-        public bool IsViewStable()
-        {
-            return this._service.IsViewStable();
-        }
-
-        public bool IsConvertToRTableMode()
-        {
-            return this._service.ConvertXStoreTableMode;
-        }
-
-        public bool IsIntrumentationEnabled()
-        {
-            return this._service.IsIntrumentationEnabled();
+                return false;
+            };
         }
     }
 }

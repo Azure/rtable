@@ -110,27 +110,32 @@ namespace Microsoft.Azure.Toolkit.Replication
             OperationContext operationContext = null)
         {
             ReplicatedTableLogger.LogVerbose("CreateIfNotExists");
-            View txnView = CurrentView;
-            ValidateTxnView(txnView, false);
 
-            // Create individual table replicas if they are not created already 
-            int tablesCreated = 0;
-            foreach (var entry in txnView.Chain)
+            using (new StopWatchInternal(this.TableName, "CreateIfNotExists", this._configurationWrapper))
             {
-                ReplicatedTableLogger.LogVerbose("Creating table {0} on replica: {1}", this.TableName, entry.Item2.BaseUri.ToString());
-                CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
-                if (!ctable.Exists())
+                View txnView = CurrentView;
+                ValidateTxnView(txnView, false);
+
+                // Create individual table replicas if they are not created already 
+                int tablesCreated = 0;
+                foreach (var entry in txnView.Chain)
                 {
-                    if (ctable.CreateIfNotExists())
+                    ReplicatedTableLogger.LogVerbose("Creating table {0} on replica: {1}", this.TableName,
+                        entry.Item2.BaseUri.ToString());
+                    CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
+                    if (!ctable.Exists())
                     {
-                        tablesCreated++;
+                        if (ctable.CreateIfNotExists())
+                        {
+                            tablesCreated++;
+                        }
                     }
                 }
+
+                ValidateTxnView(txnView, false);
+
+                return (tablesCreated > 0);
             }
-
-            ValidateTxnView(txnView, false);
-
-            return (tablesCreated > 0);
         }
 
         // Check if a table (and its replicas) exist.
@@ -138,20 +143,23 @@ namespace Microsoft.Azure.Toolkit.Replication
         //        : false if any replica doesnt exist        
         public bool Exists()
         {
-            View txnView = CurrentView;
-            ValidateTxnView(txnView, false);
-
-            // Return false if individual tables do not exist 
-            foreach (var entry in txnView.Chain)
+            using (new StopWatchInternal(this.TableName, "Exists", this._configurationWrapper))
             {
-                CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
-                if (ctable.Exists() == false)
-                {
-                    return false;
-                }
-            }
+                View txnView = CurrentView;
+                ValidateTxnView(txnView, false);
 
-            return true;
+                // Return false if individual tables do not exist 
+                foreach (var entry in txnView.Chain)
+                {
+                    CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
+                    if (ctable.Exists() == false)
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
         }
 
 
@@ -161,22 +169,25 @@ namespace Microsoft.Azure.Toolkit.Replication
         // It sets the number of replicas deleted for the caller to check.
         public bool DeleteIfExists()
         {
-            View txnView = CurrentView;
-            ValidateTxnView(txnView, false);
-
-            replicasDeleted = 0;
-
-            // Create individual table replicas if they are not created already 
-            foreach (var entry in txnView.Chain)
+            using (new StopWatchInternal(this.TableName, "DeleteIfExists", _configurationWrapper))
             {
-                CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
-                if (ctable.DeleteIfExists())
-                {
-                    replicasDeleted++;
-                }
-            }
+                View txnView = CurrentView;
+                ValidateTxnView(txnView, false);
 
-            return (replicasDeleted > 0);
+                replicasDeleted = 0;
+
+                // Create individual table replicas if they are not created already 
+                foreach (var entry in txnView.Chain)
+                {
+                    CloudTable ctable = entry.Item2.GetTableReference(this.TableName);
+                    if (ctable.DeleteIfExists())
+                    {
+                        replicasDeleted++;
+                    }
+                }
+
+                return (replicasDeleted > 0);
+            }
         }
 
         private TableOperationType GetOpType(TableOperation operation)
@@ -207,63 +218,66 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             TableOperationType opTypeValue = GetOpType(operation);
 
-            switch (opTypeValue)
+            using (new StopWatchInternal(this.TableName, opTypeValue.ToString(), this._configurationWrapper))
             {
-                /// <summary>
-                /// Represents a retrieve operation.
-                /// </summary>
-                case TableOperationType.Retrieve:
-                    result = Retrieve(operation, requestOptions, operationContext);
-                    break;
+                switch (opTypeValue)
+                {
+                    /// <summary>
+                    /// Represents a retrieve operation.
+                    /// </summary>
+                    case TableOperationType.Retrieve:
+                        result = Retrieve(operation, requestOptions, operationContext);
+                        break;
 
-                /// <summary>
-                /// Represents an insert or replace operation.
-                /// </summary>
-                case TableOperationType.InsertOrReplace:
-                    result = InsertOrReplace(operation, requestOptions, operationContext);
-                    break;
+                    /// <summary>
+                    /// Represents an insert or replace operation.
+                    /// </summary>
+                    case TableOperationType.InsertOrReplace:
+                        result = InsertOrReplace(operation, requestOptions, operationContext);
+                        break;
 
-                /// <summary>
-                /// Represents an insert operation.
-                /// </summary>
-                case TableOperationType.Insert:
-                    result = Insert(operation, null, requestOptions, operationContext);
-                    break;
+                    /// <summary>
+                    /// Represents an insert operation.
+                    /// </summary>
+                    case TableOperationType.Insert:
+                        result = Insert(operation, null, requestOptions, operationContext);
+                        break;
 
-                /// <summary>
-                /// Represents a delete operation.
-                /// </summary>
-                case TableOperationType.Delete:
-                    // If there is a write view, then overwrite the currentView with the write view
-                    result = Delete(operation, requestOptions, operationContext);
-                    break;
+                    /// <summary>
+                    /// Represents a delete operation.
+                    /// </summary>
+                    case TableOperationType.Delete:
+                        // If there is a write view, then overwrite the currentView with the write view
+                        result = Delete(operation, requestOptions, operationContext);
+                        break;
 
-                /// <summary>
-                /// Represents a replace operation.
-                /// </summary>
-                case TableOperationType.Replace:
-                    // If there is a write view, then overwrite the currentView with the write view
-                    result = Replace(operation, null, requestOptions, operationContext);
-                    break;
+                    /// <summary>
+                    /// Represents a replace operation.
+                    /// </summary>
+                    case TableOperationType.Replace:
+                        // If there is a write view, then overwrite the currentView with the write view
+                        result = Replace(operation, null, requestOptions, operationContext);
+                        break;
 
-                /// <summary>
-                /// Represents a merge operation.
-                /// </summary>
-                case TableOperationType.Merge:
-                    // If there is a write view, then overwrite the currentView with the write view
-                    result = Merge(operation, null, requestOptions, operationContext);
-                    break;
+                    /// <summary>
+                    /// Represents a merge operation.
+                    /// </summary>
+                    case TableOperationType.Merge:
+                        // If there is a write view, then overwrite the currentView with the write view
+                        result = Merge(operation, null, requestOptions, operationContext);
+                        break;
 
-                /// <summary>
-                /// Represents an insert or merge operation.
-                /// </summary>
-                case TableOperationType.InsertOrMerge:
-                    // If there is a write view, then overwrite the currentView with the write view
-                    result = InsertOrMerge(operation, requestOptions, operationContext);
-                    break;
+                    /// <summary>
+                    /// Represents an insert or merge operation.
+                    /// </summary>
+                    case TableOperationType.InsertOrMerge:
+                        // If there is a write view, then overwrite the currentView with the write view
+                        result = InsertOrMerge(operation, requestOptions, operationContext);
+                        break;
 
+                }
+                return result;
             }
-            return result;
         }
 
         /// <summary>
@@ -629,34 +643,40 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new InvalidOperationException("Cannot execute an empty batch operation");
             }
 
-            //   Extract operations from the batch and transform them to ReplicatedTable operations.
-            //   If it is a retrieve operation, just call the retrieve function
-            IList<TableResult> retrieve;
-            if ((retrieve = CheckRetrieveInBatch(batch, requestOptions, operationContext)) != null)
+            using (new StopWatchInternal(this.TableName, "ExecuteBatch (size=" + batch.Count + ")", this._configurationWrapper))
             {
-                return retrieve;
+
+                //   Extract operations from the batch and transform them to ReplicatedTable operations.
+                //   If it is a retrieve operation, just call the retrieve function
+                IList<TableResult> retrieve;
+                if ((retrieve = CheckRetrieveInBatch(batch, requestOptions, operationContext)) != null)
+                {
+                    return retrieve;
+                }
+
+                //   Otherwise, transform operations and run prepare phase
+                View txnView = CurrentView;
+                ValidateTxnView(txnView);
+
+                // First, make sure all the rows in the batch operation are not locked. If they are locked, flush them.
+                var oldResults = this.FlushAndRetrieveBatch(txnView, batch, requestOptions, null);
+
+                if (oldResults == null)
+                {
+                    throw new Exception("something wrong in flush and retrieve");
+                }
+
+                // Perform the Prepare phase for the headIndex.
+                IList<TableResult> headResults = this.RunPreparePhaseAgainstHeadReplica(txnView, batch, requestOptions,
+                    operationContext);
+
+                // Perform the Prepare phase for the other replicas and the Commit phase for all replica.
+                IList<TableResult>[] results = this.Flush2PCBatch(txnView, batch, headResults, requestOptions,
+                    operationContext);
+
+                // Return the results returned by the tail replica, where all original operations are run.
+                return results[txnView.TailIndex];
             }
-
-            //   Otherwise, transform operations and run prepare phase
-            View txnView = CurrentView;
-            ValidateTxnView(txnView);
-
-            // First, make sure all the rows in the batch operation are not locked. If they are locked, flush them.
-            var oldResults = this.FlushAndRetrieveBatch(txnView, batch, requestOptions, null);
-
-            if (oldResults == null)
-            {
-                throw new Exception("something wrong in flush and retrieve");
-            }
-
-            // Perform the Prepare phase for the headIndex.
-            IList<TableResult> headResults = this.RunPreparePhaseAgainstHeadReplica(txnView, batch, requestOptions, operationContext);
-
-            // Perform the Prepare phase for the other replicas and the Commit phase for all replica.
-            IList<TableResult>[] results = this.Flush2PCBatch(txnView, batch, headResults, requestOptions, operationContext);
-
-            // Return the results returned by the tail replica, where all original operations are run.
-            return results[txnView.TailIndex];
         }
 
         /// <summary>
@@ -1101,103 +1121,119 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
             TableResult result;
-
-            bool checkETag = false;
-            if (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace) && 
-                row.ETag != "*")
+            ReplicatedTableEntity currentRow = null;
+            using (new StopWatchInternal(this.TableName, "ReplaceInternal (internal)", this._configurationWrapper))
             {
-                checkETag = true;
-            }
-
-            // If it's called by the delete operation do not set the tombstone
-            if (row._rtable_Operation != GetTableOperation(TableOperationType.Delete))
-            {
-                row._rtable_Tombstone = false;
-            }
-
-            row._rtable_Operation = GetTableOperation(TableOperationType.Replace);
-
-            if (retrievedResult == null)
-            {
-                retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
-            }
-
-            if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.Conflict)
-            {
-                return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.Conflict };
-            }
-
-            if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
-            {
-                // Row is not present, return appropriate error code
-                ReplicatedTableLogger.LogInformational("ReplaceInternal: Row is not present. ParitionKey={0} RowKey={1}", row.PartitionKey, row.RowKey);
-                return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
-            }
-
-            // Row is present at the replica
-            // Replace the row 
-            ReplicatedTableEntity currentRow = (ReplicatedTableEntity)(retrievedResult.Result);
-            if (checkETag && IsEtagMismatch(row, currentRow))
-            {
-                // Return the error code that Etag does not match with the input ETag
-                ReplicatedTableLogger.LogInformational("ReplaceInternal: ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
-                                        row.ETag, currentRow._rtable_Version);
-                return new TableResult()
+                bool checkETag = false;
+                if (row._rtable_Operation != GetTableOperation(TableOperationType.InsertOrReplace) &&
+                    row.ETag != "*")
                 {
-                    Result = null,
-                    Etag = null,
-                    HttpStatusCode = (int)HttpStatusCode.PreconditionFailed
-                };
-            }
+                    checkETag = true;
+                }
 
-            CloudTableClient tableClient = txnView[txnView.WriteHeadIndex];
-            row.ETag = retrievedResult.Etag;
-            row._rtable_RowLock = true;
-            row._rtable_LockAcquisition = DateTime.UtcNow;
-            row._rtable_Version = currentRow._rtable_Version + 1;
-            row._rtable_ViewId = txnView.ViewId;
-
-            // Lock the head first by inserting the row
-            result = UpdateOrDeleteRow(tableClient, row);
-            ValidateTxnView(txnView);
-            if (result == null)
-            {
-                ReplicatedTableLogger.LogError("ReplaceInternal: Failed to lock the head. ");
-                return new TableResult()
+                // If it's called by the delete operation do not set the tombstone
+                if (row._rtable_Operation != GetTableOperation(TableOperationType.Delete))
                 {
-                    Result = null,
-                    Etag = null,
-                    HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
-                };
-            }
+                    row._rtable_Tombstone = false;
+                }
 
-            if (result.HttpStatusCode != (int)HttpStatusCode.NoContent)
-            {
-                ReplicatedTableLogger.LogError("ReplaceInternal: Failed to take lock on head: {0}", result.HttpStatusCode);
+                row._rtable_Operation = GetTableOperation(TableOperationType.Replace);
+
+                if (retrievedResult == null)
+                {
+                    retrievedResult = FlushAndRetrieve(row, requestOptions, operationContext, false);
+                }
+
+                if (retrievedResult.HttpStatusCode == (int) HttpStatusCode.Conflict)
+                {
+                    return new TableResult()
+                    {
+                        Result = null,
+                        Etag = null,
+                        HttpStatusCode = (int) HttpStatusCode.Conflict
+                    };
+                }
+
+                if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
+                {
+                    // Row is not present, return appropriate error code
+                    ReplicatedTableLogger.LogInformational(
+                        "ReplaceInternal: Row is not present. ParitionKey={0} RowKey={1}", row.PartitionKey, row.RowKey);
+                    return new TableResult()
+                    {
+                        Result = null,
+                        Etag = null,
+                        HttpStatusCode = (int) HttpStatusCode.NotFound
+                    };
+                }
+
+                // Row is present at the replica
+                // Replace the row 
+                currentRow = (ReplicatedTableEntity) (retrievedResult.Result);
+                if (checkETag && IsEtagMismatch(row, currentRow))
+                {
+                    // Return the error code that Etag does not match with the input ETag
+                    ReplicatedTableLogger.LogInformational(
+                        "ReplaceInternal: ETag mismatch. row.ETag ({0}) != currentRow._rtable_Version ({1})",
+                        row.ETag, currentRow._rtable_Version);
+                    return new TableResult()
+                    {
+                        Result = null,
+                        Etag = null,
+                        HttpStatusCode = (int) HttpStatusCode.PreconditionFailed
+                    };
+                }
+                CloudTableClient tableClient = txnView[txnView.WriteHeadIndex];
+                row.ETag = retrievedResult.Etag;
+                row._rtable_RowLock = true;
+                row._rtable_LockAcquisition = DateTime.UtcNow;
+                row._rtable_Version = currentRow._rtable_Version + 1;
+                row._rtable_ViewId = txnView.ViewId;
+
+                // Lock the head first by inserting the row
+                result = UpdateOrDeleteRow(tableClient, row);
+                ValidateTxnView(txnView);
+                if (result == null)
+                {
+                    ReplicatedTableLogger.LogError("ReplaceInternal: Failed to lock the head. ");
+                    return new TableResult()
+                    {
+                        Result = null,
+                        Etag = null,
+                        HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
+                    };
+                }
+
+                if (result.HttpStatusCode != (int) HttpStatusCode.NoContent)
+                {
+                    ReplicatedTableLogger.LogError("ReplaceInternal: Failed to take lock on head: {0}",
+                        result.HttpStatusCode);
+                    return result;
+                }
+
+                // Call Flush2PC to run 2PC on the chain
+                // If successful, it returns HttpStatusCode 204 (no content returned, when replaced in the second phase) 
+                if (((result = Flush2PC(txnView, row, requestOptions, operationContext, result.Etag)) == null) ||
+                    (result.HttpStatusCode != (int) HttpStatusCode.NoContent))
+                {
+                    // Failed, abort with error and let the application take care of it by reissuing it 
+                    // TO DO: Alternately, we could wait and retry after sometime using requestOptions.
+                    ReplicatedTableLogger.LogError(
+                        "ReplaceInternal: Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
+                    return new TableResult()
+                    {
+                        Result = null,
+                        Etag = null,
+                        HttpStatusCode = (int) HttpStatusCode.ServiceUnavailable
+                    };
+                }
+
+                // Success. Virtualize Etag before returning the result
+                result.Etag = row._rtable_Version.ToString();
+                row.ETag = result.Etag;
+
                 return result;
             }
-
-            // Call Flush2PC to run 2PC on the chain
-            // If successful, it returns HttpStatusCode 204 (no content returned, when replaced in the second phase) 
-            if (((result = Flush2PC(txnView, row, requestOptions, operationContext, result.Etag)) == null) ||
-                (result.HttpStatusCode != (int)HttpStatusCode.NoContent))
-            {
-                // Failed, abort with error and let the application take care of it by reissuing it 
-                // TO DO: Alternately, we could wait and retry after sometime using requestOptions.
-                ReplicatedTableLogger.LogError("ReplaceInternal: Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
-                return new TableResult()
-                {
-                    Result = null,
-                    Etag = null,
-                    HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable
-                };
-            }
-
-            // Success. Virtualize Etag before returning the result
-            result.Etag = row._rtable_Version.ToString();
-            row.ETag = result.Etag;
-
-            return result;
         }
 
 
@@ -1290,7 +1326,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         public TableResult InsertOrReplace(TableOperation operation, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
         {
-            IReplicatedTableEntity row = (IReplicatedTableEntity)GetEntityFromOperation(operation);
+            IReplicatedTableEntity row = (IReplicatedTableEntity) GetEntityFromOperation(operation);
             row._rtable_Operation = GetTableOperation(TableOperationType.InsertOrReplace);
             TableResult result;
 
@@ -1298,49 +1334,36 @@ namespace Microsoft.Azure.Toolkit.Replication
             // InsertOrReplace would normally not fail due to a conflict.
             // However, RTable can return a conflict because it needs to enforce strict
             // ordering of write operations.
-            // if the operation replace returns a conflict, we will retry the operation up to 
-            // five times. 
+            // if the operation replace returns a conflict, we will retry the operation up to
+            // five times.
             //
 
-            int retryLimit = 5;
+            var rnd = new Random((int)DateTime.UtcNow.Ticks);
+            int retryLimit = 10;
+
+            Func<bool> RetryIf = RetryPolicy.RetryWithDelayIf(() => rnd.Next(50, 150), () => --retryLimit > 0);
 
             do
             {
-                if (retryLimit-- < 5)
-                {
-                    // if this is second try or later, sleep until the conflict is resolved
-                    Thread.Sleep(new Random().Next(50, 150));
-                }
-
                 View txnView = CurrentView;
                 ValidateTxnView(txnView);
-                TableResult retrievedResult = FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, false);
+                result = FlushAndRetrieveInternal(txnView, row, requestOptions, operationContext, false);
 
-                if (retrievedResult.HttpStatusCode != (int)HttpStatusCode.OK)
+                if (result.HttpStatusCode == (int) HttpStatusCode.NotFound)
                 {
                     // Row is not present at the head, insert the row
-                    TableResult insertResult = InsertInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
-                    if (insertResult == null)
-                    {
-                        return null;
-                    }
-
-                    if (insertResult.HttpStatusCode != (int)HttpStatusCode.Conflict)
-                    {
-                        return insertResult;
-                    }
-
-                    // Got a conflict at insert, move on with a replace
-                    retrievedResult = null;
+                    result = InsertInternal(txnView, operation, result, requestOptions, operationContext);
+                }
+                else if (result.HttpStatusCode == (int) HttpStatusCode.OK)
+                {
+                    // Row is present at the replica, replace the row
+                    row.ETag = "*";
+                    result = ReplaceInternal(txnView, operation, result, requestOptions, operationContext);
                 }
 
-                // Row is present at the replica, replace the row
-                row.ETag = "*";
-                result = ReplaceInternal(txnView, operation, retrievedResult, requestOptions, operationContext);
-
-            } while (retryLimit > 0 &&
-                result != null &&
-                result.HttpStatusCode == (int)HttpStatusCode.Conflict);
+            } while (result != null &&
+                     (result.HttpStatusCode == (int) HttpStatusCode.Conflict || result.HttpStatusCode == (int) HttpStatusCode.PreconditionFailed) &&
+                     RetryIf());
 
             return result;
         }
@@ -1445,12 +1468,16 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // The entity was locked by a different client a long time ago, so flush it.
 
                 result = Flush2PC(txnView, readRow, requestOptions, operationContext);
+                
                 if ((result.HttpStatusCode == (int) HttpStatusCode.OK) ||
                     (result.HttpStatusCode == (int) HttpStatusCode.NoContent))
                 {
                     // If flush is successful, return the result from the head.
                     result = retrievedResult;
-                    if (virtualizeEtag) result.Etag = readRow._rtable_Version.ToString();
+                    if (virtualizeEtag)
+                    {
+                        result.Etag = readRow._rtable_Version.ToString();
+                    }
                 }
             }
             else
@@ -1474,37 +1501,43 @@ namespace Microsoft.Azure.Toolkit.Replication
             TableRequestOptions requestOptions = null, OperationContext operationContext = null)
             where TElement : ITableEntity, new()
         {
-            IEnumerable<TElement> rows = Enumerable.Empty<TElement>();
-
-            try
+            using (new StopWatchInternal(this.TableName, "ExecuteQuery", this._configurationWrapper))
             {
-                CloudTable tail = GetTailTableClient().GetTableReference(TableName);
-                rows = tail.ExecuteQuery(query);
-            }
-            catch (Exception e)
-            {
-                ReplicatedTableLogger.LogError("Error in ExecuteQuery: caught exception {0}", e);
-            }
+                IEnumerable<TElement> rows = Enumerable.Empty<TElement>();
 
-            return new ReplicatedTableEnumerable<TElement>(rows, this._configurationWrapper.IsConvertToRTableMode());
+                try
+                {
+                    CloudTable tail = GetTailTableClient().GetTableReference(TableName);
+                    rows = tail.ExecuteQuery(query);
+                }
+                catch (Exception e)
+                {
+                    ReplicatedTableLogger.LogError("Error in ExecuteQuery: caught exception {0}", e);
+                }
+
+                return new ReplicatedTableEnumerable<TElement>(rows, this._configurationWrapper.IsConvertToRTableMode());
+            }
         }
 
         public TableQuery<TElement> CreateQuery<TElement>()
                 where TElement : ITableEntity, new()
         {
-            TableQuery<TElement> query = new TableQuery<TElement>();
-
-            try
+            using (new StopWatchInternal(this.TableName, "CreateQuery", this._configurationWrapper))
             {
-                CloudTable tail = GetTailTableClient().GetTableReference(TableName);
-                query = tail.CreateQuery<TElement>();
-            }
-            catch (Exception e)
-            {
-                ReplicatedTableLogger.LogError("Error in CreateQuery: caught exception {0}", e);
-            }
+                TableQuery<TElement> query = new TableQuery<TElement>();
 
-            return query;
+                try
+                {
+                    CloudTable tail = GetTailTableClient().GetTableReference(TableName);
+                    query = tail.CreateQuery<TElement>();
+                }
+                catch (Exception e)
+                {
+                    ReplicatedTableLogger.LogError("Error in CreateQuery: caught exception {0}", e);
+                }
+
+                return query;
+            }
         }
 
         /// <summary>
@@ -2138,96 +2171,105 @@ namespace Microsoft.Azure.Toolkit.Replication
         public ReconfigurationStatus RepairTable(int viewIdToRecoverFrom, TableBatchOperation unfinishedOps,
             long maxBatchSize = 100L, RepairRowDelegate filter = null)
         {
-            // By default all rows are taken
-            if (filter == null)
+            using (new StopWatchInternal(this.TableName, "RepairTable", this._configurationWrapper))
             {
-                filter = (row => RepairRowActionType.RepairRow);
-            }
-
-            ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
-            if (this._configurationWrapper.IsViewStable())
-            {
-                return ReconfigurationStatus.SUCCESS;
-            }
-
-            View txnView = CurrentView;
-            ValidateTxnView(txnView);
-
-            CloudTableClient writeHeadClient = txnView[txnView.WriteHeadIndex];
-            CloudTable writeHeadTable = writeHeadClient.GetTableReference(this.TableName);
-
-            // TO DO: Optimization
-            // Now we are relying on caller to pass the viewIdToRecoverFrom. Instead, we can find the viewIdToRecoverFrom of the old replica 
-            //(when it was part of the stable view) and only get the entries that are greater than the viewIdToRecoverFrom.
-            // However, we will miss the entries that are deleted since the old left the view.
-            // In order to delete those entries, we need to keep the tombstones around when a replica
-            // leaves the system. We have two options to store the tombstones.
-            //  1. Store the tombstone entries in a seperate table/blob, whenever an entry is deleted.
-            //  2. Store the tombstone entries in other rows of the existing table in a separate column.
-
-            writeHeadTable.CreateIfNotExists(null, null);
-
-            CloudTableClient readHeadTableClient = txnView[txnView.ReadHeadIndex];
-            CloudTable readHeadTable = readHeadTableClient.GetTableReference(this.TableName);
-
-            DateTime startTime = DateTime.UtcNow;
-            IQueryable<DynamicReplicatedTableEntity> query =
-                from ent in readHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
-                where ent._rtable_ViewId >= viewIdToRecoverFrom
-                select ent;
-
-            foreach (DynamicReplicatedTableEntity entry in query)
-            {
-                // What to do with this row ?
-                RepairRowActionType action = filter(entry);
-
-                switch (action)
+                // By default all rows are taken
+                if (filter == null)
                 {
-                    case RepairRowActionType.RepairRow:
-                        ReplicatedTableLogger.LogWarning("RepairReplica: RepairRow: Pk: {0}, Rk: {1}", entry.PartitionKey, entry.RowKey);
-                        break;
+                    filter = (row => RepairRowActionType.RepairRow);
+                }
 
-                    case RepairRowActionType.SkipRow:
-                        ReplicatedTableLogger.LogWarning("RepairReplica: SkipRow: Pk: {0}, Rk: {1}", entry.PartitionKey, entry.RowKey);
-                        continue;
+                ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
+                if (this._configurationWrapper.IsViewStable())
+                {
+                    return ReconfigurationStatus.SUCCESS;
+                }
 
-                    case RepairRowActionType.InvalidRow:
-                    default:
+                View txnView = CurrentView;
+                ValidateTxnView(txnView);
+
+                CloudTableClient writeHeadClient = txnView[txnView.WriteHeadIndex];
+                CloudTable writeHeadTable = writeHeadClient.GetTableReference(this.TableName);
+
+                // TO DO: Optimization
+                // Now we are relying on caller to pass the viewIdToRecoverFrom. Instead, we can find the viewIdToRecoverFrom of the old replica 
+                //(when it was part of the stable view) and only get the entries that are greater than the viewIdToRecoverFrom.
+                // However, we will miss the entries that are deleted since the old left the view.
+                // In order to delete those entries, we need to keep the tombstones around when a replica
+                // leaves the system. We have two options to store the tombstones.
+                //  1. Store the tombstone entries in a seperate table/blob, whenever an entry is deleted.
+                //  2. Store the tombstone entries in other rows of the existing table in a separate column.
+
+                writeHeadTable.CreateIfNotExists(null, null);
+
+                CloudTableClient readHeadTableClient = txnView[txnView.ReadHeadIndex];
+                CloudTable readHeadTable = readHeadTableClient.GetTableReference(this.TableName);
+
+                DateTime startTime = DateTime.UtcNow;
+                IQueryable<DynamicReplicatedTableEntity> query =
+                    from ent in readHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
+                    where ent._rtable_ViewId >= viewIdToRecoverFrom
+                    select ent;
+
+                foreach (DynamicReplicatedTableEntity entry in query)
+                {
+                    // What to do with this row ?
+                    RepairRowActionType action = filter(entry);
+
+                    switch (action)
+                    {
+                        case RepairRowActionType.RepairRow:
+                            ReplicatedTableLogger.LogWarning("RepairReplica: RepairRow: Pk: {0}, Rk: {1}",
+                                entry.PartitionKey, entry.RowKey);
+                            break;
+
+                        case RepairRowActionType.SkipRow:
+                            ReplicatedTableLogger.LogWarning("RepairReplica: SkipRow: Pk: {0}, Rk: {1}",
+                                entry.PartitionKey, entry.RowKey);
+                            continue;
+
+                        case RepairRowActionType.InvalidRow:
+                        default:
+                            status = ReconfigurationStatus.PARTIAL_FAILURE;
+                            ReplicatedTableLogger.LogWarning("RepairReplica: InvalidRow: Pk: {0}, Rk: {1}",
+                                entry.PartitionKey, entry.RowKey);
+                            continue;
+                    }
+
+                    TableResult result = RepairRow(entry.PartitionKey, entry.RowKey, null);
+
+                    if (result == null ||
+                        (result.HttpStatusCode != (int) HttpStatusCode.OK &&
+                         result.HttpStatusCode != (int) HttpStatusCode.NoContent))
+                    {
                         status = ReconfigurationStatus.PARTIAL_FAILURE;
-                        ReplicatedTableLogger.LogWarning("RepairReplica: InvalidRow: Pk: {0}, Rk: {1}", entry.PartitionKey, entry.RowKey);
-                        continue;
+                    }
                 }
 
-                TableResult result = RepairRow(entry.PartitionKey, entry.RowKey, null);
-
-                if (result == null ||
-                    (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent))
-                {
-                    status = ReconfigurationStatus.PARTIAL_FAILURE;
-                }
-            }
-
-            // now find any entries that are in the write view but not in the read view
-            query = from ent in writeHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
+                // now find any entries that are in the write view but not in the read view
+                query = from ent in writeHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
                     where ent._rtable_ViewId < txnView.ViewId
                     select ent;
 
-            foreach (DynamicReplicatedTableEntity extraEntity in query)
-            {
-                ReplicatedTableLogger.LogWarning("RepairReplica: deleting entity pk: {0}, rk: {1}", extraEntity.PartitionKey, extraEntity.RowKey);
-
-                TableResult result = RepairRow(extraEntity.PartitionKey, extraEntity.RowKey, null);
-
-                if (result == null ||
-                    (result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent))
+                foreach (DynamicReplicatedTableEntity extraEntity in query)
                 {
-                    status = ReconfigurationStatus.PARTIAL_FAILURE;
+                    ReplicatedTableLogger.LogWarning("RepairReplica: deleting entity pk: {0}, rk: {1}",
+                        extraEntity.PartitionKey, extraEntity.RowKey);
+
+                    TableResult result = RepairRow(extraEntity.PartitionKey, extraEntity.RowKey, null);
+
+                    if (result == null ||
+                        (result.HttpStatusCode != (int) HttpStatusCode.OK &&
+                         result.HttpStatusCode != (int) HttpStatusCode.NoContent))
+                    {
+                        status = ReconfigurationStatus.PARTIAL_FAILURE;
+                    }
                 }
+
+                ReplicatedTableLogger.LogInformational("RepairTable: took {0}", DateTime.UtcNow - startTime);
+
+                return status;
             }
-
-            ReplicatedTableLogger.LogInformational("RepairTable: took {0}", DateTime.UtcNow - startTime);
-
-            return status;
         }
 
         private void FlushRecoveryBatch(TableBatchOperation unfinishedOps, long maxBatchSize, ref ReconfigurationStatus status,
@@ -2325,9 +2367,12 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <returns></returns>
         public TableResult RepairRow(string partitionKey, string rowKey, IReplicatedTableEntity existingRow)
         {
-            View txnView = CurrentView;
-            ValidateTxnView(txnView);
-            return RepairRowInternal(txnView, partitionKey, rowKey, existingRow);
+            using (new StopWatchInternal(this.TableName, "RepairRow", _configurationWrapper))
+            {
+                View txnView = CurrentView;
+                ValidateTxnView(txnView);
+                return RepairRowInternal(txnView, partitionKey, rowKey, existingRow);
+            }
         }
 
         private TableResult RepairRowInternal(View txnView, string partitionKey, string rowKey, IReplicatedTableEntity existingRow)

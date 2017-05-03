@@ -46,11 +46,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                                 Action<ReplicaInfo> SetConnectionString,
                                 out List<ReplicatedTableConfiguredTable> tableConfigList,
                                 out int leaseDuration,
-                                out Guid configId)
+                                out Guid configId,
+                                out bool instrumentation)
         {
             tableConfigList = null;
             leaseDuration = 0;
             configId = Guid.Empty;
+            instrumentation = false;
 
             ReplicatedTableConfigurationStore configurationStore;
             List<string> eTags;
@@ -102,6 +104,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // - lease duration
             leaseDuration = configurationStore.LeaseDuration;
+
+            // - Instrumentation
+            instrumentation = configurationStore.Instrumentation;
 
             return new List<View> { view };
         }

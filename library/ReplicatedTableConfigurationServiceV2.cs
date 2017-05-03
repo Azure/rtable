@@ -271,6 +271,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             throw new Exception(msg);
         }
 
+        public bool IsIntrumentationEnabled()
+        {
+            return this.configManager.IsIntrumenationEnabled();
+        }
 
         /*
          * Replica management APIs

@@ -18,53 +18,55 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
+    using System.Diagnostics;
 
-    public class ReplicatedTableConfigurationWrapper : IReplicatedTableConfigurationWrapper
+    public class StopWatchInternal : IDisposable
     {
-        private readonly ReplicatedTableConfigurationService _service;
+        private readonly Stopwatch _stopWatch;
+        private readonly string _tableName;
+        private readonly string _context;
 
-        public ReplicatedTableConfigurationWrapper(ReplicatedTableConfigurationService service)
+        private bool _disposed = false;
+
+        public StopWatchInternal(string tableName, string context, IReplicatedTableConfigurationWrapper replicatedTableConfigurationWrapper)
         {
-            this._service = service;
+            this._tableName = tableName;
+            this._context = context;
+
+            if (replicatedTableConfigurationWrapper.IsIntrumentationEnabled())
+            {
+                ReplicatedTableLogger.LogVerbose("[Instrumentation] {0}:{1} started", _tableName, _context);
+
+                _stopWatch = Stopwatch.StartNew();
+            }
         }
 
-        public TimeSpan GetLockTimeout()
+        public void Dispose()
         {
-            return this._service.LockTimeout;
+            Dispose(true);
         }
 
-        public void SetLockTimeout(TimeSpan value)
+        private void Dispose(bool disposing)
         {
-            this._service.LockTimeout = value;
-        }
+            if (_disposed)
+            {
+                return;
+            }
 
-        public View GetReadView()
-        {
-            return this._service.GetReadView();
-        }
+            if (disposing)
+            {
+                if (_stopWatch != null)
+                {
+                    _stopWatch.Stop();
 
-        public View GetWriteView()
-        {
-            return this._service.GetWriteView();
-        }
+                    ReplicatedTableLogger.LogVerbose("[Instrumentation] {0}:{1} took {2} ms", _tableName, _context, _stopWatch.ElapsedMilliseconds);
+                }
+            }
 
-        public bool IsViewStable()
-        {
-            return this._service.IsViewStable();
-        }
-
-        public bool IsConvertToRTableMode()
-        {
-            return this._service.ConvertXStoreTableMode;
-        }
-
-        public bool IsIntrumentationEnabled()
-        {
-            return this._service.IsIntrumentationEnabled();
+            _disposed = true;
         }
     }
 }
