@@ -2423,7 +2423,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             // if row does not exist in the read view, delete it from the write view
-            if (readHeadResult.Result == null || readHeadResult.HttpStatusCode == (int)HttpStatusCode.NoContent)
+            if (readHeadResult.HttpStatusCode == (int)HttpStatusCode.NotFound)
             {
                 if (writeViewEntity != null)
                 {
@@ -2433,7 +2433,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     // delete row from the write view
                     result = UpdateOrDeleteRow(txnView[txnView.WriteHeadIndex], writeViewEntity);
                     ValidateTxnView(txnView);
-                    ReplicatedTableLogger.LogWarning("RepairRow: attempt to delete from write head returned: {0}", result.HttpStatusCode);
+                    ReplicatedTableLogger.LogInformational("RepairRow: attempt to delete from write head returned: {0}", result.HttpStatusCode);
                     return result;
                 }
             }
