@@ -185,6 +185,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             lock (this)
             {
+                // - Update lease duration
+                LeaseDuration = TimeSpan.FromSeconds(leaseDuration);
+
                 // - Update list of views
                 this.viewMap.Clear();
 
@@ -195,6 +198,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                         continue;
                     }
 
+                    // Set view LeaseDuration to the config LeaseDuration
+                    view.LeaseDuration = LeaseDuration;
                     this.viewMap.Add(view.Name, view);
                 }
 
@@ -219,9 +224,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                         }
                     }
                 }
-
-                // - Update lease duration
-                LeaseDuration = TimeSpan.FromSeconds(leaseDuration);
 
                 // - Update current config Id
                 currentRunningConfigId = configId;
@@ -310,14 +312,14 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
 
                 View view = this.viewMap[viewName];
-                return view.IsExpired(LeaseDuration) ? new View(viewName) : view;
+                return view.IsExpired() ? new View(viewName) : view;
             }
         }
 
         internal protected bool IsViewExpired(string viewName)
         {
             var view = GetView(viewName);
-            return view.IsExpired(LeaseDuration);
+            return view.IsExpired();
         }
 
         internal protected bool IsViewStable(string viewName)

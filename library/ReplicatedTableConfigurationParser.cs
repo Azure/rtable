@@ -76,7 +76,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                 ReplicatedTableConfigurationStore configurationStore = entry.Value;
 
                 var view = View.InitFromConfigVer2(entry.Key, configurationStore, SetConnectionString);
-                view.RefreshTime = DateTime.UtcNow;
 
                 if (view.ViewId <= 0)
                 {

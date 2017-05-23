@@ -813,5 +813,201 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             SampleRTableEntity head = (SampleRTableEntity)retrieveResult.Result;
             return head._rtable_RowLock == true;
         }
+
+
+        #region TxnView vs. CurrentView UTs
+
+        /*
+         * TxnView      | CurrentView   | Transaction
+         * -------------+---------------+--------------
+         * didnt expire | X             | PASS  no need for UT
+         * expired      | didn't change | PASS  see TxnViewExpiresButViewIdDoesntChange UT.
+         * expired      | changed       | FAIL  see TxnViewExpiresAndViewIdHasChanged UT.
+         */
+
+        /// <summary>
+        /// txnView expires, but ViewId does't change => the transaction will succeeds
+        /// </summary>
+        [Test(Description = "A transaction succeeds even if txnView expires as long as the Config/ViewId doesn't change")]
+        public void TxnViewExpiresButViewIdDoesntChange()
+        {
+            // Insert an entry
+            string entityPartitionKey = "jobType-ReplaceWhenTxnViewExpires";
+            string entityRowKey = "jobType-ReplaceWhenTxnViewExpires";
+
+            this.ForceDeleteEntryFromStorageTablesDirectly(entityPartitionKey, entityRowKey);
+
+            Console.WriteLine("Inserting entry ...");
+            var entry = new SampleRTableEntity(entityPartitionKey, entityRowKey, "insert message");
+            this.rtableWrapper.InsertRow(entry);
+
+            // Retrieve the config ...
+            ReplicatedTableConfiguration config;
+            ReplicatedTableQuorumReadResult readStatus = this.configurationService.RetrieveConfiguration(out config);
+            Assert.IsTrue(readStatus.Code == ReplicatedTableQuorumReadCode.Success);
+
+            // Reconfigure RTable config with a short LeaseDuration
+            int leaseDurationInSec = 3;
+            config.LeaseDuration = leaseDurationInSec;
+            this.configurationService.UpdateConfiguration(config);
+
+
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[0];
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            // Delay behavior
+            ProxyBehavior[] behaviors = new[]
+            {
+                DelayBehaviors.DelayAllResponsesIf(
+                    1,
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Delay lock of the Head response enough so the txView expires
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"_rtable_Operation\":\"Replace\"") &&
+                            body.Contains("\"_rtable_RowLock\":true"))
+                        {
+                            // ensure txView expires
+                            Thread.Sleep(2 * leaseDurationInSec * 1000);
+                            return true;
+                        }
+
+                        return false;
+                    })),
+            };
+
+            // Launch an Update
+            using (new HttpMangler(false, behaviors))
+            {
+                try
+                {
+                    entry = this.rtableWrapper.ReadEntity(entityPartitionKey, entityRowKey);
+                    entry.Message = "update message";
+
+                    var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+                    TableOperation replaceOperation = TableOperation.Replace(entry);
+
+                    // Get a snapshot of txView before transaction starts ...
+                    View viewBeforeTx = this.configurationService.GetTableView(this.repTable.TableName);
+
+                    // Transaction will get delayed 2*LeaseDuration sec.
+                    TableResult replaceResult = table.Execute(replaceOperation);
+
+                    Assert.IsTrue(viewBeforeTx.IsExpired(), "txView expected to expire!");
+
+                    Assert.IsNotNull(replaceResult, "upsertResult = null");
+                    Assert.AreEqual((int)HttpStatusCode.NoContent, replaceResult.HttpStatusCode, "upsertResult.HttpStatusCode mismatch");
+                }
+                catch (AggregateException ex)
+                {
+                    Console.WriteLine(ex);
+                    Assert.IsTrue(false);
+                }
+            }
+        }
+
+        /// <summary>
+        /// txnView expires AND ViewId has changed => the transaction will fail
+        /// </summary>
+        [Test(Description = "A transaction fails if BOTH txnView expires and the Config/ViewId changes")]
+        public void TxnViewExpiresAndViewIdHasChanged()
+        {
+            // Insert an entry
+            string entityPartitionKey = "jobType-ReplaceWhenTxnViewExpires";
+            string entityRowKey = "jobType-ReplaceWhenTxnViewExpires";
+
+            this.ForceDeleteEntryFromStorageTablesDirectly(entityPartitionKey, entityRowKey);
+
+            Console.WriteLine("Inserting entry ...");
+            var entry = new SampleRTableEntity(entityPartitionKey, entityRowKey, "insert message");
+            this.rtableWrapper.InsertRow(entry);
+
+            // Retrieve the config ...
+            ReplicatedTableConfiguration config;
+            ReplicatedTableQuorumReadResult readStatus = this.configurationService.RetrieveConfiguration(out config);
+            Assert.IsTrue(readStatus.Code == ReplicatedTableQuorumReadCode.Success);
+
+            // Reconfigure RTable config with a short LeaseDuration
+            int leaseDurationInSec = 3;
+            config.LeaseDuration = leaseDurationInSec;
+            this.configurationService.UpdateConfiguration(config);
+
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[0];
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            // Delay behavior
+            ProxyBehavior[] behaviors = new[]
+            {
+                DelayBehaviors.DelayAllResponsesIf(
+                    1,
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Delay lock of the Head response enough so the txView expires ...
+                        // And, upload a new config with a new viewId
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"_rtable_Operation\":\"Replace\"") &&
+                            body.Contains("\"_rtable_RowLock\":true"))
+                        {
+                            // Upload a new config with a new ViewId
+                            View view = this.configurationService.GetTableView(this.repTable.TableName);
+                            config.GetView(view.Name).ViewId++;
+                            this.configurationService.UpdateConfiguration(config, false);
+
+                            // ensure txView expires
+                            Thread.Sleep(2 * leaseDurationInSec * 1000);
+                            return true;
+                        }
+
+                        return false;
+                    })),
+            };
+
+            // Launch an Update
+            using (new HttpMangler(false, behaviors))
+            {
+                try
+                {
+                    entry = this.rtableWrapper.ReadEntity(entityPartitionKey, entityRowKey);
+                    entry.Message = "update message";
+
+                    var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+                    TableOperation replaceOperation = TableOperation.Replace(entry);
+
+                    // Get a snapshot of txView before transaction starts ...
+                    View viewBeforeTx = this.configurationService.GetTableView(this.repTable.TableName);
+
+                    // Transaction will get delayed 2*LeaseDuration sec. and Config/ViewId will be changed
+                    TableResult replaceResult = table.Execute(replaceOperation);
+
+                    Assert.IsTrue(viewBeforeTx.IsExpired(), "txView expected to expire!");
+                    Assert.AreNotEqual(this.configurationService.GetTableView(this.repTable.TableName).ViewId, viewBeforeTx.ViewId, "ViewId should have changed!");
+
+                    Assert.IsNotNull(replaceResult, "upsertResult = null");
+                    Assert.AreNotEqual((int)HttpStatusCode.NoContent, replaceResult.HttpStatusCode, "upsertResult.HttpStatusCode mismatch");
+                }
+                catch (ReplicatedTableStaleViewException ex)
+                {
+                    // ValidateTxnView is called form everywhere ... we may endup here too
+                    switch (ex.ErrorCode)
+                    {
+                        case ReplicatedTableViewErrorCodes.ViewIdChanged:
+                            break;
+
+                        default:
+                            Console.WriteLine(ex);
+                            Assert.IsTrue(false);
+                            break;
+                    }
+                }
+            }
+        }
+
+        #endregion
     }
 }

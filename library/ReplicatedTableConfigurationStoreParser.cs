@@ -73,7 +73,6 @@ namespace Microsoft.Azure.Toolkit.Replication
              * View:
              */
             var view = View.InitFromConfigVer1(DefaultViewName, configurationStore, SetConnectionString);
-            view.RefreshTime = DateTime.UtcNow;
 
             if (view.ViewId <= 0)
             {

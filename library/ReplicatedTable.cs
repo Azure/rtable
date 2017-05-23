@@ -85,15 +85,15 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         private void ValidateTxnView(View txnView, bool viewMustBeWritable = true)
         {
-            if (txnView.IsEmpty || CurrentView.IsEmpty)
+            if (txnView.IsEmpty)
             {
                 throw new ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes.EmptyView, "Empty view.");
             }
 
-            if (CurrentView.ViewId != txnView.ViewId)
+            if (txnView.IsExpired() && CurrentView.ViewId != txnView.ViewId)
             {
                 throw new ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes.ViewIdChanged,
-                                                            string.Format("View id changed from {0} to {1}", CurrentView.ViewId, txnView.ViewId));
+                                                            string.Format("View id changed from {0} to {1}", txnView.ViewId, CurrentView.ViewId ));
             }
 
             if (viewMustBeWritable && !txnView.IsWritable())
@@ -131,8 +131,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                         }
                     }
                 }
-
-                ValidateTxnView(txnView, false);
 
                 return (tablesCreated > 0);
             }

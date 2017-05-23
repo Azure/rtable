@@ -31,6 +31,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             this.Name = name;
             this.RefreshTime = DateTime.MinValue;
+            this.LeaseDuration = TimeSpan.FromSeconds(0);
             this.Chain = new List<Tuple<ReplicaInfo, CloudTableClient>>();
         }
 
@@ -42,6 +43,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 view.ViewId = configurationStore.ViewId;
                 view.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
+                view.RefreshTime = DateTime.UtcNow;
 
                 foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
                 {
@@ -87,6 +89,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (configurationStore != null)
             {
                 view.ViewId = configurationStore.ViewId;
+                view.RefreshTime = DateTime.UtcNow;
 
                 foreach (ReplicaInfo replica in configurationStore.GetCurrentReplicaChain())
                 {
@@ -115,6 +118,8 @@ namespace Microsoft.Azure.Toolkit.Replication
         public string Name { get; private set; }
 
         public DateTime RefreshTime { get; set; }
+
+        public TimeSpan LeaseDuration { get; set; }
 
         public long ViewId { get; set; }
 
@@ -178,9 +183,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             return this.Chain[0].Item1.IsWritable();
         }
 
-        public bool IsExpired(TimeSpan leaseDuration)
+        public bool IsExpired()
         {
-            if (DateTime.UtcNow - RefreshTime > leaseDuration)
+            if (DateTime.UtcNow - RefreshTime > LeaseDuration)
             {
                 return true;
             }
