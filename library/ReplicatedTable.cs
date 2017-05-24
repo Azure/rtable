@@ -1147,7 +1147,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     {
                         Result = null,
                         Etag = null,
-                        HttpStatusCode = (int) HttpStatusCode.Conflict
+                        HttpStatusCode = (int)(checkETag ? HttpStatusCode.PreconditionFailed : HttpStatusCode.Conflict)
                     };
                 }
 
@@ -1338,7 +1338,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             var rnd = new Random((int)DateTime.UtcNow.Ticks);
             int retryLimit = 10;
 
-            Func<bool> RetryIf = RetryPolicy.RetryWithDelayIf(() => rnd.Next(50, 150), () => --retryLimit > 0);
+            Func<bool> RetryIf = RetryPolicy.RetryWithDelayIf(() => rnd.Next(100, 300), () => --retryLimit > 0);
 
             do
             {
