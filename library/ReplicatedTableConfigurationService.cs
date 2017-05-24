@@ -180,6 +180,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.configManager.Invalidate();
         }
 
+        public void ConfigurationChangeNotification()
+        {
+            this.configManager.Invalidate();
+        }
+
         public void Dispose()
         {
             Dispose(true);

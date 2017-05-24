@@ -172,6 +172,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
+        public void ConfigurationChangeNotification()
+        {
+            this.configManager.Invalidate();
+        }
 
         /*
          * View/Table APIs

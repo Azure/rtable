@@ -92,7 +92,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <summary>
         /// Mapping from account name -> connection string
         /// </summary>
-        private Dictionary<string, SecureString> connectionStringMap;
+        protected Dictionary<string, SecureString> connectionStringMap;
 
         private int leaseDuration = 0;
         private int clockFactor = 0;
