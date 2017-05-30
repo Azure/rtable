@@ -27,27 +27,28 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Linq;
     using System.Net;
     using Microsoft.WindowsAzure.Storage.Table;
+    using System.Threading;
+    using Microsoft.WindowsAzure.Test.Network;
+    using Microsoft.WindowsAzure.Test.Network.Behaviors;
+    using System.Threading.Tasks;
 
     [TestFixture]
     [Parallelizable(ParallelScope.None)]
     public class RTableInsertHeadTests : HttpManglerTestBase
     {
-        private string tableName;
-        private bool useHttps = true;
-
-        [OneTimeSetUp]
+        [SetUp]
         public void TestFixtureSetup()
         {
-            this.LoadTestConfiguration();
-            this.tableName = this.GenerateRandomTableName();
-            Console.WriteLine("tableName = {0}", this.tableName);
-
-            this.SetupRTableEnv(this.tableName, useHttps);
+            // Use 2 Replicas for simplicity
+            this.OneTimeSetUpInternal(new List<int> { 0, 1 });
         }
 
-        [OneTimeTearDown]
+        [TearDown]
         public void TestFixtureTearDown()
         {
+            // force reload the new view so both replicas Head/Tail get cleaned
+            this.configurationService.ConfigurationChangeNotification();
+
             base.DeleteAllRtableResources();
         }
 
@@ -57,20 +58,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// 2 - Initialize Thread_1 with previous config which never expires (6000 sec.)
         /// 3 - Upload config with Head => [WO]->[RW]->...->[RW]
         /// 4 - Initialize Thread_2 with new config which never expires (6000 sec.)
-        ///
-        /// Test:
-        /// 5 - Thread_1: inserts a new entry (using stale viewId)
-        /// 6 - Thread_2: updates the previous entry (using new viewId)
-        /// 7 - Thread_1: fails to retrieve the entry (using stale viewId)
-        /// 8 - Notify of config change => Thread_1 sees latest View
-        /// 9 - Thread_1: retrieves the entry (using latest viewId)
         /// </summary>
-        [Test(Description = "Trigger configuration change notification after detecting a stale view")]
-        public void ConfigurationChangeNotificationAfterDetectingStaleView()
+        void SetupStaleViewAndNewView(out ReplicatedTableConfigurationServiceV2 configServiceOne, out ReplicatedTableConfigurationServiceV2 configServiceTwo)
         {
-            // Verify current View has at least 2 replicas ?
+            // Verify current View has 2 replicas ?
             View view = this.configurationWrapper.GetWriteView();
-            Assert.IsTrue(view.Chain.Count >= 2);
+            Assert.IsTrue(view.Chain.Count == 2, "expects 2 replicas only!");
 
             int leaseDurationInSec = 6000;
 
@@ -78,14 +71,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              * 1 - Remove the Head, set a high LeaseDuration.
              *     The new config will be [None]->[RW]->...->[RW]
              */
-            var configServiceOne = new ReplicatedTableConfigurationServiceV2(this.configurationInfos, this.connectionStringMap, useHttps);
+            configServiceOne = new ReplicatedTableConfigurationServiceV2(this.configurationInfos, this.connectionStringMap, useHttps);
             RemoveHeadFromView(view.Name, leaseDurationInSec, configServiceOne);
 
             /*
              * 2 - Insert the Head, set a high LeaseDuration.
              *     The new config will be [WO]->[RW]->...->[RW]
              */
-            var configServiceTwo = new ReplicatedTableConfigurationServiceV2(this.configurationInfos, this.connectionStringMap, useHttps);
+            configServiceTwo = new ReplicatedTableConfigurationServiceV2(this.configurationInfos, this.connectionStringMap, useHttps);
             InsertHeadInView(view.Name, leaseDurationInSec, configServiceTwo);
 
             /*
@@ -93,18 +86,39 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              *  - configServiceOne sees a stale View (LeaseDuration = 6000sec.)
              *  - configServiceTwo sees the latest View (LeaseDuration = 6000sec.)
              */
-            long staleViewId = configServiceOne.GetTableView(this.tableName).ViewId;
-            long latestViewId = configServiceTwo.GetTableView(this.tableName).ViewId;
+            long staleViewId = configServiceOne.GetTableView(this.repTable.TableName).ViewId;
+            long latestViewId = configServiceTwo.GetTableView(this.repTable.TableName).ViewId;
             Assert.AreNotEqual(staleViewId, latestViewId, "View should have changed !!!");
+        }
 
+        /// <summary>
+        /// Test:
+        /// 1 - Thread_1: inserts a new entry (using stale viewId)
+        /// 2 - Thread_2: updates the previous entry (using new viewId)
+        /// 3 - Thread_1: fails to retrieve the entry (using stale viewId)
+        /// 4 - Notify of config change => Thread_1 sees latest View
+        /// 5 - Thread_1: retrieves the entry (using latest viewId)
+        /// </summary>
+        [Test(Description = "Trigger configuration change notification after detecting a stale view")]
+        public void ConfigurationChangeNotificationAfterDetectingStaleView()
+        {
+            ReplicatedTableConfigurationServiceV2 configServiceOne, configServiceTwo;
+
+            // setup:
+            //  stale view = [None] ->  [RW]
+            //  new view   = [WO]   ->  [RW]
+            SetupStaleViewAndNewView(out configServiceOne, out configServiceTwo);
+
+            long staleViewId = configServiceOne.GetTableView(this.repTable.TableName).ViewId;
+            long latestViewId = configServiceTwo.GetTableView(this.repTable.TableName).ViewId;
 
             string firstName = "FirstName01";
             string lastName = "LastName01";
 
             /*
-             * 3 - WorkerOne => inserts an entry using the stale View
+             * 1 - WorkerOne => inserts an entry using the stale View
              */
-            var workerOne = new ReplicatedTable(this.tableName, configServiceOne);
+            var workerOne = new ReplicatedTable(this.repTable.TableName, configServiceOne);
 
             var customer = new CustomerEntity(firstName, lastName);
             customer.Email = "workerOne@dns.com";
@@ -118,9 +132,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
 
             /*
-             * 4 - WorkerTwo => updates the entry using latest View
+             * 2 - WorkerTwo => updates the entry using latest View
              */
-            var workerTwo = new ReplicatedTable(this.tableName, configServiceTwo);
+            var workerTwo = new ReplicatedTable(this.repTable.TableName, configServiceTwo);
 
             customer = RetrieveCustomer(firstName, lastName, workerTwo);
             customer.Email = "workerTwo@dns.com";
@@ -134,7 +148,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
 
             /*
-             * 5 - WorkerOne => access existing entry using "the stale View"
+             * 3 - WorkerOne => access existing entry using "the stale View"
              */
             try
             {
@@ -154,17 +168,17 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
 
             /*
-             * 6 - Notify "configServiceOne" instance of config change
+             * 4 - Notify "configServiceOne" instance of config change
              */
-            Assert.AreEqual(configServiceOne.GetTableView(this.tableName).ViewId, staleViewId, "we should see old View!!!");
+            Assert.AreEqual(configServiceOne.GetTableView(this.repTable.TableName).ViewId, staleViewId, "we should see old View!!!");
             {
                 configServiceOne.ConfigurationChangeNotification();
             }
-            Assert.AreEqual(configServiceOne.GetTableView(this.tableName).ViewId, latestViewId, "we should see latest View!!!");
+            Assert.AreEqual(configServiceOne.GetTableView(this.repTable.TableName).ViewId, latestViewId, "we should see latest View!!!");
 
 
             /*
-             * 7 - WorkerOne => updates the entry using latest View
+             * 5 - WorkerOne => updates the entry using latest View
              */
             customer = RetrieveCustomer(firstName, lastName, workerTwo);
             customer.Email = "happy.workerOne@dns.com";
@@ -175,6 +189,179 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(latestViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
             Assert.AreEqual("happy.workerOne@dns.com", customer.Email, "customer.Email mismatch");
             Console.WriteLine("workerOne updated the customer in ViewId={0}", latestViewId);
+        }
+
+        /// <summary>
+        /// 1 - Thread_1: locks the row in Tail (using stale ViewId)
+        /// 2 - Thread_2: starts an update (using new ViewId)
+        ///               - row is repaired but stays "Locked"
+        ///               - replace:
+        ///                      => fails with Precondition as the row is still "Locked" (99.99%)
+        ///                      or
+        ///                      => succeed (1%) if "Lock by Thread_1 expired"
+        /// 3 - Thread_3: commit to Tail (using stale viewId)
+        ///                      => fails with ServiceUnavailable @@@@ but the write actually succeeded and was repaired in new ViewId @@@
+        /// </summary>
+        [Test(Description = "Concurrent updates: first uses a stale View and the second uses a newView. Second update interleaves Lock/Commit phases of first update")]
+        public void UpdateInStaleViewConflictingWithUpdateInNewView_T01()
+        {
+            ReplicatedTableConfigurationServiceV2 configServiceOne, configServiceTwo;
+
+            // setup:        Acc0       Acc1
+            //  stale view = [None] ->  [RW]
+            //  new view   = [WO]   ->  [RW]
+            SetupStaleViewAndNewView(out configServiceOne, out configServiceTwo);
+
+            long staleViewId = configServiceOne.GetTableView(this.repTable.TableName).ViewId;
+            long latestViewId = configServiceTwo.GetTableView(this.repTable.TableName).ViewId;
+
+            string firstName = "FirstName01";
+            string lastName = "LastName01";
+
+            /*
+             * 1 - WorkerOne => inserts an entry in stale View
+             */
+            var workerOne = new ReplicatedTable(this.repTable.TableName, configServiceOne);
+            var workerTwo = new ReplicatedTable(this.repTable.TableName, configServiceTwo);
+
+            var customer = new CustomerEntity(firstName, lastName);
+            customer.Email = "***";
+            InsertCustormer(customer, workerOne);
+
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[1];
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            TableResult oldUpdateResult = null;
+            TableResult newUpdateResult = null;
+            bool triggerUpdateWithNewView = false;
+            bool oldUpdateResume = false;
+
+            // Start new Update in wait
+            var newUpdateTask = Task.Run(() =>
+            {
+                while (!triggerUpdateWithNewView)
+                {
+                    Thread.Sleep(100);
+                }
+
+                /*
+                 * 3 - Executes after step 2 below:
+                 *     WorkerTwo => updates the entry using new View
+                 */
+                customer = RetrieveCustomer(firstName, lastName, workerTwo);
+                customer.Email = "workerTwo";
+
+                TableOperation operation = TableOperation.Replace(customer);
+                newUpdateResult = workerTwo.Execute(operation);
+            });
+
+
+            // Delay behavior
+            ProxyBehavior[] behaviors =
+            {
+                TamperBehaviors.TamperAllRequestsIf(
+                    (session =>
+                    {
+                        // => trigger new update to start
+                        triggerUpdateWithNewView = true;
+
+                        // Delaying commit to the Tail by stale view Update
+                        while (!oldUpdateResume)
+                        {
+                            Thread.Sleep(100);
+                        }
+                    }),
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Commit to Tail by stale view
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"Email\":\"workerOne\"") &&
+                            body.Contains(string.Format("\"_rtable_ViewId\":\"{0}\"", staleViewId)) &&
+                            body.Contains("\"_rtable_RowLock\":false"))
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    })),
+
+                DelayBehaviors.DelayAllResponsesIf(
+                    1,
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Repair on Tail by new View
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"Email\":\"workerOne\"") &&
+                            body.Contains(string.Format("\"_rtable_ViewId\":\"{0}\"", latestViewId)))
+                        {
+                            // Row repaired, Signal old Update to resume ...
+                            oldUpdateResume = true;
+                            return true;
+                        }
+
+                        return false;
+                    })),
+            };
+
+            /*
+             * 2 - WorkerOne => update an entry using the stale View
+             */
+            using (new HttpMangler(false, behaviors))
+            {
+                customer = RetrieveCustomer(firstName, lastName, workerOne);
+                customer.Email = "workerOne";
+
+                TableOperation operation = TableOperation.Replace(customer);
+                oldUpdateResult = workerOne.Execute(operation);
+            }
+
+            // Wait on new Update to finish
+            newUpdateTask.Wait();
+
+
+            // Expected behavior:
+
+            // Thread_1 (stale ViewId)
+            Assert.IsNotNull(oldUpdateResult, "oldUpdateResult = null");
+            Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, oldUpdateResult.HttpStatusCode, "oldUpdateResult.HttpStatusCode mismatch");
+            Console.WriteLine("Update in stale View failed with HttpStatus={0}", oldUpdateResult.HttpStatusCode);
+
+            // Thread_2 (new ViewId)
+            Assert.IsNotNull(newUpdateResult, "newUpdateResult = null");
+            Console.WriteLine("Update in new View completed with HttpStatus={0}", newUpdateResult.HttpStatusCode);
+
+            // Thread_2 got "PreconditionFailed" (99%)
+            if (newUpdateResult.HttpStatusCode == (int)HttpStatusCode.PreconditionFailed)
+            {
+                // row lock didn't expire but row was repaired in new ViewId
+                customer = RetrieveCustomer(firstName, lastName, workerTwo);
+
+                Assert.AreEqual(latestViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
+                Assert.AreEqual("workerOne", customer.Email, "customer.Email mismatch");
+                Assert.AreEqual(true, customer._rtable_RowLock, "customer._rtable_RowLock mismatch");
+
+                Console.WriteLine("workerOne write Succeeded, was repaired in new view but is still Locked");
+                Console.WriteLine("workerTwo got PreconditionFailed.");
+
+                return;
+            }
+
+            // Thread_2 got "NoContent" (1%)
+            Assert.AreEqual((int)HttpStatusCode.NoContent, newUpdateResult.HttpStatusCode, "newUpdateResult.HttpStatusCode mismatch");
+
+            customer = RetrieveCustomer(firstName, lastName, workerTwo);
+
+            Assert.AreEqual(latestViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
+            Assert.AreEqual("workerTwo", customer.Email, "customer.Email mismatch");
+
+            Console.WriteLine("workerOne write Succeeded, was repaired in new view but lock expired.");
+            Console.WriteLine("workerTwo Succeeded to overwrite workerTwo's data");
         }
 
         #region Config helpers

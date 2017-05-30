@@ -2464,7 +2464,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             IReplicatedTableEntity readHeadEntity = ConvertToIReplicatedTableEntity(readHeadResult);
             bool readHeadLocked = readHeadEntity._rtable_RowLock;
-            bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + this._configurationWrapper.GetLockTimeout() > DateTime.UtcNow);
+            bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + this._configurationWrapper.GetLockTimeout() < DateTime.UtcNow);
 
             // take a lock on the read view entity unless the entity is already locked
             readHeadEntity._rtable_RowLock = true;

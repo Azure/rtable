@@ -66,17 +66,17 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <summary>
         /// Call this helper function to set up RTable before running any tests.
         /// </summary>
-        protected void OneTimeSetUpInternal()
+        protected void OneTimeSetUpInternal(List<int> accountsToBeUsed=null)
         {
             this.LoadTestConfiguration();
             string tableName = this.GenerateRandomTableName();
             Console.WriteLine("tableName = {0}", tableName);
-            this.SetupRTableEnv(tableName, this.useHttps);
+            this.SetupRTableEnv(tableName, this.useHttps, actualStorageAccountsToBeUsed: accountsToBeUsed);
 
             for (int i = 0; i < this.cloudTables.Count; i++)
             {
                 Assert.IsTrue(this.cloudTables[i].Exists(), "RTable does not exist in storage account #{0}", i);
-            }        
+            }
         }
 
         /// <summary>
