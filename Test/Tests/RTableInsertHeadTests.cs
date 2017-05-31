@@ -198,11 +198,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         ///               - replace:
         ///                      => fails with Precondition as the row is still "Locked" (99.99%)
         ///                      or
-        ///                      => succeed (1%) if "Lock by Thread_1 expired"
-        /// 3 - Thread_3: commit to Tail (using stale viewId)
+        ///                      => succeeds (1%) if "Lock by Thread_1 expired"
+        /// 3 - Thread_3: commits to Tail (using stale viewId)
         ///                      => fails with ServiceUnavailable @@@@ but the write actually succeeded and was repaired in new ViewId @@@
         /// </summary>
-        [Test(Description = "Concurrent updates: first uses a stale View and the second uses a newView. Second update interleaves Lock/Commit phases of first update")]
+        [Test(Description = "Concurrent updates: first uses a stale View and the second uses a newView. " +
+                            "Second update interleaves Lock/Commit phases of first update")]
         public void UpdateInStaleViewConflictingWithUpdateInNewView_T01()
         {
             ReplicatedTableConfigurationServiceV2 configServiceOne, configServiceTwo;
@@ -363,6 +364,157 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Console.WriteLine("workerOne write Succeeded, was repaired in new view but lock expired.");
             Console.WriteLine("workerTwo Succeeded to overwrite workerTwo's data");
         }
+
+        /// <summary>
+        /// 1 - Thread_1: locks the row in Tail (using stale ViewId)
+        /// 2 - Thread_2: reads the row (using new ViewId)
+        /// 3 - Thread_1: succeeds to commit the write to Tail (using stale Viewid)
+        /// 4 - Thread_2: performs the update
+        ///               - row is repaired
+        ///               - succeeds to commit the write (using new Viewid)
+        /// </summary>
+        [Test(Description = "Concurrent updates: first uses a stale View and the second uses a newView. " +
+                            "Second update reads uncommitted row (by first), but repairs it once it is committed (by first)")]
+        public void UpdateInStaleViewConflictingWithUpdateInNewView_T02()
+        {
+            ReplicatedTableConfigurationServiceV2 configServiceOne, configServiceTwo;
+
+            // setup:        Acc0       Acc1
+            //  stale view = [None] ->  [RW]
+            //  new view   = [WO]   ->  [RW]
+            SetupStaleViewAndNewView(out configServiceOne, out configServiceTwo);
+
+            long staleViewId = configServiceOne.GetTableView(this.repTable.TableName).ViewId;
+            long latestViewId = configServiceTwo.GetTableView(this.repTable.TableName).ViewId;
+
+            string firstName = "FirstName01";
+            string lastName = "LastName01";
+
+            /*
+             * 1 - WorkerOne => inserts an entry in stale View
+             */
+            var workerOne = new ReplicatedTable(this.repTable.TableName, configServiceOne);
+            var workerTwo = new ReplicatedTable(this.repTable.TableName, configServiceTwo);
+
+            var customer = new CustomerEntity(firstName, lastName);
+            customer.Email = "***";
+            InsertCustormer(customer, workerOne);
+
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[1];
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            TableResult oldUpdateResult = null;
+            TableResult newUpdateResult = null;
+            bool triggerUpdateWithNewView = false;
+            bool oldUpdateResume = false;
+            bool updateWithOldViewFinished = false;
+
+            // Start new Update in wait
+            var newUpdateTask = Task.Run(() =>
+            {
+                while (!triggerUpdateWithNewView)
+                {
+                    Thread.Sleep(100);
+                }
+
+                /*
+                 * 3 - Executes after step 2 below:
+                 *     WorkerTwo => reads the entry using new View while it is locked by WorkeOne (not yet commited)
+                 */
+                customer = RetrieveCustomer(firstName, lastName, workerTwo);
+
+                // Signal old Update to resume ... and wait for it to commit the write
+                oldUpdateResume = true;
+                while (!updateWithOldViewFinished)
+                {
+                    Thread.Sleep(100);
+                }
+
+                /*
+                 * 4 - WorkerTwo => updates the entry using new View ...
+                 */
+                customer.Email = "workerTwo";
+                TableOperation operation = TableOperation.Replace(customer);
+                newUpdateResult = workerTwo.Execute(operation);
+            });
+
+
+            // Delay behavior
+            ProxyBehavior[] behaviors =
+            {
+                TamperBehaviors.TamperAllRequestsIf(
+                    (session =>
+                    {
+                        // => trigger new update to start
+                        triggerUpdateWithNewView = true;
+
+                        // Delaying commit to the Tail by stale view Update
+                        while (!oldUpdateResume)
+                        {
+                            Thread.Sleep(100);
+                        }
+                    }),
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Commit to Tail by stale view
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"Email\":\"workerOne\"") &&
+                            body.Contains(string.Format("\"_rtable_ViewId\":\"{0}\"", staleViewId)) &&
+                            body.Contains("\"_rtable_RowLock\":false"))
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    })),
+            };
+
+            /*
+             * 2 - WorkerOne => update an entry using the stale View
+             */
+            using (new HttpMangler(false, behaviors))
+            {
+                customer = RetrieveCustomer(firstName, lastName, workerOne);
+                customer.Email = "workerOne";
+
+                TableOperation operation = TableOperation.Replace(customer);
+                oldUpdateResult = workerOne.Execute(operation);
+
+                updateWithOldViewFinished = true;
+            }
+
+            // Wait on new Update to finish
+            newUpdateTask.Wait();
+
+
+            // Expected behavior:
+
+            // Thread_1 (stale ViewId)
+            Assert.IsNotNull(oldUpdateResult, "oldUpdateResult = null");
+            Assert.AreEqual((int)HttpStatusCode.NoContent, oldUpdateResult.HttpStatusCode, "oldUpdateResult.HttpStatusCode mismatch");
+            Console.WriteLine("Update in stale View Succeeded with HttpStatus={0}", oldUpdateResult.HttpStatusCode);
+
+            // Thread_2 (new ViewId)
+            Assert.IsNotNull(newUpdateResult, "newUpdateResult = null");
+            Assert.AreEqual((int)HttpStatusCode.NoContent, newUpdateResult.HttpStatusCode, "newUpdateResult.HttpStatusCode mismatch");
+            Console.WriteLine("Update in new View Succeeded with HttpStatus={0}", newUpdateResult.HttpStatusCode);
+
+            customer = RetrieveCustomer(firstName, lastName, workerTwo);
+
+            Assert.AreEqual(latestViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
+            Assert.AreEqual("workerTwo", customer.Email, "customer.Email mismatch");
+
+            Console.WriteLine("workerOne write Succeeded, was repaired in new view by workerTwo.");
+            Console.WriteLine("workerTwo Succeeded to overwrite afterward");
+        }
+
+
+
+
+
 
         #region Config helpers
 
