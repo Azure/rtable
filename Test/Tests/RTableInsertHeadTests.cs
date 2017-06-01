@@ -199,7 +199,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         ///                      => fails with Precondition as the row is still "Locked" (99.99%)
         ///                      or
         ///                      => succeeds (1%) if "Lock by Thread_1 expired"
-        /// 3 - Thread_3: commits to Tail (using stale viewId)
+        /// 3 - Thread_1: commits to Tail (using stale viewId)
         ///                      => fails with ServiceUnavailable @@@@ but the write actually succeeded and was repaired in new ViewId @@@
         /// </summary>
         [Test(Description = "Concurrent updates: first uses a stale View and the second uses a newView. " +
@@ -511,9 +511,135 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Console.WriteLine("workerTwo Succeeded to overwrite afterward");
         }
 
+        /// <summary>
+        /// 1 - Thread_1: inserts a new entry with Lock in Tail (using stale ViewId)
+        /// 2 - Thread_2: starts an insert (using new ViewId)
+        ///               - row is repaired but still "Locked"
+        ///               - insert fails with Conflict whether Lock expired or no!
+        /// 3 - Thread_1: commits to Tail (using stale viewId)
+        ///                      => fails with ServiceUnavailable @@@@ but the write actually succeeded and was repaired in new ViewId @@@
+        /// </summary>
+        [Test(Description = "Concurrent inserts: first uses a stale View and the second uses a newView. " +
+                            "Second insert happens after the first insert locks the row, but before it commits it.")]
+        public void InsertInStaleViewConflictingWithInsertInNewView()
+        {
+            ReplicatedTableConfigurationServiceV2 configServiceOne, configServiceTwo;
+
+            // setup:        Acc0       Acc1
+            //  stale view = [None] ->  [RW]
+            //  new view   = [WO]   ->  [RW]
+            SetupStaleViewAndNewView(out configServiceOne, out configServiceTwo);
+
+            long staleViewId = configServiceOne.GetTableView(this.repTable.TableName).ViewId;
+            long latestViewId = configServiceTwo.GetTableView(this.repTable.TableName).ViewId;
+
+            string firstName = "FirstName01";
+            string lastName = "LastName01";
+
+            var workerOne = new ReplicatedTable(this.repTable.TableName, configServiceOne);
+            var workerTwo = new ReplicatedTable(this.repTable.TableName, configServiceTwo);
+
+            string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[1];
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            TableResult oldInsertResult = null;
+            TableResult newInsertResult = null;
+            bool triggerInsertWithNewView = false;
+            bool oldInsertResume = false;
+            //bool updateWithOldViewFinished = false;
+
+            // Start new newInsertTask in wait
+            var newInsertTask = Task.Run(() =>
+            {
+                while (!triggerInsertWithNewView)
+                {
+                    Thread.Sleep(100);
+                }
+
+                /*
+                 * 2 - Executes after step 1 below:
+                 *     WorkerTwo => Insert a new row using new view
+                 */
+                var customer = new CustomerEntity(firstName, lastName);
+                customer.Email = "workerTwo";
+
+                TableOperation operation = TableOperation.Insert(customer);
+                newInsertResult = workerTwo.Execute(operation);
+
+                // Signal old Insert to resume
+                oldInsertResume = true;
+            });
 
 
+            // Delay behavior
+            ProxyBehavior[] behaviors =
+            {
+                TamperBehaviors.TamperAllRequestsIf(
+                    (session =>
+                    {
+                        // => trigger new insert to start
+                        triggerInsertWithNewView = true;
 
+                        // Delaying commit to the Tail by stale view Update
+                        while (!oldInsertResume)
+                        {
+                            Thread.Sleep(100);
+                        }
+                    }),
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Commit to Tail by stale view
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"Email\":\"workerOne\"") &&
+                            body.Contains(string.Format("\"_rtable_ViewId\":\"{0}\"", staleViewId)) &&
+                            body.Contains("\"_rtable_RowLock\":false"))
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    })),
+            };
+
+            /*
+             * 1 - WorkerOne => update an entry using the stale View
+             */
+            using (new HttpMangler(false, behaviors))
+            {
+                var customer = new CustomerEntity(firstName, lastName);
+                customer.Email = "workerOne";
+
+                TableOperation operation = TableOperation.Insert(customer);
+                oldInsertResult = workerOne.Execute(operation);
+            }
+
+            // Wait on new Insert to finish
+            newInsertTask.Wait();
+
+
+            // Expected behavior:
+
+            // Thread_1 (stale ViewId)
+            Assert.IsNotNull(oldInsertResult, "oldInsertResult = null");
+            Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, oldInsertResult.HttpStatusCode, "oldInsertResult.HttpStatusCode mismatch");
+            Console.WriteLine("Insert in stale View failed with HttpStatus={0}", oldInsertResult.HttpStatusCode);
+
+            // Thread_2 (new ViewId)
+            Assert.IsNotNull(newInsertResult, "newInsertResult = null");
+            Assert.AreEqual((int)HttpStatusCode.Conflict, newInsertResult.HttpStatusCode, "newUpdateResult.HttpStatusCode mismatch");
+            Console.WriteLine("Insert in new View failed with HttpStatus={0}", newInsertResult.HttpStatusCode);
+
+            var currCustomer = RetrieveCustomer(firstName, lastName, workerTwo);
+
+            Assert.AreEqual(latestViewId, currCustomer._rtable_ViewId, "customer._rtable_ViewId mismatch");
+            Assert.AreEqual("workerOne", currCustomer.Email, "customer.Email mismatch");
+
+            Console.WriteLine("workerOne write Succeeded, was repaired in new view and Lock is={0}", currCustomer._rtable_RowLock);
+            Console.WriteLine("workerTwo got Conflict whether row lock expired or no");
+        }
 
 
         #region Config helpers
