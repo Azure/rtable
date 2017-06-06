@@ -1264,6 +1264,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                     ReplicatedTableLogger.LogError("Insert: failure in flush.");
                     return null;
                 }
+
+                if (retrievedResult.HttpStatusCode == (int) HttpStatusCode.Conflict)
+                {
+                    ReplicatedTableLogger.LogError("Insert: row is locked in read head.");
+                    return retrievedResult;
+                }
             }
 
             CloudTableClient headTableClient = txnView[txnView.WriteHeadIndex];
@@ -1385,6 +1391,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             // If this row needs repair due to an unstable view, do it now
             //
             TableResult repairRowTableResult = this.RepairRow(row.PartitionKey, row.RowKey, null);
+
             if (repairRowTableResult == null ||
                 (repairRowTableResult.HttpStatusCode != (int)HttpStatusCode.OK && repairRowTableResult.HttpStatusCode != (int) HttpStatusCode.NoContent))
             {
@@ -1394,6 +1401,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                     row.PartitionKey,
                     row.RowKey);
 
+                // Row still locked
+                if (repairRowTableResult.HttpStatusCode == (int)HttpStatusCode.Conflict)
+                {
+                    return repairRowTableResult;
+                }
+
+                // else
                 return new TableResult()
                 {
                     Result = null,
@@ -1401,6 +1415,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     HttpStatusCode = (int) HttpStatusCode.NotFound
                 };
             }
+
 
             TableResult retrievedResult = null;
             if (this._configurationWrapper.IsConvertToRTableMode())
@@ -2465,6 +2480,18 @@ namespace Microsoft.Azure.Toolkit.Replication
             IReplicatedTableEntity readHeadEntity = ConvertToIReplicatedTableEntity(readHeadResult);
             bool readHeadLocked = readHeadEntity._rtable_RowLock;
             bool readHeadLockExpired = (readHeadEntity._rtable_LockAcquisition + this._configurationWrapper.GetLockTimeout() < DateTime.UtcNow);
+
+            if (readHeadLocked && !readHeadLockExpired)
+            {
+                ReplicatedTableLogger.LogError("RepairRow: skip as row is locked in read head.");
+
+                return new TableResult()
+                {
+                    Result = null,
+                    Etag = null,
+                    HttpStatusCode = (int)HttpStatusCode.Conflict
+                };
+            }
 
             // take a lock on the read view entity unless the entity is already locked
             readHeadEntity._rtable_RowLock = true;

@@ -194,13 +194,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <summary>
         /// 1 - Thread_1: locks the row in Tail (using stale ViewId)
         /// 2 - Thread_2: starts an update (using new ViewId)
-        ///               - row is repaired but stays "Locked"
-        ///               - replace:
-        ///                      => fails with Precondition as the row is still "Locked" (99.99%)
-        ///                      or
-        ///                      => succeeds (1%) if "Lock by Thread_1 expired"
+        ///               - row is locked so repair row will fail with a conflict
+        ///                      => fails with Precondition as the row is still "Locked"
         /// 3 - Thread_1: commits to Tail (using stale viewId)
-        ///                      => fails with ServiceUnavailable @@@@ but the write actually succeeded and was repaired in new ViewId @@@
+        ///                      => Succeed
         /// </summary>
         [Test(Description = "Concurrent updates: first uses a stale View and the second uses a newView. " +
                             "Second update interleaves Lock/Commit phases of first update")]
@@ -254,6 +251,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 TableOperation operation = TableOperation.Replace(customer);
                 newUpdateResult = workerTwo.Execute(operation);
+
+                oldUpdateResume = true;
             });
 
 
@@ -288,26 +287,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                         return false;
                     })),
-
-                DelayBehaviors.DelayAllResponsesIf(
-                    1,
-                    (session =>
-                    {
-                        var body = session.GetRequestBodyAsString();
-
-                        // Repair on Tail by new View
-                        if (session.hostname.Contains(accountNameToTamper + ".") &&
-                            session.HTTPMethodIs("PUT") &&
-                            body.Contains("\"Email\":\"workerOne\"") &&
-                            body.Contains(string.Format("\"_rtable_ViewId\":\"{0}\"", latestViewId)))
-                        {
-                            // Row repaired, Signal old Update to resume ...
-                            oldUpdateResume = true;
-                            return true;
-                        }
-
-                        return false;
-                    })),
             };
 
             /*
@@ -330,39 +309,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Thread_1 (stale ViewId)
             Assert.IsNotNull(oldUpdateResult, "oldUpdateResult = null");
-            Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, oldUpdateResult.HttpStatusCode, "oldUpdateResult.HttpStatusCode mismatch");
-            Console.WriteLine("Update in stale View failed with HttpStatus={0}", oldUpdateResult.HttpStatusCode);
+            Assert.AreEqual((int)HttpStatusCode.NoContent, oldUpdateResult.HttpStatusCode, "oldUpdateResult.HttpStatusCode mismatch");
+            Console.WriteLine("Update in stale View Succeeded with HttpStatus={0}", oldUpdateResult.HttpStatusCode);
 
             // Thread_2 (new ViewId)
             Assert.IsNotNull(newUpdateResult, "newUpdateResult = null");
-            Console.WriteLine("Update in new View completed with HttpStatus={0}", newUpdateResult.HttpStatusCode);
+            Console.WriteLine("Update in new View failed with HttpStatus={0}", newUpdateResult.HttpStatusCode);
 
-            // Thread_2 got "PreconditionFailed" (99%)
-            if (newUpdateResult.HttpStatusCode == (int)HttpStatusCode.PreconditionFailed)
-            {
-                // row lock didn't expire but row was repaired in new ViewId
-                customer = RetrieveCustomer(firstName, lastName, workerTwo);
-
-                Assert.AreEqual(latestViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
-                Assert.AreEqual("workerOne", customer.Email, "customer.Email mismatch");
-                Assert.AreEqual(true, customer._rtable_RowLock, "customer._rtable_RowLock mismatch");
-
-                Console.WriteLine("workerOne write Succeeded, was repaired in new view but is still Locked");
-                Console.WriteLine("workerTwo got PreconditionFailed.");
-
-                return;
-            }
-
-            // Thread_2 got "NoContent" (1%)
-            Assert.AreEqual((int)HttpStatusCode.NoContent, newUpdateResult.HttpStatusCode, "newUpdateResult.HttpStatusCode mismatch");
+            // Thread_2 got "PreconditionFailed"
+            Assert.AreEqual((int)HttpStatusCode.PreconditionFailed, newUpdateResult.HttpStatusCode, "newUpdateResult.HttpStatusCode mismatch");
 
             customer = RetrieveCustomer(firstName, lastName, workerTwo);
 
-            Assert.AreEqual(latestViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
-            Assert.AreEqual("workerTwo", customer.Email, "customer.Email mismatch");
+            Assert.AreEqual(staleViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
+            Assert.AreEqual("workerOne", customer.Email, "customer.Email mismatch");
 
-            Console.WriteLine("workerOne write Succeeded, was repaired in new view but lock expired.");
-            Console.WriteLine("workerTwo Succeeded to overwrite workerTwo's data");
+            Console.WriteLine("workerOne write Succeeded");
+            Console.WriteLine("workerTwo got PreconditionFailed because repair failed since row was locked.");
         }
 
         /// <summary>
@@ -514,10 +477,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <summary>
         /// 1 - Thread_1: inserts a new entry with Lock in Tail (using stale ViewId)
         /// 2 - Thread_2: starts an insert (using new ViewId)
-        ///               - row is repaired but still "Locked"
-        ///               - insert fails with Conflict whether Lock expired or no!
+        ///               - row is locked so repair row will fail with a conflict
+        ///                      => insert fails with Conflict
         /// 3 - Thread_1: commits to Tail (using stale viewId)
-        ///                      => fails with ServiceUnavailable @@@@ but the write actually succeeded and was repaired in new ViewId @@@
+        ///                      => Succeed
         /// </summary>
         [Test(Description = "Concurrent inserts: first uses a stale View and the second uses a newView. " +
                             "Second insert happens after the first insert locks the row, but before it commits it.")]
@@ -546,7 +509,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             TableResult newInsertResult = null;
             bool triggerInsertWithNewView = false;
             bool oldInsertResume = false;
-            //bool updateWithOldViewFinished = false;
 
             // Start new newInsertTask in wait
             var newInsertTask = Task.Run(() =>
@@ -624,8 +586,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Thread_1 (stale ViewId)
             Assert.IsNotNull(oldInsertResult, "oldInsertResult = null");
-            Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, oldInsertResult.HttpStatusCode, "oldInsertResult.HttpStatusCode mismatch");
-            Console.WriteLine("Insert in stale View failed with HttpStatus={0}", oldInsertResult.HttpStatusCode);
+            Assert.AreEqual((int)HttpStatusCode.NoContent, oldInsertResult.HttpStatusCode, "oldInsertResult.HttpStatusCode mismatch");
+            Console.WriteLine("Insert in stale View Succeeded with HttpStatus={0}", oldInsertResult.HttpStatusCode);
 
             // Thread_2 (new ViewId)
             Assert.IsNotNull(newInsertResult, "newInsertResult = null");
@@ -634,11 +596,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             var currCustomer = RetrieveCustomer(firstName, lastName, workerTwo);
 
-            Assert.AreEqual(latestViewId, currCustomer._rtable_ViewId, "customer._rtable_ViewId mismatch");
+            Assert.AreEqual(staleViewId, currCustomer._rtable_ViewId, "customer._rtable_ViewId mismatch");
             Assert.AreEqual("workerOne", currCustomer.Email, "customer.Email mismatch");
 
-            Console.WriteLine("workerOne write Succeeded, was repaired in new view and Lock is={0}", currCustomer._rtable_RowLock);
-            Console.WriteLine("workerTwo got Conflict whether row lock expired or no");
+            Console.WriteLine("workerOne write Succeeded");
+            Console.WriteLine("workerTwo got Conflict because row was lock.");
         }
 
 
