@@ -940,7 +940,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // if the entry has a tombstone set, don't return it.
                 if (currentRow._rtable_Tombstone)
                 {
-                    return null;
+                    return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
                 }
 
                 // We read a committed value. return it after virtualizing the ETag
@@ -1216,7 +1216,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     // Failed, abort with error and let the application take care of it by reissuing it 
                     // TO DO: Alternately, we could wait and retry after sometime using requestOptions.
                     ReplicatedTableLogger.LogError(
-                        "ReplaceInternal: Failed during prepare phase in 2PC for row key: {0}", row.RowKey);
+                        "ReplaceInternal: Failed during prepare phase in 2PC for row PK:{0} RK:{1}", row.PartitionKey, row.RowKey);
                     return new TableResult()
                     {
                         Result = null,
@@ -1563,49 +1563,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return new ReplicatedTableQuery<TElement>(CreateQuery<TElement>(), this._configurationWrapper.IsConvertToRTableMode());
         }
 
-        /// <summary>
-        /// IMPORTANT:
-        ///     Etag virtualizer function will be called in a tight loop i.e. "for each returned entry" => it has to be optimal.
-        ///     This factory method returns the appropriate delegate to be configure the ReplicatedTableEnumerator(T).
-        /// </summary>
-        /// <returns></returns>
-        internal static Action<ITableEntity> GetEtagVirtualizerFunc(bool isConvertMode, Type type)
-        {
-            if (isConvertMode)
-            {
-                if (type == typeof(InitDynamicReplicatedTableEntity))
-                {
-                    return ReplicatedTable.VirtualizeEtagForInitDynamicReplicatedTableEntity;
-                }
-
-                if (type.IsSubclassOf(typeof(ReplicatedTableEntity)))
-                {
-                    return VirtualizeEtagForReplicatedTableEntity;
-                }
-
-                if (type == typeof(DynamicTableEntity) ||
-                    type.IsSubclassOf(typeof(DynamicTableEntity)))
-                {
-                    return ReplicatedTable.VirtualizeEtagForDynamicTableEntityInConvertMode;
-                }
-            }
-            else
-            {
-                if (type == typeof(ReplicatedTableEntity) ||
-                    type.IsSubclassOf(typeof(ReplicatedTableEntity)))
-                {
-                    return ReplicatedTable.VirtualizeEtagForReplicatedTableEntity;
-                }
-
-                if (type == typeof(DynamicTableEntity) ||
-                    type.IsSubclassOf(typeof(DynamicTableEntity)))
-                {
-                    return ReplicatedTable.VirtualizeEtagForDynamicTableEntity;
-                }
-            }
-
-            throw new ArgumentException(string.Format("EntityType ({0}) is not supported", type));
-        }
+        #region VirtualizeEtag helpers
 
         internal static void VirtualizeEtagForInitDynamicReplicatedTableEntity(ITableEntity curr)
         {
@@ -1632,6 +1590,38 @@ namespace Microsoft.Azure.Toolkit.Replication
             var row = curr as DynamicTableEntity;
             row.ETag = row.Properties["_rtable_Version"].Int64Value.ToString();
         }
+
+        #endregion
+
+
+        #region Tombstone check helpers
+
+        internal static bool HasTombstoneForInitDynamicReplicatedTableEntity(ITableEntity curr)
+        {
+            var row = curr as InitDynamicReplicatedTableEntity;
+            return row._rtable_Tombstone;
+        }
+
+        internal static bool HasTombstoneForDynamicTableEntityInConvertMode(ITableEntity curr)
+        {
+            var row = curr as DynamicTableEntity;
+            return row.Properties.ContainsKey("_rtable_Tombstone") && (bool)row.Properties["_rtable_Tombstone"].BooleanValue;
+        }
+
+        internal static bool HasTombstoneForReplicatedTableEntity(ITableEntity curr)
+        {
+            var row = curr as ReplicatedTableEntity;
+            return row._rtable_Tombstone;
+        }
+
+        internal static bool HasTombstoneForDynamicTableEntity(ITableEntity curr)
+        {
+            var row = curr as DynamicTableEntity;
+            return (bool)row.Properties["_rtable_Tombstone"].BooleanValue;
+        }
+
+        #endregion
+
 
         /// <summary>
         /// Retrieve a row from a specific replica i.e. @index.
@@ -1814,8 +1804,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     // Failed in the middle, abort with error
                     ReplicatedTableLogger.LogError(
-                        "F2PC: Failed during commit phase in 2PC at replica with index: {0} when reading a row with row key: {1}",
+                        "F2PC: Failed during commit phase in 2PC at replica with index: {0} for row with PK:{1} RK:{2}",
                         index,
+                        row.PartitionKey,
                         row.RowKey);
                     break;
                 }

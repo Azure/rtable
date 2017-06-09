@@ -35,15 +35,77 @@ namespace Microsoft.Azure.Toolkit.Replication
     public class ReplicatedTableEnumerator<T> : IEnumerator<T>
     {
         private readonly IEnumerator<T> _collection;
-        private readonly Action<ITableEntity> VirtualizeEtagFunc;
+        private readonly Action<ITableEntity> VirtualizeEtagFunc = null;
+        private readonly Func<ITableEntity, bool> HasTombstoneFunc = null;
 
         public ReplicatedTableEnumerator(IEnumerator<T> collection, bool isConvertMode)
         {
             _collection = collection;
-            this.VirtualizeEtagFunc = ReplicatedTable.GetEtagVirtualizerFunc(isConvertMode, typeof(T));
+
+
+            // IMPORTANT:
+            //     Etag virtualizer / HasTombstone functions are called in a tight loop i.e. "for each returned entry"
+            //     => configure optimal delegates.
+            if (isConvertMode)
+            {
+                if (typeof(T) == typeof(InitDynamicReplicatedTableEntity))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForInitDynamicReplicatedTableEntity;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForInitDynamicReplicatedTableEntity;
+                }
+
+                if (typeof(T).IsSubclassOf(typeof(ReplicatedTableEntity)))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForReplicatedTableEntity;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForReplicatedTableEntity;
+                }
+
+                if (typeof(T) == typeof(DynamicTableEntity) ||
+                    typeof(T).IsSubclassOf(typeof(DynamicTableEntity)))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForDynamicTableEntityInConvertMode;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForDynamicTableEntityInConvertMode;
+                }
+            }
+            else
+            {
+                if (typeof(T) == typeof(ReplicatedTableEntity) ||
+                    typeof(T).IsSubclassOf(typeof(ReplicatedTableEntity)))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForReplicatedTableEntity;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForReplicatedTableEntity;
+                }
+
+                if (typeof(T) == typeof(DynamicTableEntity) ||
+                    typeof(T).IsSubclassOf(typeof(DynamicTableEntity)))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForDynamicTableEntity;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForDynamicTableEntity;
+                }
+            }
+
+            if (this.VirtualizeEtagFunc == null || this.HasTombstoneFunc == null)
+            {
+                throw new ArgumentException(string.Format("EntityType ({0}) is not supported", typeof(T)));
+            }
         }
 
-        public bool MoveNext() { return _collection.MoveNext(); }
+        public bool MoveNext()
+        {
+            do
+            {
+                bool more = _collection.MoveNext();
+                if (!more)
+                {
+                    return false;
+                }
+
+                // Skip deleted row i.e. Tombstone is set
+            } while (HasTombstoneFunc(_collection.Current as ITableEntity));
+
+            return true;
+        }
+
         public void Reset() { _collection.Reset(); }
         void IDisposable.Dispose() { _collection.Dispose(); }
         object IEnumerator.Current { get { return Current; } }

@@ -104,6 +104,7 @@
     <Compile Include="RTableInsertHeadTests.cs" />
     <Compile Include="RTableLibraryTestBase.cs" />
     <Compile Include="RTableCRUDPerfTests.cs" />
+    <Compile Include="RTableQueryableAdditionalTests.cs" />
     <Compile Include="RTableQueryableTests.cs" />
     <Compile Include="RTableQueryGenericAdditionalTests.cs" />
     <Compile Include="RTableQueryGenericTests.cs" />
