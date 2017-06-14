@@ -1516,10 +1516,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             using (new StopWatchInternal(this.TableName, "ExecuteQuery", this._configurationWrapper))
             {
                 IEnumerable<TElement> rows = Enumerable.Empty<TElement>();
+                View txnView = CurrentView;
 
                 try
                 {
-                    CloudTable tail = GetTailTableClient().GetTableReference(TableName);
+                    CloudTable tail = txnView[txnView.TailIndex].GetTableReference(TableName);
                     rows = tail.ExecuteQuery(query);
                 }
                 catch (Exception e)
@@ -1527,7 +1528,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     ReplicatedTableLogger.LogError("Error in ExecuteQuery: caught exception {0}", e);
                 }
 
-                return new ReplicatedTableEnumerable<TElement>(rows, this._configurationWrapper.IsConvertToRTableMode());
+                return new ReplicatedTableEnumerable<TElement>(rows, this._configurationWrapper.IsConvertToRTableMode(), txnView.ViewId);
             }
         }
 
@@ -1560,7 +1561,23 @@ namespace Microsoft.Azure.Toolkit.Replication
         public ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>()
                 where TElement : ITableEntity, new()
         {
-            return new ReplicatedTableQuery<TElement>(CreateQuery<TElement>(), this._configurationWrapper.IsConvertToRTableMode());
+            using (new StopWatchInternal(this.TableName, "CreateReplicatedQuery", this._configurationWrapper))
+            {
+                TableQuery<TElement> query = new TableQuery<TElement>();
+                View txnView = CurrentView;
+
+                try
+                {
+                    CloudTable tail = txnView[txnView.TailIndex].GetTableReference(TableName);
+                    query = tail.CreateQuery<TElement>();
+                }
+                catch (Exception e)
+                {
+                    ReplicatedTableLogger.LogError("Error in CreateReplicatedQuery: caught exception {0}", e);
+                }
+
+                return new ReplicatedTableQuery<TElement>(query, this._configurationWrapper.IsConvertToRTableMode(), txnView.ViewId);
+            }
         }
 
         #region VirtualizeEtag helpers
@@ -1618,6 +1635,35 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             var row = curr as DynamicTableEntity;
             return (bool)row.Properties["_rtable_Tombstone"].BooleanValue;
+        }
+
+        #endregion
+
+
+        #region Row viewId helpers
+
+        internal static long RowViewIdForInitDynamicReplicatedTableEntity(ITableEntity curr)
+        {
+            var row = curr as InitDynamicReplicatedTableEntity;
+            return row._rtable_ViewId;
+        }
+
+        internal static long RowViewIdForDynamicTableEntityInConvertMode(ITableEntity curr)
+        {
+            var row = curr as DynamicTableEntity;
+            return row.Properties.ContainsKey("_rtable_ViewId") ? (long)row.Properties["_rtable_ViewId"].Int64Value : 0;
+        }
+
+        internal static long RowViewIdForReplicatedTableEntity(ITableEntity curr)
+        {
+            var row = curr as ReplicatedTableEntity;
+            return row._rtable_ViewId;
+        }
+
+        internal static long RowViewIdForDynamicTableEntity(ITableEntity curr)
+        {
+            var row = curr as DynamicTableEntity;
+            return (long)row.Properties["_rtable_ViewId"].Int64Value;
         }
 
         #endregion
@@ -1686,16 +1732,23 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return retrievedResult;
             }
 
-            // Check consistency of viewId between the currentView and existing entity.
-            if (txnView.ViewId < readRow._rtable_ViewId)
-            {
-                throw new ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId,
-                                                            string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}",
-                                                                          txnView.ViewId.ToString(),
-                                                                          readRow._rtable_ViewId));
-            }
+            ThrowIfViewIdNotConsistent(txnView.ViewId, readRow._rtable_ViewId);
 
             return retrievedResult;
+        }
+
+        /// <summary>
+        /// Check consistency of viewId between the currentView and existing entity.
+        /// </summary>
+        /// <param name="txnViewId"></param>
+        /// <param name="rowViewId"></param>
+        internal static void ThrowIfViewIdNotConsistent(long txnViewId, long rowViewId)
+        {
+            if (txnViewId < rowViewId)
+            {
+                var msg = string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}", txnViewId, rowViewId);
+                throw new ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId, msg);
+            }
         }
 
         /// <summary>

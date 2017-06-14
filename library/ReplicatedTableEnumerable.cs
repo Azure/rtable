@@ -33,16 +33,18 @@ namespace Microsoft.Azure.Toolkit.Replication
     {
         private readonly IEnumerable<T> _collection;
         private readonly bool isConvertMode;
+        private readonly long txnViewId;
 
-        public ReplicatedTableEnumerable(IEnumerable<T> collection, bool isConvertMode)
+        public ReplicatedTableEnumerable(IEnumerable<T> collection, bool isConvertMode, long txnViewId)
         {
             _collection = collection;
             this.isConvertMode = isConvertMode;
+            this.txnViewId = txnViewId;
         }
 
         public IEnumerator<T> GetEnumerator()
         {
-            return new ReplicatedTableEnumerator<T>(_collection.GetEnumerator(), isConvertMode);
+            return new ReplicatedTableEnumerator<T>(_collection.GetEnumerator(), isConvertMode, txnViewId);
         }
 
         IEnumerator IEnumerable.GetEnumerator()

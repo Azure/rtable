@@ -35,59 +35,17 @@ namespace Microsoft.Azure.Toolkit.Replication
     public class ReplicatedTableEnumerator<T> : IEnumerator<T>
     {
         private readonly IEnumerator<T> _collection;
-        private readonly Action<ITableEntity> VirtualizeEtagFunc = null;
-        private readonly Func<ITableEntity, bool> HasTombstoneFunc = null;
+        private Action<ITableEntity> VirtualizeEtagFunc;
+        private Func<ITableEntity, bool> HasTombstoneFunc;
+        private Func<ITableEntity, long> RowViewIdFunc;
+        private readonly long txnViewId;
 
-        public ReplicatedTableEnumerator(IEnumerator<T> collection, bool isConvertMode)
+        public ReplicatedTableEnumerator(IEnumerator<T> collection, bool isConvertMode, long txnViewId)
         {
             _collection = collection;
+            this.txnViewId = txnViewId;
 
-
-            // IMPORTANT:
-            //     Etag virtualizer / HasTombstone functions are called in a tight loop i.e. "for each returned entry"
-            //     => configure optimal delegates.
-            if (isConvertMode)
-            {
-                if (typeof(T) == typeof(InitDynamicReplicatedTableEntity))
-                {
-                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForInitDynamicReplicatedTableEntity;
-                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForInitDynamicReplicatedTableEntity;
-                }
-
-                if (typeof(T).IsSubclassOf(typeof(ReplicatedTableEntity)))
-                {
-                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForReplicatedTableEntity;
-                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForReplicatedTableEntity;
-                }
-
-                if (typeof(T) == typeof(DynamicTableEntity) ||
-                    typeof(T).IsSubclassOf(typeof(DynamicTableEntity)))
-                {
-                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForDynamicTableEntityInConvertMode;
-                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForDynamicTableEntityInConvertMode;
-                }
-            }
-            else
-            {
-                if (typeof(T) == typeof(ReplicatedTableEntity) ||
-                    typeof(T).IsSubclassOf(typeof(ReplicatedTableEntity)))
-                {
-                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForReplicatedTableEntity;
-                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForReplicatedTableEntity;
-                }
-
-                if (typeof(T) == typeof(DynamicTableEntity) ||
-                    typeof(T).IsSubclassOf(typeof(DynamicTableEntity)))
-                {
-                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForDynamicTableEntity;
-                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForDynamicTableEntity;
-                }
-            }
-
-            if (this.VirtualizeEtagFunc == null || this.HasTombstoneFunc == null)
-            {
-                throw new ArgumentException(string.Format("EntityType ({0}) is not supported", typeof(T)));
-            }
+            InitDelegates(isConvertMode);
         }
 
         public bool MoveNext()
@@ -119,6 +77,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 T curr = _collection.Current;
 
+                ReplicatedTable.ThrowIfViewIdNotConsistent(this.txnViewId, this.RowViewIdFunc(curr as ITableEntity));
+
                 // Virtualize the Etag
                 VirtualizeEtagFunc(curr as ITableEntity);
 
@@ -127,6 +87,72 @@ namespace Microsoft.Azure.Toolkit.Replication
                 // So we are not doing such validation here, as such is not a normal configuration.
                 return curr;
             }
+        }
+
+
+        /// <summary>
+        /// IMPORTANT:
+        ///     Etag virtualizer / HasTombstone / RowViewId functions are called in a tight loop i.e. "for each returned entry"
+        ///     => configure optimal delegates.
+        /// </summary>
+        /// <param name="isConvertMode"></param>
+        private void InitDelegates(bool isConvertMode)
+        {
+            if (isConvertMode)
+            {
+                if (typeof(T) == typeof(InitDynamicReplicatedTableEntity))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForInitDynamicReplicatedTableEntity;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForInitDynamicReplicatedTableEntity;
+                    this.RowViewIdFunc = ReplicatedTable.RowViewIdForInitDynamicReplicatedTableEntity;
+
+                    return;
+                }
+
+                if (typeof(T).IsSubclassOf(typeof(ReplicatedTableEntity)))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForReplicatedTableEntity;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForReplicatedTableEntity;
+                    this.RowViewIdFunc = ReplicatedTable.RowViewIdForReplicatedTableEntity;
+
+                    return;
+                }
+
+                if (typeof(T) == typeof(DynamicTableEntity) ||
+                    typeof(T).IsSubclassOf(typeof(DynamicTableEntity)))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForDynamicTableEntityInConvertMode;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForDynamicTableEntityInConvertMode;
+                    this.RowViewIdFunc = ReplicatedTable.RowViewIdForDynamicTableEntityInConvertMode;
+
+                    return;
+                }
+            }
+            else
+            {
+                if (typeof(T) == typeof(ReplicatedTableEntity) ||
+                    typeof(T).IsSubclassOf(typeof(ReplicatedTableEntity)))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForReplicatedTableEntity;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForReplicatedTableEntity;
+                    this.RowViewIdFunc = ReplicatedTable.RowViewIdForReplicatedTableEntity;
+
+                    return;
+                }
+
+                if (typeof(T) == typeof(DynamicTableEntity) ||
+                    typeof(T).IsSubclassOf(typeof(DynamicTableEntity)))
+                {
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForDynamicTableEntity;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForDynamicTableEntity;
+                    this.RowViewIdFunc = ReplicatedTable.RowViewIdForDynamicTableEntity;
+
+                    return;
+                }
+            }
+
+
+            throw new ArgumentException(string.Format("EntityType ({0}) is not supported", typeof(T)));
         }
     }
 }
