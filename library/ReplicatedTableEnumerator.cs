@@ -39,11 +39,17 @@ namespace Microsoft.Azure.Toolkit.Replication
         private Func<ITableEntity, bool> HasTombstoneFunc;
         private Func<ITableEntity, long> RowViewIdFunc;
         private readonly long txnViewId;
+        private readonly Action<long, long> _throwOnStaleViewAction = (txnViewId, rowViewId) => { };
 
-        public ReplicatedTableEnumerator(IEnumerator<T> collection, bool isConvertMode, long txnViewId)
+        public ReplicatedTableEnumerator(IEnumerator<T> collection, bool isConvertMode, long txnViewId, bool throwOnStaleViewFlag)
         {
             _collection = collection;
             this.txnViewId = txnViewId;
+
+            if (throwOnStaleViewFlag)
+            {
+                _throwOnStaleViewAction = ReplicatedTable.ThrowIfViewIdNotConsistent;
+            }
 
             InitDelegates(isConvertMode);
         }
@@ -77,7 +83,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 T curr = _collection.Current;
 
-                ReplicatedTable.ThrowIfViewIdNotConsistent(this.txnViewId, this.RowViewIdFunc(curr as ITableEntity));
+                // By default that's a NOP, but user can enable this check if he wants
+                _throwOnStaleViewAction(this.txnViewId, this.RowViewIdFunc(curr as ITableEntity));
 
                 // Virtualize the Etag
                 VirtualizeEtagFunc(curr as ITableEntity);
@@ -88,7 +95,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return curr;
             }
         }
-
 
         /// <summary>
         /// IMPORTANT:

@@ -41,6 +41,8 @@ namespace Microsoft.Azure.Toolkit.Replication
         private readonly IReplicatedTableConfigurationWrapper _configurationWrapper;
         private string myName;
 
+        public bool ThrowOnStaleViewInLinqQueryFlag = false;
+
         public string TableName
         {
             get
@@ -1528,7 +1530,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     ReplicatedTableLogger.LogError("Error in ExecuteQuery: caught exception {0}", e);
                 }
 
-                return new ReplicatedTableEnumerable<TElement>(rows, this._configurationWrapper.IsConvertToRTableMode(), txnView.ViewId);
+                return new ReplicatedTableEnumerable<TElement>(rows, this._configurationWrapper.IsConvertToRTableMode(), txnView.ViewId, ThrowOnStaleViewInLinqQueryFlag);
             }
         }
 
@@ -1576,7 +1578,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     ReplicatedTableLogger.LogError("Error in CreateReplicatedQuery: caught exception {0}", e);
                 }
 
-                return new ReplicatedTableQuery<TElement>(query, this._configurationWrapper.IsConvertToRTableMode(), txnView.ViewId);
+                return new ReplicatedTableQuery<TElement>(query, this._configurationWrapper.IsConvertToRTableMode(), txnView.ViewId, ThrowOnStaleViewInLinqQueryFlag);
             }
         }
 

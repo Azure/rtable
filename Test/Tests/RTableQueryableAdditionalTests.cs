@@ -210,8 +210,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [Test(Description = "LINQ queries throw after detecting a stale view")]
-        public void LinqQueriesThrowAfterDetectingStaleView()
+        [Test(Description = "LINQ queries don't throw on stale view by default ")]
+        public void LinqQueriesDontThrowOnStaleViewByDefault()
         {
             TableOperation operation;
             TableResult result;
@@ -287,6 +287,122 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
 
 
+            // By default stale view detection is turned Off
+            Assert.IsTrue(rtable.ThrowOnStaleViewInLinqQueryFlag == false);
+
+            /*
+             * stale client using LINQ: CreateReplicatedQuery
+             */
+            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            {
+                int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
+                if (id == entryId)
+                {
+                    Assert.AreEqual(entry._rtable_ViewId, newViewId, "CreateReplicatedQuery: entry viewId should be '6'");
+                }
+                else
+                {
+                    Assert.AreEqual(entry._rtable_ViewId, staleViewId, "CreateReplicatedQuery: entry viewId should be '5'");
+                }
+            }
+
+            /*
+             * stale client using LINQ: ExecuteQuery
+             */
+            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            {
+                int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
+                if (id == entryId)
+                {
+                    Assert.AreEqual(entry._rtable_ViewId, newViewId, "ExecuteQuery: entry viewId should be '6'");
+                }
+                else
+                {
+                    Assert.AreEqual(entry._rtable_ViewId, staleViewId, "ExecuteQuery: entry viewId should be '5'");
+                }
+            }
+        }
+
+        [Test(Description = "LINQ queries throw after detecting a stale view")]
+        public void LinqQueriesThrowAfterDetectingStaleView()
+        {
+            TableOperation operation;
+            TableResult result;
+            CustomerEntity customer;
+
+
+            /*
+             * Set config viewId to 5
+             */
+            long staleViewId = 5;
+            SetConfigViewId(staleViewId);
+            Assert.AreEqual(staleViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 5!!!");
+
+
+            // Insert entries in stale viewId 5
+            var rtable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+
+            string firstName = "FirstName";
+            string lastName = "LastName";
+
+            for (int i = 0; i < 10; i++)
+            {
+                customer = new CustomerEntity(firstName + i, lastName + i);
+
+                operation = TableOperation.Insert(customer);
+                rtable.Execute(operation);
+            }
+
+
+            /*
+             * Set config new viewId to 6
+             */
+            long newViewId = 6;
+            SetConfigViewId(newViewId);
+            Assert.AreEqual(newViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 6!!!");
+
+
+            // Update entry #5 in new viewId 6
+            int entryId = 5;
+
+            operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
+            result = rtable.Execute(operation);
+
+            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+
+            customer = (CustomerEntity)result.Result;
+            customer.Email = "new_view@email.com";
+
+            operation = TableOperation.Replace(customer);
+            result = rtable.Execute(operation);
+
+            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent, "Update customer failed");
+
+
+            /*
+             * Simulate a stale client => Set config viewId back to 5
+             */
+            SetConfigViewId(staleViewId);
+            Assert.AreEqual(staleViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 5!!!");
+
+            try
+            {
+                // Check Retrieve of row #5 throws stale view as expected
+                operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
+                rtable.Execute(operation);
+
+                Assert.Fail("Retrieve() is expected to get an RTableStaleViewException but did not get it.");
+            }
+            catch (ReplicatedTableStaleViewException ex)
+            {
+                Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
+                Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}", staleViewId, newViewId)), "Got unexpected exception message");
+            }
+
+
+            // Enable throwing on stale view detection
+            rtable.ThrowOnStaleViewInLinqQueryFlag = true;
+
             /*
              * stale client using LINQ: CreateReplicatedQuery
              */
@@ -295,6 +411,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
                 {
                     int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
+                    Assert.IsTrue(id != entryId, "we should throw on entry #5");
 
                     Assert.AreEqual(entry._rtable_ViewId, staleViewId, "CreateReplicatedQuery: entry viewId should be '5'");
                 }
@@ -313,6 +430,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
                 {
                     int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
+                    Assert.IsTrue(id != entryId, "we should throw on entry #5");
 
                     Assert.AreEqual(entry._rtable_ViewId, staleViewId, "ExecuteQuery: entry viewId should be '5'");
                 }
@@ -322,9 +440,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
                 Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}", staleViewId, newViewId)), "Got unexpected exception message");
             }
-
         }
-
 
         #region Config helpers
 
