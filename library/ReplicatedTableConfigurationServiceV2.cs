@@ -427,26 +427,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new Exception(msg);
             }
 
-            // - Parse/Update all views ...
-            foreach (var viewConf in configuration.viewMap.Values)
-            {
-                var foundReplicas = viewConf.GetCurrentReplicaChain()
-                                            .FindAll(r => r.StorageAccountName == storageAccountName);
-
-                if (!foundReplicas.Any())
-                {
-                    continue;
-                }
-
-                foreach (var replica in foundReplicas)
-                {
-                    replica.Status = ReplicaStatus.None;
-                    replica.ViewWhenTurnedOff = viewConf.ViewId;
-                }
-
-                // Update view id
-                viewConf.ViewId++;
-            }
+            // - Update all views ...
+            configuration.TurnReplicaOff(storageAccountName);
 
             // - Write back configuration ...
             ReplicatedTableQuorumWriteResult writeResult = UpdateConfigurationInternal(configuration, true);

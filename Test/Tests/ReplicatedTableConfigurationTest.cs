@@ -25,6 +25,11 @@
         {
             base.EnableReadWriteOnReplicas(storageAccountName, viewsToSkip);
         }
+
+        public new void TurnReplicaOff(string storageAccountName)
+        {
+            base.TurnReplicaOff(storageAccountName);
+        }
     }
 
     [TestFixture]
@@ -147,6 +152,55 @@
             // - Now, make view1 a 2-replicas view. Since table2 has ConvertToRTable = true => this should FAIL
             exception = TestHelper.ExpectedException<Exception>(() => conf.SetView("view1", viewConf2), "SetView should not break existing table constraints");
             Assert.IsTrue(exception.Message == string.Format("Table:\'{0}\' should not have a view:\'{1}\' with more than 1 replica since it is in Conversion mode!", table2.TableName, "view1"));
+        }
+
+        [Test(Description = "Test SetView() throws if ReadViewTailIndex is not valid()")]
+        public void TestSetViewThrowIfReadViewTailIndexIsNotValid()
+        {
+            Exception exception;
+
+            var conf = new ReplicatedTableConfiguration
+            {
+                LeaseDuration = 5,
+            };
+
+            var viewConf = new ReplicatedTableConfigurationStore
+            {
+                ReplicaChain = new List<ReplicaInfo>()
+            };
+
+            Assert.IsTrue(viewConf.ReadViewTailIndex == -1);
+            conf.SetView("view1", viewConf);
+
+            viewConf.ReadViewTailIndex = 0;
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetView("view1", viewConf), "ReadViewTailIndex should be less then replica size");
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 0, 0));
+
+            // - Add 1 replica
+            viewConf.ReplicaChain.Add(new ReplicaInfo{ Status = ReplicaStatus.ReadWrite });
+            viewConf.ReplicaChain.Add(new ReplicaInfo { Status = ReplicaStatus.None });
+            conf.SetView("view1", viewConf);
+
+            viewConf.ReadViewTailIndex = 1;
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetView("view1", viewConf), "ReadViewTailIndex should be less then replica size");
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 1, 1));
+
+
+            // - Add 1 replica
+            viewConf.ReplicaChain.Add(new ReplicaInfo { Status = ReplicaStatus.ReadWrite });
+            viewConf.ReplicaChain.Add(new ReplicaInfo { Status = ReplicaStatus.None });
+            conf.SetView("view1", viewConf);
+
+            viewConf.ReadViewTailIndex = 2;
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetView("view1", viewConf), "ReadViewTailIndex should be less then replica size");
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 2, 2));
+
+            viewConf.ReadViewTailIndex = 33;
+            exception = TestHelper.ExpectedException<Exception>(() => conf.SetView("view1", viewConf), "ReadViewTailIndex should be less then replica size");
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 33, 2));
+
+            viewConf.ReadViewTailIndex = -10;
+            conf.SetView("view1", viewConf);
         }
 
         [Test(Description = "Test SetView() with Partitioning feature")]
@@ -1734,6 +1788,65 @@
                 Assert.Fail("#View4 - Received exception {0} while parsing {1}", ex.Message, configPath);
             }
 
+            // - Ensure 'ReadViewTailIndex' is default or valid
+            configPath = Directory.GetCurrentDirectory() + "\\" + @"..\Tests\ConfigFiles\ViewWithNoReadViewTailIndex.txt";
+            try
+            {
+                using (StreamReader sr = new StreamReader(configPath))
+                {
+                    conf = ReplicatedTableConfiguration.FromJson(sr.ReadToEnd());
+
+                    Assert.True(conf.GetViewSize() == 2);
+
+                    var view1 = conf.GetView("view1");
+                    Assert.IsTrue(view1 != null && view1.ReadViewTailIndex == -1);
+
+                    var view2 = conf.GetView("view2");
+                    Assert.IsTrue(view2 != null && view2.ReadViewTailIndex == -1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail("#View5 - Received exception {0} while parsing {1}", ex.Message, configPath);
+            }
+
+            // - Valid 'ReadViewTailIndex'
+            configPath = Directory.GetCurrentDirectory() + "\\" + @"..\Tests\ConfigFiles\ViewWithValidReadViewTailIndex.txt";
+            try
+            {
+                using (StreamReader sr = new StreamReader(configPath))
+                {
+                    conf = ReplicatedTableConfiguration.FromJson(sr.ReadToEnd());
+
+                    Assert.True(conf.GetViewSize() == 2);
+
+                    var view1 = conf.GetView("view1");
+                    Assert.IsTrue(view1 != null && view1.ReadViewTailIndex == -1);
+
+                    var view2 = conf.GetView("view2");
+                    Assert.IsTrue(view2 != null && view2.ReadViewTailIndex == 1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail("#View6 - Received exception {0} while parsing {1}", ex.Message, configPath);
+            }
+
+            // - Invalid 'ReadViewTailIndex'
+            configPath = Directory.GetCurrentDirectory() + "\\" + @"..\Tests\ConfigFiles\ViewWithInvalidReadViewTailIndex.txt";
+            try
+            {
+                using (StreamReader sr = new StreamReader(configPath))
+                {
+                    exception = TestHelper.ExpectedException<Exception>(() => ReplicatedTableConfiguration.FromJson(sr.ReadToEnd()), "Parsing config. fails if 'ReadViewTailIndex' is invalid");
+                    Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view2", 2, 2));
+                }
+            }
+            catch (Exception ex)
+            {
+                Assert.Fail("#View7 - Received exception {0} while parsing {1}", ex.Message, configPath);
+            }
+
             #endregion
 
 
@@ -2131,7 +2244,6 @@
             Assert.IsTrue(conf.GetView("view5").ReplicaChain[0].Status == ReplicaStatus.None);
 
 
-
             // Add more views
 
             // - view6
@@ -2186,6 +2298,98 @@
             Assert.IsTrue(conf.GetView("view6").ReplicaChain[2].Status == ReplicaStatus.ReadWrite);
         }
 
+        [Test(Description = "Test MoveReplicaToHeadAndSetViewToReadOnly resets 'ReadViewTailIndex' if it succeeds")]
+        public void TestMoveReplicaToHeadAndSetViewToReadOnlyWillResetReadViewTailIndexOnSuccess()
+        {
+            // Basic feature is already UTed by implementing class, we UT here to validate we iterate on all configured views ...
+
+            Exception exception;
+
+            var conf = new ReplicatedTableConfigurationAccessor();
+
+            // - view0
+            var view0 = new ReplicatedTableConfigurationStore();
+            conf.SetView("view0", view0);
+
+            // - view1
+            var view1 = new ReplicatedTableConfigurationStore();
+            view1.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc#",
+                Status = ReplicaStatus.None,
+            });
+            view1.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc2",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view1.ReadViewTailIndex = 0;
+            conf.SetView("view1", view1);
+
+            // - view2
+            var view2 = new ReplicatedTableConfigurationStore();
+            view2.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc2",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view2.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.None,
+            });
+            view2.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc3",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view2.ReadViewTailIndex = 1;
+            conf.SetView("view2", view2);
+
+            // make the updates ...
+            conf.MoveReplicaToHeadAndSetViewToReadOnly("Acc1");
+
+            // Check all views new status
+            Assert.IsTrue(conf.GetView("view0").ReadViewTailIndex == -1);
+            Assert.IsTrue(conf.GetView("view1").ReadViewTailIndex == 0);
+            Assert.IsTrue(conf.GetView("view2").ReadViewTailIndex == -1);
+
+
+            // Add more views
+
+            // - view3
+            var view3 = new ReplicatedTableConfigurationStore();
+            view3.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc2",
+                Status = ReplicaStatus.WriteOnly,
+            });
+            view3.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.None,
+            });
+            view3.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc3",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view3.ReadViewTailIndex = 1;
+            conf.SetView("view3", view3);
+
+
+            // make the updates ... we are idempotent
+            // but view3 should fail ...
+            exception = TestHelper.ExpectedException<Exception>(() => conf.MoveReplicaToHeadAndSetViewToReadOnly("Acc1"), "can't turn WriteOnly replica to ReadOnly!");
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' : can't set a WriteOnly replica to ReadOnly !!!", "view3"));
+
+
+            // Check all views new status
+            Assert.IsTrue(conf.GetView("view0").ReadViewTailIndex == -1);
+            Assert.IsTrue(conf.GetView("view1").ReadViewTailIndex == 0);
+            Assert.IsTrue(conf.GetView("view2").ReadViewTailIndex == -1);
+            Assert.IsTrue(conf.GetView("view3").ReadViewTailIndex == 1);
+        }
 
         #region EnableWriteOnReplicas UTs
 
@@ -3707,8 +3911,73 @@
             Assert.IsTrue(conf.GetView("view6").ReplicaChain[0].Status == ReplicaStatus.ReadWrite);
         }
 
-        #endregion
+        [Test(Description = "Test EnableWriteOnReplicas() resets 'ReadViewTailIndex' if it succeeds")]
+        public void TestEnableWriteOnReplicasWillResetReadViewTailIndexOnSuccess()
+        {
+            // Basic feature is already UTed by implementing class, we UT here to validate we iterate on all configured views ...
 
+            var conf = new ReplicatedTableConfigurationAccessor();
+
+            // - view0
+            var view0 = new ReplicatedTableConfigurationStore();
+            conf.SetView("view0", view0);
+
+            // - view1
+            var view1 = new ReplicatedTableConfigurationStore();
+            view1.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc#",
+                Status = ReplicaStatus.None,
+            });
+            view1.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc2",
+                Status = ReplicaStatus.ReadOnly,
+            });
+            view1.ReadViewTailIndex = 0;
+            conf.SetView("view1", view1);
+
+            // - view2
+            var view2 = new ReplicatedTableConfigurationStore();
+            view2.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.None,
+            });
+            view2.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc2",
+                Status = ReplicaStatus.ReadOnly,
+            });
+            view2.ReadViewTailIndex = 0;
+            conf.SetView("view2", view2);
+
+            // - view3 (Acc1 is not the head of replica so it should not have any impact on that view)
+            var view3 = new ReplicatedTableConfigurationStore();
+            view3.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc#",
+                Status = ReplicaStatus.ReadOnly,
+            });
+            view3.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.ReadOnly,
+            });
+            view3.ReadViewTailIndex = 1;
+            conf.SetView("view3", view3);
+
+            // make the updates ...
+            conf.EnableWriteOnReplicas("Acc1");
+
+            // Check all views new status
+            Assert.IsTrue(conf.GetView("view0").ReadViewTailIndex == -1);
+            Assert.IsTrue(conf.GetView("view1").ReadViewTailIndex == 0);
+            Assert.IsTrue(conf.GetView("view2").ReadViewTailIndex == -1);
+            Assert.IsTrue(conf.GetView("view3").ReadViewTailIndex == 1);
+        }
+
+        #endregion
 
         [Test(Description = "Test EnableReadWriteOnReplicas()")]
         public void TestEnableReadWriteOnReplicas()
@@ -3857,7 +4126,168 @@
             Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has invalid Read chain:\'{1}\' !!!", "viewInvalid", "RWR"));
         }
 
-        #endregion
+        [Test(Description = "Test TurnReplicaOff()")]
+        public void TestTurnReplicaOff()
+        {
+            // basic feature is already UTed by implementing class, we need UT here to validate we iterate on all configured views ...
 
+            var conf = new ReplicatedTableConfigurationAccessor();
+
+            // - view0
+            var view0 = new ReplicatedTableConfigurationStore();
+            view0.ViewId = 6;
+            conf.SetView("view0", view0);
+
+            // - view1
+            var view1 = new ReplicatedTableConfigurationStore();
+            view1.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc2",
+                Status = ReplicaStatus.WriteOnly,
+            });
+            view1.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view1.ViewId = 7;
+            conf.SetView("view1", view1);
+
+            // - view2
+            var view2 = new ReplicatedTableConfigurationStore();
+            view2.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view2.ViewId = 8;
+            conf.SetView("view2", view2);
+
+            // - view3
+            var view3 = new ReplicatedTableConfigurationStore();
+            view3.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view3.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc2",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view3.ViewId = 9;
+            conf.SetView("view3", view3);
+
+            // make the updates ...
+            conf.TurnReplicaOff("Acc2");
+
+
+            // Check all views new status
+            Assert.IsFalse(conf.GetView("view0").ReplicaChain.Any());
+            Assert.IsTrue(conf.GetView("view0").ViewId == 6);
+
+            Assert.IsTrue(conf.GetView("view1").ReplicaChain[0].Status == ReplicaStatus.None);
+            Assert.IsTrue(conf.GetView("view1").ReplicaChain[0].ViewWhenTurnedOff == 7);
+            Assert.IsTrue(conf.GetView("view1").ReplicaChain[1].Status == ReplicaStatus.ReadWrite);
+            Assert.IsTrue(conf.GetView("view1").ViewId == 8);
+
+            Assert.IsTrue(conf.GetView("view2").ReplicaChain[0].Status == ReplicaStatus.ReadWrite);
+            Assert.IsTrue(conf.GetView("view2").ViewId == 8);
+
+            Assert.IsTrue(conf.GetView("view3").ReplicaChain[0].Status == ReplicaStatus.ReadWrite);
+            Assert.IsTrue(conf.GetView("view3").ReplicaChain[1].Status == ReplicaStatus.None);
+            Assert.IsTrue(conf.GetView("view3").ReplicaChain[1].ViewWhenTurnedOff == 9);
+            Assert.IsTrue(conf.GetView("view3").ViewId == 10);
+
+
+
+            // make another call ...
+            conf.TurnReplicaOff("Acc2");
+
+            // Check all views new status
+            Assert.IsFalse(conf.GetView("view0").ReplicaChain.Any());
+            Assert.IsTrue(conf.GetView("view0").ViewId == 6);
+            Assert.IsTrue(conf.GetView("view1").ViewId == 8);
+            Assert.IsTrue(conf.GetView("view2").ViewId == 8);
+            Assert.IsTrue(conf.GetView("view3").ViewId == 10);
+        }
+
+        [Test(Description = "Test TurnReplicaOff resets 'ReadViewTailIndex' if it succeeds")]
+        public void TestTurnReplicaOffWillResetReadViewTailIndexOnSuccess()
+        {
+            // basic feature is already UTed by implementing class, we need UT here to validate we iterate on all configured views ...
+
+            var conf = new ReplicatedTableConfigurationAccessor();
+
+            // - view0
+            var view0 = new ReplicatedTableConfigurationStore();
+            conf.SetView("view0", view0);
+
+            // - view1
+            var view1 = new ReplicatedTableConfigurationStore();
+            view1.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc2",
+                Status = ReplicaStatus.WriteOnly,
+            });
+            view1.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view1.ReadViewTailIndex = 1;
+            conf.SetView("view1", view1);
+
+            // - view2
+            var view2 = new ReplicatedTableConfigurationStore();
+            view2.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view2.ReadViewTailIndex = 0;
+            conf.SetView("view2", view2);
+
+            // - view3
+            var view3 = new ReplicatedTableConfigurationStore();
+            view3.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc1",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view3.ReplicaChain.Add(new ReplicaInfo
+            {
+                StorageAccountName = "Acc2",
+                Status = ReplicaStatus.ReadWrite,
+            });
+            view3.ReadViewTailIndex = 1;
+            conf.SetView("view3", view3);
+
+            // make the updates ...
+            conf.TurnReplicaOff("Acc2");
+
+
+            // Check all views new status
+            Assert.IsTrue(conf.GetView("view0").ReadViewTailIndex == -1);
+            Assert.IsTrue(conf.GetView("view1").ReadViewTailIndex == -1);
+            Assert.IsTrue(conf.GetView("view2").ReadViewTailIndex == 0);
+            Assert.IsTrue(conf.GetView("view3").ReadViewTailIndex == -1);
+
+
+
+            // make another call ...
+            view1.ReadViewTailIndex = 1;
+            view2.ReadViewTailIndex = 0;
+            view3.ReadViewTailIndex = 0;
+            conf.TurnReplicaOff("Acc2");
+
+            // Check all views new status
+            Assert.IsTrue(conf.GetView("view0").ReadViewTailIndex == -1);
+            Assert.IsTrue(conf.GetView("view1").ReadViewTailIndex == 1);
+            Assert.IsTrue(conf.GetView("view2").ReadViewTailIndex == 0);
+            Assert.IsTrue(conf.GetView("view3").ReadViewTailIndex == 0);
+        }
+
+        #endregion
     }
 }

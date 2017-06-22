@@ -32,11 +32,19 @@ namespace Microsoft.Azure.Toolkit.Replication
     {
         public ReplicatedTableConfigurationStore()
         {
+            this.ReplicaChain = new List<ReplicaInfo>();
+            this.ReadViewTailIndex = -1;
+            this.ViewId = 1; // minimum ViewId is 1.
             this.LeaseDuration = Constants.LeaseDurationInSec;
             this.Timestamp = DateTime.UtcNow;
-            this.ViewId = 1; // minimum ViewId is 1.
-            this.ReplicaChain = new List<ReplicaInfo>();
             this.Instrumentation = false;
+        }
+
+        [OnDeserializing]
+        private void OnDeserializing(StreamingContext context)
+        {
+            // Default value when Json file doesnt define it
+            this.ReadViewTailIndex = -1;
         }
 
         [DataMember(IsRequired = true)]
@@ -44,6 +52,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         [DataMember(IsRequired = true)]
         public int ReadViewHeadIndex { get; set; }
+
+        [DataMember(IsRequired = false)]
+        public int ReadViewTailIndex { get; set; }
 
         [DataMember(IsRequired = false)]
         public bool ConvertXStoreTableMode { get; set; }
@@ -178,6 +189,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Update view id
             ViewId++;
+
+            // Reset 'ReadViewTailIndex' => user has to set it again
+            ResetReadViewTailIndex();
         }
 
         internal protected void EnableWriteOnReplicas(string viewName, string headStorageAccountName)
@@ -207,6 +221,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Update view id
             ViewId++;
+
+            // Reset 'ReadViewTailIndex' => user has to set it again
+            ResetReadViewTailIndex();
         }
 
         internal protected void EnableReadWriteOnReplica(string viewName, string headStorageAccountName)
@@ -222,6 +239,30 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // Update view id
             ViewId++;
+        }
+
+        internal protected void TurnReplicaOff(string viewName, string storageAccountName)
+        {
+            // Assert (storageAccountName != null)
+
+            var foundReplicas = GetCurrentReplicaChain().FindAll(r => r.StorageAccountName == storageAccountName);
+
+            if (!foundReplicas.Any())
+            {
+                return;
+            }
+
+            foreach (var replica in foundReplicas)
+            {
+                replica.Status = ReplicaStatus.None;
+                replica.ViewWhenTurnedOff = ViewId;
+            }
+
+            // Update view id
+            ViewId++;
+
+            // Reset 'ReadViewTailIndex' => user has to set it again
+            ResetReadViewTailIndex();
         }
 
         internal protected void ThrowIfChainIsNotValid(string viewName)
@@ -286,6 +327,26 @@ namespace Microsoft.Azure.Toolkit.Replication
                     throw new Exception(msg);
                 }
             }
+        }
+
+        internal protected void ThrowIfReadViewTailIndexIsNotValid(string viewName)
+        {
+            if (ReadViewTailIndex < GetCurrentReplicaChain().Count)
+            {
+                return;
+            }
+
+            var msg = string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!",
+                                    viewName,
+                                    ReadViewTailIndex,
+                                    GetCurrentReplicaChain().Count);
+
+            throw new Exception(msg);
+        }
+
+        internal protected void ResetReadViewTailIndex()
+        {
+            ReadViewTailIndex = -1;
         }
     }
 }

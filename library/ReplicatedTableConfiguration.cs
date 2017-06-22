@@ -134,6 +134,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
 
             config.ThrowIfChainIsNotValid(viewName);
+            config.ThrowIfReadViewTailIndexIsNotValid(viewName);
         }
 
         private void ThrowIfViewBreaksTableConstraint(string viewName, ReplicatedTableConfigurationStore config)
@@ -434,7 +435,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     viewMap.Remove(key);
                 }
 
-                // - Enforce replicas are not null, and well sequenced
+                // - Enforce views are valid
                 foreach (var entry in viewMap)
                 {
                     var viewName = entry.Key;
@@ -541,6 +542,19 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
 
                 viewConf.EnableReadWriteOnReplica(viewName, storageAccountName);
+            }
+        }
+
+        internal protected void TurnReplicaOff(string storageAccountName)
+        {
+            // Assert (storageAccountName != null)
+
+            foreach (var entry in viewMap)
+            {
+                var viewName = entry.Key;
+                var viewConf = entry.Value;
+
+                viewConf.TurnReplicaOff(viewName, storageAccountName);
             }
         }
 

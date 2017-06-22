@@ -43,6 +43,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 view.ViewId = configurationStore.ViewId;
                 view.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
+                view.ReadTailIndex = configurationStore.ReadViewTailIndex;
                 view.RefreshTime = DateTime.UtcNow;
 
                 foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
@@ -110,6 +111,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // Infered: first readable replica
                 view.ReadHeadIndex = view.Chain.FindIndex(tuple => tuple.Item1.IsReadable());
+                view.ReadTailIndex = configurationStore.ReadViewTailIndex;
             }
 
             return view;
@@ -146,6 +148,12 @@ namespace Microsoft.Azure.Toolkit.Replication
         public int ReadHeadIndex
         {
             get; set;
+        }
+
+        public int ReadTailIndex
+        {
+            get;
+            set;
         }
 
         public int WriteHeadIndex

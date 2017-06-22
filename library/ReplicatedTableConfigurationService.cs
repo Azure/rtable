@@ -137,6 +137,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 Timestamp = DateTime.UtcNow,
                 ReplicaChain = replicaChain,
                 ReadViewHeadIndex = readViewHeadIndex,
+                //ReadViewTailIndex >>> not supported in V1
                 ConvertXStoreTableMode = convertXStoreTableMode,
                 ViewId = viewId
             };
