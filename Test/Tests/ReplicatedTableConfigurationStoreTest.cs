@@ -1345,11 +1345,11 @@
 
             conf.ReadViewTailIndex = 2;
             exception = TestHelper.ExpectedException<Exception>(() => conf.ThrowIfReadViewTailIndexIsNotValid("view1"), "ReadViewTailIndex should be less then replica-chain size");
-            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 2, 2));
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' - ReadViewTailIndex:\'{1}\' is out of bounds, replica size:\'{2}\' !!!", "view1", 2, 2));
 
             conf.ReadViewTailIndex = 15;
             exception = TestHelper.ExpectedException<Exception>(() => conf.ThrowIfReadViewTailIndexIsNotValid("view1"), "ReadViewTailIndex should be less then replica-chain size");
-            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 15, 2));
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' - ReadViewTailIndex:\'{1}\' is out of bounds, replica size:\'{2}\' !!!", "view1", 15, 2));
         }
     }
 }

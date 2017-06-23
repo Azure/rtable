@@ -892,8 +892,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             View txnView = CurrentView;
             ValidateTxnView(txnView, false);
 
-            int tailIndex = txnView.TailIndex;
-            int index = tailIndex;
+            int tailIndex = txnView.ReadTailIndex; // [Head] -> ... -> [ReadTailIndex] -> ... -> [Tail]
+            int index = tailIndex;                 //                            ^
+                                                   // start readings from here:  |
 
             TableResult retrievedResult = null;
 

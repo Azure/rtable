@@ -174,7 +174,7 @@
 
             viewConf.ReadViewTailIndex = 0;
             exception = TestHelper.ExpectedException<Exception>(() => conf.SetView("view1", viewConf), "ReadViewTailIndex should be less then replica size");
-            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 0, 0));
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' - ReadViewTailIndex:\'{1}\' is out of bounds, replica size:\'{2}\' !!!", "view1", 0, 0));
 
             // - Add 1 replica
             viewConf.ReplicaChain.Add(new ReplicaInfo{ Status = ReplicaStatus.ReadWrite });
@@ -183,7 +183,7 @@
 
             viewConf.ReadViewTailIndex = 1;
             exception = TestHelper.ExpectedException<Exception>(() => conf.SetView("view1", viewConf), "ReadViewTailIndex should be less then replica size");
-            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 1, 1));
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' - ReadViewTailIndex:\'{1}\' is out of bounds, replica size:\'{2}\' !!!", "view1", 1, 1));
 
 
             // - Add 1 replica
@@ -193,11 +193,11 @@
 
             viewConf.ReadViewTailIndex = 2;
             exception = TestHelper.ExpectedException<Exception>(() => conf.SetView("view1", viewConf), "ReadViewTailIndex should be less then replica size");
-            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 2, 2));
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' - ReadViewTailIndex:\'{1}\' is out of bounds, replica size:\'{2}\' !!!", "view1", 2, 2));
 
             viewConf.ReadViewTailIndex = 33;
             exception = TestHelper.ExpectedException<Exception>(() => conf.SetView("view1", viewConf), "ReadViewTailIndex should be less then replica size");
-            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view1", 33, 2));
+            Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' - ReadViewTailIndex:\'{1}\' is out of bounds, replica size:\'{2}\' !!!", "view1", 33, 2));
 
             viewConf.ReadViewTailIndex = -10;
             conf.SetView("view1", viewConf);
@@ -1839,7 +1839,7 @@
                 using (StreamReader sr = new StreamReader(configPath))
                 {
                     exception = TestHelper.ExpectedException<Exception>(() => ReplicatedTableConfiguration.FromJson(sr.ReadToEnd()), "Parsing config. fails if 'ReadViewTailIndex' is invalid");
-                    Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!", "view2", 2, 2));
+                    Assert.IsTrue(exception.Message == string.Format("View:\'{0}\' - ReadViewTailIndex:\'{1}\' is out of bounds, replica size:\'{2}\' !!!", "view2", 2, 2));
                 }
             }
             catch (Exception ex)

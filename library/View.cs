@@ -33,6 +33,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.RefreshTime = DateTime.MinValue;
             this.LeaseDuration = TimeSpan.FromSeconds(0);
             this.Chain = new List<Tuple<ReplicaInfo, CloudTableClient>>();
+            this.ReadTailIndex = TailIndex;
         }
 
         public static View InitFromConfigVer1(string name, ReplicatedTableConfigurationStore configurationStore, Action<ReplicaInfo> SetConnectionString)
@@ -43,7 +44,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 view.ViewId = configurationStore.ViewId;
                 view.ReadHeadIndex = configurationStore.ReadViewHeadIndex;
-                view.ReadTailIndex = configurationStore.ReadViewTailIndex;
                 view.RefreshTime = DateTime.UtcNow;
 
                 foreach (ReplicaInfo replica in configurationStore.ReplicaChain)
@@ -66,6 +66,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                     }
 
                     view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                }
+
+                // If not configured use Tail. Chain must be defined at this point, so don't move this code up!
+                view.ReadTailIndex = configurationStore.ReadViewTailIndex;
+                if (view.ReadTailIndex < 0)
+                {
+                    view.ReadTailIndex = view.TailIndex;
                 }
 
                 if (!view.IsEmpty)
@@ -111,7 +118,13 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // Infered: first readable replica
                 view.ReadHeadIndex = view.Chain.FindIndex(tuple => tuple.Item1.IsReadable());
+
+                // If not configured use Tail. Chain must be defined at this point, so don't move this code up!
                 view.ReadTailIndex = configurationStore.ReadViewTailIndex;
+                if (view.ReadTailIndex < 0)
+                {
+                    view.ReadTailIndex = view.TailIndex;
+                }
             }
 
             return view;
@@ -153,7 +166,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         public int ReadTailIndex
         {
             get;
-            set;
+            private set;
         }
 
         public int WriteHeadIndex

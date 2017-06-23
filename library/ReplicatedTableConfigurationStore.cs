@@ -336,7 +336,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return;
             }
 
-            var msg = string.Format("View:\'{0}\' has ReadViewTailIndex:\'{1}\' greater then replica size:\'{2}\' !!!",
+            var msg = string.Format("View:\'{0}\' - ReadViewTailIndex:\'{1}\' is out of bounds, replica size:\'{2}\' !!!",
                                     viewName,
                                     ReadViewTailIndex,
                                     GetCurrentReplicaChain().Count);

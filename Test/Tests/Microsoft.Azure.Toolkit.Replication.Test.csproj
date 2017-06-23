@@ -101,6 +101,7 @@
     <Compile Include="RTableConfigurationServiceTests.cs" />
     <Compile Include="RTableCreateTableTests.cs" />
     <Compile Include="RTableCRUDUnitTests.cs" />
+    <Compile Include="RTableCutOffTailTests.cs" />
     <Compile Include="RTableInsertHeadTests.cs" />
     <Compile Include="RTableLibraryTestBase.cs" />
     <Compile Include="RTableCRUDPerfTests.cs" />
