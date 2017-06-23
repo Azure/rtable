@@ -1523,7 +1523,10 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 try
                 {
-                    CloudTable tail = txnView[txnView.TailIndex].GetTableReference(TableName);
+                    int tailIndex = txnView.ReadTailIndex; // [Head] -> ... -> [ReadTailIndex] -> ... -> [Tail]
+                                                           //                       ^
+                                                           // query this replica :  |
+                    CloudTable tail = txnView[tailIndex].GetTableReference(TableName);
                     rows = tail.ExecuteQuery(query);
                 }
                 catch (Exception e)
@@ -1541,10 +1544,15 @@ namespace Microsoft.Azure.Toolkit.Replication
             using (new StopWatchInternal(this.TableName, "CreateQuery", this._configurationWrapper))
             {
                 TableQuery<TElement> query = new TableQuery<TElement>();
+                View txnView = CurrentView;
 
                 try
                 {
-                    CloudTable tail = GetTailTableClient().GetTableReference(TableName);
+                    int tailIndex = txnView.ReadTailIndex; // [Head] -> ... -> [ReadTailIndex] -> ... -> [Tail]
+                                                           //                       ^
+                                                           // query this replica :  |
+
+                    CloudTable tail = txnView[tailIndex].GetTableReference(TableName);
                     query = tail.CreateQuery<TElement>();
                 }
                 catch (Exception e)
@@ -1571,7 +1579,11 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 try
                 {
-                    CloudTable tail = txnView[txnView.TailIndex].GetTableReference(TableName);
+                    int tailIndex = txnView.ReadTailIndex; // [Head] -> ... -> [ReadTailIndex] -> ... -> [Tail]
+                                                           //                       ^
+                                                           // query this replica :  |
+
+                    CloudTable tail = txnView[tailIndex].GetTableReference(TableName);
                     query = tail.CreateQuery<TElement>();
                 }
                 catch (Exception e)

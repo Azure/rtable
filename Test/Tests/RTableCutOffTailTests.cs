@@ -244,7 +244,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     {
                         var body = session.GetRequestBodyAsString();
 
-                        // Delay Lock to Tail by stale view
+                        // Fail Lock to Tail by stale view
                         if (session.hostname.Contains(accountNameToTamper + ".") &&
                             session.HTTPMethodIs("PUT") &&
                             body.Contains("\"Email\":\"workerOne\"") &&

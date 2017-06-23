@@ -323,8 +323,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [Test(Description = "LINQ queries throw after detecting a stale view")]
-        public void LinqQueriesThrowAfterDetectingStaleView()
+        [Test(Description = "LINQ queries throw after detecting a stale view when ThrowOnStaleViewInLinqQueryFlag is set")]
+        public void LinqQueriesThrowAfterDetectingStaleViewWhenThrowOnStaleViewInLinqQueryFlagIsSet()
         {
             TableOperation operation;
             TableResult result;
@@ -442,6 +442,199 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
+        [Test(Description = "LINQ queries are served from Tail when 'ReadViewTailIndex' is not set")]
+        public void LinqQueriesAreServedFromTailWhenReadViewTailIndexIsNotSet()
+        {
+            var rtable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+
+            string firstName = "FirstName";
+            string lastName = "LastName";
+
+            int dataSize = 5;
+
+            /*
+             * 1 - insert entries
+             */
+            for (int i = 0; i < dataSize; i++)
+            {
+                var customer = new CustomerEntity(firstName + i, lastName + i);
+                customer.Email = "***";
+
+                TableOperation operation = TableOperation.Insert(customer);
+                rtable.Execute(operation);
+            }
+
+
+            // Identify the Tail account
+            View view = this.configurationWrapper.GetWriteView();
+            Assert.IsTrue(view.Chain.Count > 1, "expects at least one replica!");
+
+            string accountNameToTamper = view.Chain.Last().Item1.StorageAccountName;
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            // We will fail requests to update a row in Tail
+            ProxyBehavior[] behaviors =
+            {
+                TamperBehaviors.TamperAllRequestsIf(
+                    (session =>
+                    {
+                        session.oRequest.FailSession((int)HttpStatusCode.ServiceUnavailable, "ServerBusy", "");
+                    }),
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Fail Lock to Tail by stale view
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"_rtable_RowLock\":true"))
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    })),
+            };
+
+            using (new HttpMangler(false, behaviors))
+            {
+                /*
+                * 2 - update entries
+                */
+                for (int i = 0; i < dataSize; i++)
+                {
+                    TableOperation operation = TableOperation.Retrieve<CustomerEntity>(firstName + i, lastName + i);
+                    TableResult retrievedResult = rtable.Execute(operation);
+
+                    var customer = (CustomerEntity)retrievedResult.Result;
+                    customer.Email = "updated";
+
+                    TableOperation replaceOperation = TableOperation.Replace(customer);
+                    TableResult replaceResult = rtable.Execute(replaceOperation);
+
+                    Assert.IsNotNull(replaceResult, "replaceResult = null");
+                    Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, replaceResult.HttpStatusCode, "replaceResult.HttpStatusCode mismatch");
+                }
+            }
+
+
+            /*
+             * 3 - CreateQuery is served from [Tail], data should be old
+             */
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            {
+                Assert.AreEqual(customer.Email, "***", "expected old data");
+            }
+
+
+            /*
+             * 4 - ExecuteQuery is served from [Tail], data should be old
+             */
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            {
+                Assert.AreEqual(customer.Email, "***", "expected old data");
+            }
+        }
+
+        [Test(Description = "LINQ queries are served from Head when 'ReadViewTailIndex' is set")]
+        public void LinqQueriesAreServedFromHeadWhenReadViewTailIndexIsSet()
+        {
+            var rtable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+
+            string firstName = "FirstName";
+            string lastName = "LastName";
+
+            int dataSize = 5;
+
+            /*
+             * 1 - insert entries
+             */
+            for (int i = 0; i < dataSize; i++)
+            {
+                var customer = new CustomerEntity(firstName + i, lastName + i);
+                customer.Email = "***";
+
+                TableOperation operation = TableOperation.Insert(customer);
+                rtable.Execute(operation);
+            }
+
+
+            // Identify the Tail account
+            View view = this.configurationWrapper.GetWriteView();
+            Assert.IsTrue(view.Chain.Count > 1, "expects at least one replica!");
+
+            string accountNameToTamper = view.Chain.Last().Item1.StorageAccountName;
+            Console.WriteLine("RunHttpManglerBehaviorHelper(): accountNameToTamper={0}", accountNameToTamper);
+
+            // We will fail requests to update a row in Tail
+            ProxyBehavior[] behaviors =
+            {
+                TamperBehaviors.TamperAllRequestsIf(
+                    (session =>
+                    {
+                        session.oRequest.FailSession((int)HttpStatusCode.ServiceUnavailable, "ServerBusy", "");
+                    }),
+                    (session =>
+                    {
+                        var body = session.GetRequestBodyAsString();
+
+                        // Fail Lock to Tail by stale view
+                        if (session.hostname.Contains(accountNameToTamper + ".") &&
+                            session.HTTPMethodIs("PUT") &&
+                            body.Contains("\"_rtable_RowLock\":true"))
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    })),
+            };
+
+            using (new HttpMangler(false, behaviors))
+            {
+                /*
+                * 2 - update entries
+                */
+                for (int i = 0; i < dataSize; i++)
+                {
+                    TableOperation operation = TableOperation.Retrieve<CustomerEntity>(firstName + i, lastName + i);
+                    TableResult retrievedResult = rtable.Execute(operation);
+
+                    var customer = (CustomerEntity)retrievedResult.Result;
+                    customer.Email = "updated";
+
+                    TableOperation replaceOperation = TableOperation.Replace(customer);
+                    TableResult replaceResult = rtable.Execute(replaceOperation);
+
+                    Assert.IsNotNull(replaceResult, "replaceResult = null");
+                    Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, replaceResult.HttpStatusCode, "replaceResult.HttpStatusCode mismatch");
+                }
+            }
+
+
+            SetReadViewTailIndex(0);
+            Assert.AreEqual(0, this.configurationService.GetTableView(this.repTable.TableName).ReadTailIndex, "ReadTailIndex should be 0!!!");
+
+
+            /*
+             * 3 - CreateQuery is served from [Head], data should be new
+             */
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            {
+                Assert.AreEqual(customer.Email, "updated", "expected new data");
+            }
+
+
+            /*
+             * 4 - ExecuteQuery is served from [Head], data should be new
+             */
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            {
+                Assert.AreEqual(customer.Email, "updated", "expected new data");
+            }
+        }
+
+
         #region Config helpers
 
         private void SetConfigViewId(long viewId)
@@ -455,6 +648,21 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             ReplicatedTableConfigurationStore viewConfg = config.GetView(view.Name);
             viewConfg.ViewId = viewId;
+
+            this.configurationService.UpdateConfiguration(config);
+        }
+
+        private void SetReadViewTailIndex(int index)
+        {
+            View view = this.configurationWrapper.GetWriteView();
+
+            ReplicatedTableConfiguration config;
+            ReplicatedTableQuorumReadResult readStatus = this.configurationService.RetrieveConfiguration(out config);
+
+            Assert.IsTrue(readStatus.Code == ReplicatedTableQuorumReadCode.Success);
+
+            ReplicatedTableConfigurationStore viewConfg = config.GetView(view.Name);
+            viewConfg.ReadViewTailIndex = index;
 
             this.configurationService.UpdateConfiguration(config);
         }
