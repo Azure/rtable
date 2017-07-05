@@ -33,11 +33,12 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// If null is returned, then the value of tableConfigList/leaseDuration are not relevant.
         /// </summary>
         /// <param name="blobs"></param>
-        /// <param name="useHttps"></param>
+        /// <param name="SetConnectionString"></param>
         /// <param name="tableConfigList"></param>
         /// <param name="leaseDuration"></param>
         /// <param name="configId"></param>
         /// <param name="instrumentation"></param>
+        /// <param name="ignoreHigherViewIdRows"></param>
         /// <returns></returns>
         List<View> ParseBlob(
                         List<CloudBlockBlob> blobs,
@@ -45,6 +46,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                         out List<ReplicatedTableConfiguredTable> tableConfigList,
                         out int leaseDuration,
                         out Guid configId,
-                        out bool instrumentation);
+                        out bool instrumentation,
+                        out bool ignoreHigherViewIdRows);
     }
 }

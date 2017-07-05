@@ -280,6 +280,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             return this.configManager.IsIntrumenationEnabled();
         }
 
+        public bool IsIgnoreHigherViewIdRows()
+        {
+            return this.configManager.IsIgnoreHigherViewIdRows();
+        }
+
         /*
          * Replica management APIs
          */

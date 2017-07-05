@@ -1965,7 +1965,7 @@
             #endregion
         }
 
-        [Test(Description = "Testing Instrumentation Flag sent in the config")]
+        [Test(Description = "Testing Instrumentation Flag set in the config")]
         public void TestInstrumentationFlag()
         {
             var testConfigWithNoInstrumentation =
@@ -1985,6 +1985,28 @@
             conf = ReplicatedTableConfiguration.FromJson(testConfigWithInstrumentationAsTrue);
             Assert.IsNotNull(conf);
             Assert.AreEqual(true, conf.GetInstrumentationFlag());
+        }
+
+        [Test(Description = "Testing IgnoreHigherViewIdRows Flag set in the config")]
+        public void TestIgnoreHigherViewIdRowsFlag()
+        {
+            var testConfigWithNoIgnoreHigherViewIdRows =
+                @"{'viewMap': null, 'tableList': null, 'LeaseDuration': 10, 'Id': '450a44a6-26fd-4ca2-89b1-32bf99af9248'}";
+            var conf = ReplicatedTableConfiguration.FromJson(testConfigWithNoIgnoreHigherViewIdRows);
+            Assert.IsNotNull(conf);
+            Assert.AreEqual(false, conf.IsIgnoreHigherViewIdRows());
+
+            var testConfigWithIgnoreHigherViewIdRows =
+                @"{'viewMap': null, 'tableList': null, 'LeaseDuration': 10, 'Id': '450a44a6-26fd-4ca2-89b1-32bf99af9248', 'IgnoreHigherViewIdRows': false}";
+            conf = ReplicatedTableConfiguration.FromJson(testConfigWithIgnoreHigherViewIdRows);
+            Assert.IsNotNull(conf);
+            Assert.AreEqual(false, conf.IsIgnoreHigherViewIdRows());
+
+            var testConfigWithIgnoreHigherViewIdRowsAsTrue =
+                @"{'viewMap': null, 'tableList': null, 'LeaseDuration': 10, 'Id': '450a44a6-26fd-4ca2-89b1-32bf99af9248', 'IgnoreHigherViewIdRows': true}";
+            conf = ReplicatedTableConfiguration.FromJson(testConfigWithIgnoreHigherViewIdRowsAsTrue);
+            Assert.IsNotNull(conf);
+            Assert.AreEqual(true, conf.IsIgnoreHigherViewIdRows());
         }
 
         [Test(Description = "Test FromJson() with Partitioning feature")]

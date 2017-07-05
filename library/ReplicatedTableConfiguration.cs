@@ -50,6 +50,9 @@ namespace Microsoft.Azure.Toolkit.Replication
         [DataMember(IsRequired = false, Order = 4)]
         internal protected bool Instrumentation { get; set; }
 
+        [DataMember(IsRequired = false, Order = 5)]
+        internal protected bool IgnoreHigherViewIdRows { get; set; }
+
         public ReplicatedTableConfiguration()
         {
             Id = Guid.NewGuid();
@@ -64,6 +67,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         public bool GetInstrumentationFlag()
         {
             return Instrumentation;
+        }
+
+        public bool IsIgnoreHigherViewIdRows()
+        {
+            return IgnoreHigherViewIdRows;
         }
 
         /*

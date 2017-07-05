@@ -115,6 +115,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             return this.configManager.IsIntrumenationEnabled();
         }
 
+        public bool IsIgnoreHigherViewIdRows()
+        {
+            return this.configManager.IsIgnoreHigherViewIdRows();
+        }
+
         public void UpdateConfiguration(List<ReplicaInfo> replicaChain, int readViewHeadIndex, bool convertXStoreTableMode = false, long viewId = 0)
         {
             View currentView = GetWriteView();

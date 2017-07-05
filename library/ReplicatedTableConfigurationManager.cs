@@ -40,6 +40,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         private ReplicatedTableConfiguredTable defaultConfiguredRule = null;
         private Guid currentRunningConfigId = Guid.Empty;
         private volatile bool instrumentation = false;
+        private volatile bool ignoreHigherViewIdRows = false;
 
         private readonly object connectionStringLock = new object();
         private Dictionary<string, SecureString> connectionStringMap = null;
@@ -169,12 +170,21 @@ namespace Microsoft.Azure.Toolkit.Replication
             Guid configId;
             List<View> views;
             bool instrumentationFlag;
+            bool ignoreHigherViewIdRows;
 
             // Lock because both SetConnectionStringStrategy and connectionStringMap can be updated OOB!
             lock (connectionStringLock)
             {
                 DateTime startTime = DateTime.UtcNow;
-                views = this.blobParser.ParseBlob(this.blobs.Values.ToList(), this.SetConnectionStringStrategy, out tableConfigList, out leaseDuration, out configId, out instrumentationFlag);
+                views = this.blobParser.ParseBlob(
+                                            this.blobs.Values.ToList(),
+                                            this.SetConnectionStringStrategy,
+                                            out tableConfigList,
+                                            out leaseDuration,
+                                            out configId,
+                                            out instrumentationFlag,
+                                            out ignoreHigherViewIdRows);
+
                 ReplicatedTableLogger.LogInformational("ParseBlob took {0}", DateTime.UtcNow - startTime);
 
                 if (views == null)
@@ -230,6 +240,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // update instrumentation flag
                 this.instrumentation = instrumentationFlag;
+
+                // update ignoreHigherViewIdRows flag
+                this.ignoreHigherViewIdRows = ignoreHigherViewIdRows;
 
                 UpdateTimer();
             }
@@ -332,6 +345,12 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             // Not adding lock here as it is not critical to add lock here
             return instrumentation;
+        }
+
+        internal protected bool IsIgnoreHigherViewIdRows()
+        {
+            // Not critical to lock here
+            return ignoreHigherViewIdRows;
         }
 
         /*

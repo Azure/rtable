@@ -28,28 +28,20 @@ namespace Microsoft.Azure.Toolkit.Replication
 
     internal class ReplicatedTableConfigurationParser : IReplicatedTableConfigurationParser
     {
-        /// <summary>
-        /// Parses the RTable configuration blobs.
-        /// Returns the list of views, the list of configured tables and the lease duration.
-        /// If null is returned, then the value of tableConfigList/leaseDuration are not relevant.
-        /// </summary>
-        /// <param name="blobs"></param>
-        /// <param name="useHttps"></param>
-        /// <param name="tableConfigList"></param>
-        /// <param name="leaseDuration"></param>
-        /// <returns></returns>
         public List<View> ParseBlob(
                                 List<CloudBlockBlob> blobs,
                                 Action<ReplicaInfo> SetConnectionString,
                                 out List<ReplicatedTableConfiguredTable> tableConfigList,
                                 out int leaseDuration,
                                 out Guid configId,
-                                out bool instrumentation)
+                                out bool instrumentation,
+                                out bool ignoreHigherViewIdRows)
         {
             tableConfigList = null;
             leaseDuration = 0;
             configId = Guid.Empty;
             instrumentation = false;
+            ignoreHigherViewIdRows = false;
 
             ReplicatedTableConfiguration configuration;
             List<string> eTags;
@@ -120,6 +112,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // - Instrumentation
             instrumentation = configuration.GetInstrumentationFlag();
+
+            // - IgnoreHigherViewIdRows
+            ignoreHigherViewIdRows = configuration.IsIgnoreHigherViewIdRows();
 
             return viewList;
         }
