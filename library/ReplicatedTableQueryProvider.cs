@@ -39,16 +39,16 @@ namespace Microsoft.Azure.Toolkit.Replication
         private readonly IQueryable<TElement> innerTableQuery;
         private readonly bool isConvertMode;
         private readonly long txnViewId;
-        private readonly bool throwOnStaleViewFlag;
+        private readonly StaleViewHandling staleViewHandling;
 
-        internal ReplicatedTableQuery(IQueryable<TElement> innerTableQuery, bool isConvertMode, long txnViewId, bool throwOnStaleViewFlag)
+        internal ReplicatedTableQuery(IQueryable<TElement> innerTableQuery, bool isConvertMode, long txnViewId, StaleViewHandling staleViewHandling)
         {
             this.innerTableQuery = innerTableQuery;
             this.isConvertMode = isConvertMode;
             this.txnViewId = txnViewId;
-            this.throwOnStaleViewFlag = throwOnStaleViewFlag;
+            this.staleViewHandling = staleViewHandling;
 
-            Provider = new ReplicatedTableQueryProvider(innerTableQuery.Provider, isConvertMode, txnViewId, throwOnStaleViewFlag);
+            Provider = new ReplicatedTableQueryProvider(innerTableQuery.Provider, isConvertMode, txnViewId, staleViewHandling);
             Expression = innerTableQuery.Expression;
         }
 
@@ -58,7 +58,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public IEnumerator<TElement> GetEnumerator()
         {
-            return new ReplicatedTableEnumerator<TElement>(innerTableQuery.GetEnumerator(), isConvertMode, txnViewId, throwOnStaleViewFlag);
+            return new ReplicatedTableEnumerator<TElement>(innerTableQuery.GetEnumerator(), isConvertMode, txnViewId, staleViewHandling);
         }
 
         IEnumerator IEnumerable.GetEnumerator()
@@ -77,14 +77,14 @@ namespace Microsoft.Azure.Toolkit.Replication
         private readonly IQueryProvider innerQueryProvider;
         private readonly bool isConvertMode;
         private readonly long txnViewId;
-        private readonly bool throwOnStaleViewFlag;
+        private readonly StaleViewHandling staleViewHandling;
 
-        public ReplicatedTableQueryProvider(IQueryProvider innerQueryProvider, bool isConvertMode, long txnViewId, bool throwOnStaleViewFlag)
+        public ReplicatedTableQueryProvider(IQueryProvider innerQueryProvider, bool isConvertMode, long txnViewId, StaleViewHandling staleViewHandling)
         {
             this.innerQueryProvider = innerQueryProvider;
             this.isConvertMode = isConvertMode;
             this.txnViewId = txnViewId;
-            this.throwOnStaleViewFlag = throwOnStaleViewFlag;
+            this.staleViewHandling = staleViewHandling;
         }
 
         public IQueryable CreateQuery(Expression expression)
@@ -105,7 +105,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public IQueryable<TResult> CreateQuery<TResult>(Expression expression)
         {
-            return new ReplicatedTableQuery<TResult>(innerQueryProvider.CreateQuery<TResult>(expression), isConvertMode, txnViewId, throwOnStaleViewFlag);
+            return new ReplicatedTableQuery<TResult>(innerQueryProvider.CreateQuery<TResult>(expression), isConvertMode, txnViewId, staleViewHandling);
         }
 
         public object Execute(Expression expression)

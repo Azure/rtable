@@ -74,6 +74,11 @@ namespace Microsoft.Azure.Toolkit.Replication
             return IgnoreHigherViewIdRows;
         }
 
+        public void SetIgnoreHigherViewIdRowsFlag(bool status)
+        {
+            IgnoreHigherViewIdRows = status;
+        }
+
         /*
          * View APIs:
          */

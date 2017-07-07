@@ -77,5 +77,10 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             return this._service.IsIntrumentationEnabled();
         }
+
+        public bool IsIgnoreHigherViewIdRows()
+        {
+            return this._service.IsIgnoreHigherViewIdRows();
+        }
     }
 }

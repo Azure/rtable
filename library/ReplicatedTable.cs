@@ -464,6 +464,23 @@ namespace Microsoft.Azure.Toolkit.Replication
             return (ITableEntity)(entity.GetValue(operation, null));
         }
 
+        private void GetEntityKeysFromOperation(TableOperation operation, out string pk, out string rk)
+        {
+
+            // WARNING: We use reflection to read an internal field in OperationType.
+            //          We have a dependency on TableOperation fields WindowsAzureStorage dll
+            PropertyInfo pkProp = operation.GetType().GetProperty("RetrievePartitionKey", System.Reflection.BindingFlags.GetProperty |
+                                                                                          System.Reflection.BindingFlags.Instance |
+                                                                                          System.Reflection.BindingFlags.NonPublic);
+
+            PropertyInfo rkProp = operation.GetType().GetProperty("RetrieveRowKey", System.Reflection.BindingFlags.GetProperty |
+                                                                                    System.Reflection.BindingFlags.Instance |
+                                                                                    System.Reflection.BindingFlags.NonPublic);
+
+            pk = (string)(pkProp.GetValue(operation, null));
+            rk = (string)(pkProp.GetValue(operation, null));
+        }
+
         private TableBatchOperation TransformUpdateBatchOp(View txnView, TableBatchOperation batch, int phase, int index,
             IList<TableResult> results = null, TableRequestOptions requestOptions = null,
             OperationContext operationContext = null)
@@ -1534,7 +1551,11 @@ namespace Microsoft.Azure.Toolkit.Replication
                     ReplicatedTableLogger.LogError("Error in ExecuteQuery: caught exception {0}", e);
                 }
 
-                return new ReplicatedTableEnumerable<TElement>(rows, this._configurationWrapper.IsConvertToRTableMode(), txnView.ViewId, ThrowOnStaleViewInLinqQueryFlag);
+                return new ReplicatedTableEnumerable<TElement>(
+                                        rows,
+                                        this._configurationWrapper.IsConvertToRTableMode(),
+                                        txnView.ViewId,
+                                        GetBehaviorOnStaleView());
             }
         }
 
@@ -1591,8 +1612,34 @@ namespace Microsoft.Azure.Toolkit.Replication
                     ReplicatedTableLogger.LogError("Error in CreateReplicatedQuery: caught exception {0}", e);
                 }
 
-                return new ReplicatedTableQuery<TElement>(query, this._configurationWrapper.IsConvertToRTableMode(), txnView.ViewId, ThrowOnStaleViewInLinqQueryFlag);
+                return new ReplicatedTableQuery<TElement>(
+                                        query,
+                                        this._configurationWrapper.IsConvertToRTableMode(),
+                                        txnView.ViewId,
+                                        GetBehaviorOnStaleView());
             }
+        }
+
+        /// <summary>
+        /// Defines LINQ behavior on stale viewId
+        /// </summary>
+        /// <returns></returns>
+        private StaleViewHandling GetBehaviorOnStaleView()
+        {
+            // ignore rows with higher viewId
+            if (this._configurationWrapper.IsIgnoreHigherViewIdRows())
+            {
+                return StaleViewHandling.TreatAsNotFound;
+            }
+
+            // Else, throw if we detect a row with a higher viewId
+            if (ThrowOnStaleViewInLinqQueryFlag)
+            {
+                return StaleViewHandling.ThrowOnStaleView;
+            }
+
+            // Else, return rows with higher viewIds as is.
+            return StaleViewHandling.NoThrowOnStaleView;
         }
 
         #region VirtualizeEtag helpers
@@ -1714,7 +1761,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
             catch (StorageException se)
             {
-                ReplicatedTableLogger.LogError("Storage Exception: {0} from replicaIndex :{1}", se, index);
+                string pk, rk;
+                GetEntityKeysFromOperation(operation, out pk, out rk);
+                ReplicatedTableLogger.LogError("Storage exception from replicaIndex:{0},\nPK:{1},\nRK:{2},\n{3}", index, pk, rk, se);
+
                 var innerException = se.InnerException as WebException;
                 if (innerException != null)
                 {
@@ -1735,7 +1785,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
             catch (Exception e)
             {
-                ReplicatedTableLogger.LogError("Error in RetrieveFromReplica(): caught exception {0}", e);
+                string pk, rk;
+                GetEntityKeysFromOperation(operation, out pk, out rk);
+                ReplicatedTableLogger.LogError("Exception from replicaIndex:{0},\nPK:{1},\nRK:{2},\n{3}", index, pk, rk, e);
+
                 return null;
             }
 
@@ -1747,7 +1800,21 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return retrievedResult;
             }
 
-            ThrowIfViewIdNotConsistent(txnView.ViewId, readRow._rtable_ViewId);
+            try
+            {
+                ThrowIfViewIdNotConsistent(txnView.ViewId, readRow._rtable_ViewId);
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                // Assert(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
+                if (this._configurationWrapper.IsIgnoreHigherViewIdRows())
+                {
+                    // Treat as NotFound!
+                    return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
+                }
+
+                throw;
+            }
 
             return retrievedResult;
         }

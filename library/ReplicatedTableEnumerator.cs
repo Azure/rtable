@@ -26,6 +26,18 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Collections.Generic;
     using Microsoft.WindowsAzure.Storage.Table;
 
+    public enum StaleViewHandling
+    {
+        // rows with higher viewIds will be returned as part of the resultset
+        NoThrowOnStaleView,
+
+        // throw if we detect a row with a higher viewId
+        ThrowOnStaleView,
+
+        // ignore rows with higher viewId
+        TreatAsNotFound
+    }
+
 
     /// <summary>
     /// Implement an IEnumerator(T)
@@ -39,16 +51,36 @@ namespace Microsoft.Azure.Toolkit.Replication
         private Func<ITableEntity, bool> HasTombstoneFunc;
         private Func<ITableEntity, long> RowViewIdFunc;
         private readonly long txnViewId;
-        private readonly Action<long, long> _throwOnStaleViewAction = (txnViewId, rowViewId) => { };
+        private readonly Action<long, long> HandleStaleView;
+        private Func<long, long, bool> SkipHigherViewIdRowsFunc;
 
-        public ReplicatedTableEnumerator(IEnumerator<T> collection, bool isConvertMode, long txnViewId, bool throwOnStaleViewFlag)
+        public ReplicatedTableEnumerator(IEnumerator<T> collection, bool isConvertMode, long txnViewId, StaleViewHandling staleViewHandling)
         {
             _collection = collection;
             this.txnViewId = txnViewId;
 
-            if (throwOnStaleViewFlag)
+            switch (staleViewHandling)
             {
-                _throwOnStaleViewAction = ReplicatedTable.ThrowIfViewIdNotConsistent;
+                case StaleViewHandling.NoThrowOnStaleView:
+                    SkipHigherViewIdRowsFunc = (viewId, rowViewId) => false; // NOP
+                    HandleStaleView = (viewId, rowViewId) => { }; // NOP
+                    break;
+
+                case StaleViewHandling.ThrowOnStaleView:
+                    SkipHigherViewIdRowsFunc = (viewId, rowViewId) => false;  // NOP
+                    HandleStaleView = ReplicatedTable.ThrowIfViewIdNotConsistent; // throw on stale view
+                    break;
+
+                case StaleViewHandling.TreatAsNotFound:
+                    SkipHigherViewIdRowsFunc = (viewId, rowViewId) => rowViewId > viewId; // skip row if higher viewId
+                    HandleStaleView = (viewId, rowViewId) => { }; // NOP
+                    break;
+
+                default:
+                {
+                    var msg = string.Format("Unexpected value=\'{0}\' ", staleViewHandling);
+                    throw new Exception(msg);
+                }
             }
 
             InitDelegates(isConvertMode);
@@ -65,9 +97,21 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
 
                 // Skip deleted row i.e. Tombstone is set
-            } while (HasTombstoneFunc(_collection.Current as ITableEntity));
+                if (HasTombstoneFunc(_collection.Current as ITableEntity))
+                {
+                    continue;
+                }
 
-            return true;
+                // Skip rows with higher viewId, if configured
+                if (SkipHigherViewIdRowsFunc(this.txnViewId, this.RowViewIdFunc(_collection.Current as ITableEntity)))
+                {
+                    continue;
+                }
+
+                // return the row
+                return true;
+
+            } while (true);
         }
 
         public void Reset() { _collection.Reset(); }
@@ -83,8 +127,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 T curr = _collection.Current;
 
-                // By default that's a NOP, but user can enable this check if he wants
-                _throwOnStaleViewAction(this.txnViewId, this.RowViewIdFunc(curr as ITableEntity));
+                // Handle row with higher viewId
+                HandleStaleView(this.txnViewId, this.RowViewIdFunc(curr as ITableEntity));
 
                 // Virtualize the Etag
                 VirtualizeEtagFunc(curr as ITableEntity);

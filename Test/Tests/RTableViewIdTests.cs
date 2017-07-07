@@ -222,6 +222,160 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
+        [Test(Description = "Rows with higer wiewId NotFound when IgnoreHigherViewIdRows flag is set")]
+        public void RowsWithHigerViewIdNotFoundWhenIgnoreHigherViewIdRowsFlagIsSet()
+        {
+            long higherViewId = 200;
+
+            // Configure RTable with a higher ViewId
+            this.UpdateConfiguration(replicas, 0, false, higherViewId);
+
+            string firstName = "FirstName02";
+            string lastName = "LastName02";
+            string email = "email01@company.com";
+            string phone = "1-800-123-0001";
+
+            // Insert entity
+            CustomerEntity newCustomer = new CustomerEntity(firstName, lastName);
+            newCustomer.Email = email;
+            newCustomer.PhoneNumber = phone;
+
+            TableOperation operation = TableOperation.Insert(newCustomer);
+            TableResult result = this.repTable.Execute(operation);
+            Assert.AreNotEqual(null, result, "result = null");
+            Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
+
+            // Retrieve entity
+            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
+            TableResult retrievedResult = this.repTable.Execute(operation);
+            Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+            Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+            Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
+            CustomerEntity customer = (CustomerEntity)retrievedResult.Result;
+            Assert.AreEqual(higherViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
+            Assert.AreEqual(newCustomer.PhoneNumber, customer.PhoneNumber, "customer.PhoneNumber mismatch");
+            Assert.AreEqual(newCustomer.Email, customer.Email, "customer.Email mismatch");
+            Console.WriteLine("Successfully retrieved the entity");
+
+            //
+            // Change RTable config to a lower viewId, and force RTable to ignore rows with higher viewId
+            //
+            long currentViewId = 10;
+            Assert.IsTrue(currentViewId < higherViewId, "expected currentViewId < higherViewId !");
+
+            Console.WriteLine("Changing the viewId to currentViewId {0}", currentViewId);
+            ReplicatedTableConfiguration config;
+            ReplicatedTableQuorumReadResult readStatus = this.configurationService.RetrieveConfiguration(out config);
+            Assert.IsTrue(readStatus.Code == ReplicatedTableQuorumReadCode.Success);
+            ReplicatedTableConfigurationStore viewConfg = config.GetView(this.configurationWrapper.GetWriteView().Name);
+            viewConfg.ViewId = currentViewId;
+            config.SetIgnoreHigherViewIdRowsFlag(true);
+            this.configurationService.UpdateConfiguration(config);
+
+
+            //
+            // Retrieve with lower viewId
+            //
+            Console.WriteLine("\nCalling Retrieve with lower ViewId...");
+            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
+            try
+            {
+                retrievedResult = this.repTable.Execute(operation);
+
+                Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+                Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                Assert.Fail("Retrieve() is expected to NotFound the row, but got RTableStaleViewException !");
+            }
+
+            //
+            // Replace with lower viewId
+            //
+            Console.WriteLine("\nCalling Replace with lower ViewId...");
+            operation = TableOperation.Replace(customer);
+            try
+            {
+                retrievedResult = this.repTable.Execute(operation);
+
+                Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+                Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                Assert.Fail("Replace() is expected to NotFound the row, but got RTableStaleViewException !");
+            }
+
+            ////
+            //// InsertOrMerge with bad viewId
+            ////
+            //Console.WriteLine("\nCalling InsertOrMerge with badViewId...");
+            //operation = TableOperation.InsertOrMerge(customer);
+            //try
+            //{
+            //    retrievedResult = this.repTable.Execute(operation);
+            //    Assert.Fail("InsertOrMerge() is expected to get an RTableStaleViewException but did not get it.");
+            //}
+            //catch (ReplicatedTableStaleViewException ex)
+            //{
+            //    Console.WriteLine("Get this RTableStaleViewException: {0}", ex.Message);
+            //    Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
+            //    Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than", currentViewId)), "Got unexpected exception message");
+            //}
+
+            ////
+            //// InsertOrReplace with lower viewId
+            ////
+            //Console.WriteLine("\nCalling InsertOrReplace with lower ViewId...");
+            //operation = TableOperation.InsertOrReplace(customer);
+            //try
+            //{
+            //    retrievedResult = this.repTable.Execute(operation);
+
+            //    Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+            //    Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+            //}
+            //catch (ReplicatedTableStaleViewException)
+            //{
+            //    Assert.Fail("InsertOrReplace() is expected to NotFound the row, but got RTableStaleViewException !");
+            //}
+
+            //
+            // Merge with lower viewId
+            //
+            Console.WriteLine("\nCalling Merge with lower ViewId...");
+            operation = TableOperation.Merge(customer);
+            try
+            {
+                retrievedResult = this.repTable.Execute(operation);
+
+                Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+                Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                Assert.Fail("Merge() is expected to NotFound the row, but got RTableStaleViewException !");
+            }
+
+            //
+            // Delete with lower viewId
+            //
+            Console.WriteLine("\nCalling Delete with lower ViewId...");
+            operation = TableOperation.Delete(customer);
+            try
+            {
+                retrievedResult = this.repTable.Execute(operation);
+
+                Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+                Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                Assert.Fail("Delete() is expected to NotFound the row, but got RTableStaleViewException !");
+            }
+        }
+
         [Test(Description="Replace using larger viewId is ok")]
         public void ReplaceUsingLargerViewId()
         {

@@ -210,7 +210,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [Test(Description = "LINQ queries don't throw on stale view by default ")]
+        [Test(Description = "LINQ queries don't throw on stale view by default")]
         public void LinqQueriesDontThrowOnStaleViewByDefault()
         {
             TableOperation operation;
@@ -222,7 +222,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              * Set config viewId to 5
              */
             long staleViewId = 5;
-            SetConfigViewId(staleViewId);
+            SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(staleViewId, false);
             Assert.AreEqual(staleViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 5!!!");
 
 
@@ -245,7 +245,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              * Set config new viewId to 6
              */
             long newViewId = 6;
-            SetConfigViewId(newViewId);
+            SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(newViewId, false);
             Assert.AreEqual(newViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 6!!!");
 
 
@@ -269,7 +269,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * Simulate a stale client => Set config viewId back to 5
              */
-            SetConfigViewId(staleViewId);
+            SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(staleViewId, false);
             Assert.AreEqual(staleViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 5!!!");
 
             try
@@ -335,7 +335,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              * Set config viewId to 5
              */
             long staleViewId = 5;
-            SetConfigViewId(staleViewId);
+            SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(staleViewId, false);
             Assert.AreEqual(staleViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 5!!!");
 
 
@@ -358,7 +358,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              * Set config new viewId to 6
              */
             long newViewId = 6;
-            SetConfigViewId(newViewId);
+            SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(newViewId, false);
             Assert.AreEqual(newViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 6!!!");
 
 
@@ -382,7 +382,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * Simulate a stale client => Set config viewId back to 5
              */
-            SetConfigViewId(staleViewId);
+            SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(staleViewId, false);
             Assert.AreEqual(staleViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 5!!!");
 
             try
@@ -439,6 +439,114 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
                 Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than _rtable_ViewId of existing row {1}", staleViewId, newViewId)), "Got unexpected exception message");
+            }
+        }
+
+        [Test(Description = "LINQ queries don't return rows with higher viewIds when flag IgnoreHigherViewIdRows is set")]
+        public void LinqQueriesDontReturnRowsWithHighViewIdWhenFlagIgnoreHigherViewIdRowsIsSet()
+        {
+            TableOperation operation;
+            TableResult result;
+            CustomerEntity customer;
+
+
+            /*
+             * Set config viewId to 5
+             */
+            long staleViewId = 5;
+            SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(staleViewId, false);
+            Assert.AreEqual(staleViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 5!!!");
+
+
+            // Insert entries in stale viewId 5
+            var rtable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+
+            string firstName = "FirstName";
+            string lastName = "LastName";
+
+            for (int i = 0; i < 10; i++)
+            {
+                customer = new CustomerEntity(firstName + i, lastName + i);
+
+                operation = TableOperation.Insert(customer);
+                rtable.Execute(operation);
+            }
+
+
+            /*
+             * Set config new viewId to 6
+             */
+            long newViewId = 6;
+            SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(newViewId, false);
+            Assert.AreEqual(newViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 6!!!");
+
+
+            // Update entry #5 and #8 in new viewId 6
+            foreach (int entryId in new int[]{5, 8})
+            {
+                operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
+                result = rtable.Execute(operation);
+
+                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+
+                customer = (CustomerEntity)result.Result;
+                customer.Email = "new_view@email.com";
+
+                operation = TableOperation.Replace(customer);
+                result = rtable.Execute(operation);
+
+                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent, "Update customer failed");
+            }
+
+
+            /*
+             * Simulate a stale client => Set config viewId back to 5
+             *                            and Set 'IgnoreHigherViewIdRows' flag so we ignore rows with higher viewIds
+             */
+            SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(staleViewId, true);
+            Assert.AreEqual(staleViewId, this.configurationService.GetTableView(this.repTable.TableName).ViewId, "View should be 5!!!");
+
+            try
+            {
+                // Check Retrieve of row #5 and #8 returns NotFound
+                foreach (int entryId in new int[] {5, 8})
+                {
+                    operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
+                    var retrievedResult = rtable.Execute(operation);
+
+                    Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+                    Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+                }
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                Assert.Fail("Retrieve() is expected to NotFound the row, but got RTableStaleViewException !");
+            }
+
+            /*
+             * stale client using LINQ: CreateReplicatedQuery
+             */
+            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            {
+                int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
+
+                Assert.AreNotEqual(id, 5, "row #5 should not be returned");
+                Assert.AreNotEqual(id, 8, "row #8 should not be returned");
+
+                Assert.AreEqual(entry._rtable_ViewId, staleViewId, "CreateReplicatedQuery: entry viewId should be '5'");
+            }
+
+            /*
+             * stale client using LINQ: ExecuteQuery
+             */
+            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            {
+                int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
+
+                Assert.AreNotEqual(id, 5, "row #5 should not be returned");
+                Assert.AreNotEqual(id, 8, "row #8 should not be returned");
+
+                Assert.AreEqual(entry._rtable_ViewId, staleViewId, "CreateReplicatedQuery: entry viewId should be '5'");
             }
         }
 
@@ -637,7 +745,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         #region Config helpers
 
-        private void SetConfigViewId(long viewId)
+        private void SetConfigViewIdAndIgnoreHigherViewIdRowsFlag(long viewId, bool ignoreHigherViewIdRowsFlag)
         {
             View view = this.configurationWrapper.GetWriteView();
 
@@ -648,6 +756,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             ReplicatedTableConfigurationStore viewConfg = config.GetView(view.Name);
             viewConfg.ViewId = viewId;
+
+            config.SetIgnoreHigherViewIdRowsFlag(ignoreHigherViewIdRowsFlag);
 
             this.configurationService.UpdateConfiguration(config);
         }
