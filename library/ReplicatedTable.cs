@@ -478,7 +478,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                                                                                     System.Reflection.BindingFlags.NonPublic);
 
             pk = (string)(pkProp.GetValue(operation, null));
-            rk = (string)(pkProp.GetValue(operation, null));
+            rk = (string)(rkProp.GetValue(operation, null));
         }
 
         private TableBatchOperation TransformUpdateBatchOp(View txnView, TableBatchOperation batch, int phase, int index,
