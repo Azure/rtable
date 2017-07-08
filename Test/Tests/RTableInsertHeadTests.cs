@@ -603,6 +603,117 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Console.WriteLine("workerTwo got Conflict because row was lock.");
         }
 
+        [Test(Description = "RepairTable when we have some rows with higher wiewId and IgnoreHigherViewIdRows flag is set")]
+        public void RepairTableWontRepairRowsWithHigherViewIdWhenIgnoreHigherViewIdRowsFlagIsSet()
+        {
+            TableOperation operation;
+            TableResult result;
+            CustomerEntity customer;
+
+
+            // - View has 2 replicas ?
+            View view = this.configurationWrapper.GetWriteView();
+            Assert.IsTrue(view.Chain.Count == 2, "expects 2 replicas only!");
+
+
+            // - Remove the Head, [None]->[RW]
+            RemoveHeadFromView(view.Name, 600, this.configurationService);
+
+
+            // 1 - Insert entries in old viewId
+            var rtable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+
+            string firstName = "FirstName";
+            string lastName = "LastName";
+
+            for (int i = 0; i < 10; i++)
+            {
+                customer = new CustomerEntity(firstName + i, lastName + i);
+
+                operation = TableOperation.Insert(customer);
+                rtable.Execute(operation);
+            }
+
+
+            // 2 - Increase viewId => so we can create rows with higher viewId
+            //   - Update entry #5 and #8 in new viewId
+            ReplicatedTableConfiguration config;
+            ReplicatedTableQuorumReadResult readStatus = this.configurationService.RetrieveConfiguration(out config);
+            Assert.IsTrue(readStatus.Code == ReplicatedTableQuorumReadCode.Success);
+            ReplicatedTableConfigurationStore viewConfg = config.GetView(view.Name);
+            viewConfg.ViewId += 100;
+            this.configurationService.UpdateConfiguration(config);
+
+            foreach (int entryId in new int[] { 5, 8 })
+            {
+                operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
+                result = rtable.Execute(operation);
+
+                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+
+                customer = (CustomerEntity)result.Result;
+                customer.Email = "new_view@email.com";
+
+                operation = TableOperation.Replace(customer);
+                result = rtable.Execute(operation);
+
+                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent, "Update customer failed");
+            }
+
+
+            // 3 - Restore previous viewId, and,
+            //   - Set 'IgnoreHigherViewIdRows' flag so we ignore rows with higher viewIds
+            readStatus = this.configurationService.RetrieveConfiguration(out config);
+            Assert.IsTrue(readStatus.Code == ReplicatedTableQuorumReadCode.Success);
+            viewConfg = config.GetView(view.Name);
+            viewConfg.ViewId -= 100;
+            config.SetIgnoreHigherViewIdRowsFlag(true);
+            this.configurationService.UpdateConfiguration(config);
+
+            try
+            {
+                // Check Retrieve of row #5 and #8 returns NotFound
+                foreach (int entryId in new int[] { 5, 8 })
+                {
+                    operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
+                    var retrievedResult = rtable.Execute(operation);
+
+                    Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+                    Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+                }
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                Assert.Fail("Retrieve() is expected to NotFound the row, but got RTableStaleViewException !");
+            }
+
+
+            // 4 - Now insert a Head [WO]->[RW]
+            //   - Then, call RepairTable ...
+            InsertHeadInView(view.Name, 600, this.configurationService);
+            ReconfigurationStatus status = rtable.RepairTable(0, null);
+            Assert.AreEqual(status, ReconfigurationStatus.PARTIAL_FAILURE, "rows with higher viewId should not be repaired");
+
+
+            // 5 - Check rows with higher viewId still NotFound, even after repair ...
+            try
+            {
+                // Check Retrieve of row #5 and #8 returns NotFound
+                foreach (int entryId in new int[] { 5, 8 })
+                {
+                    operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
+                    var retrievedResult = rtable.Execute(operation);
+
+                    Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+                    Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+                }
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                Assert.Fail("Retrieve() is expected to NotFound the row, but got RTableStaleViewException !");
+            }
+        }
+
 
         #region Config helpers
 

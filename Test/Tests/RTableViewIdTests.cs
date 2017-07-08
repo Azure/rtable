@@ -222,8 +222,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [Test(Description = "Rows with higer wiewId NotFound when IgnoreHigherViewIdRows flag is set")]
-        public void RowsWithHigerViewIdNotFoundWhenIgnoreHigherViewIdRowsFlagIsSet()
+        [Test(Description = "Rows with higher wiewId NotFound when IgnoreHigherViewIdRows flag is set")]
+        public void RowsWithHigherViewIdNotFoundWhenIgnoreHigherViewIdRowsFlagIsSet()
         {
             long higherViewId = 200;
 
@@ -307,39 +307,39 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Assert.Fail("Replace() is expected to NotFound the row, but got RTableStaleViewException !");
             }
 
-            ////
-            //// InsertOrMerge with bad viewId
-            ////
-            //Console.WriteLine("\nCalling InsertOrMerge with badViewId...");
-            //operation = TableOperation.InsertOrMerge(customer);
-            //try
-            //{
-            //    retrievedResult = this.repTable.Execute(operation);
-            //    Assert.Fail("InsertOrMerge() is expected to get an RTableStaleViewException but did not get it.");
-            //}
-            //catch (ReplicatedTableStaleViewException ex)
-            //{
-            //    Console.WriteLine("Get this RTableStaleViewException: {0}", ex.Message);
-            //    Assert.IsTrue(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
-            //    Assert.IsTrue(ex.Message.Contains(string.Format("current _rtable_ViewId {0} is smaller than", currentViewId)), "Got unexpected exception message");
-            //}
+            //
+            // InsertOrMerge with lower viewId
+            //
+            Console.WriteLine("\nCalling InsertOrMerge with lower ViewId...");
+            operation = TableOperation.InsertOrMerge(customer);
+            try
+            {
+                retrievedResult = this.repTable.Execute(operation);
 
-            ////
-            //// InsertOrReplace with lower viewId
-            ////
-            //Console.WriteLine("\nCalling InsertOrReplace with lower ViewId...");
-            //operation = TableOperation.InsertOrReplace(customer);
-            //try
-            //{
-            //    retrievedResult = this.repTable.Execute(operation);
+                Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+                Assert.AreEqual((int)HttpStatusCode.Conflict, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                Assert.Fail("InsertOrMerge() is expected to get Conflict, but got RTableStaleViewException !");
+            }
 
-            //    Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
-            //    Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
-            //}
-            //catch (ReplicatedTableStaleViewException)
-            //{
-            //    Assert.Fail("InsertOrReplace() is expected to NotFound the row, but got RTableStaleViewException !");
-            //}
+            //
+            // InsertOrReplace with lower viewId
+            //
+            Console.WriteLine("\nCalling InsertOrReplace with lower ViewId...");
+            operation = TableOperation.InsertOrReplace(customer);
+            try
+            {
+                retrievedResult = this.repTable.Execute(operation);
+
+                Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
+                Assert.AreEqual((int)HttpStatusCode.Conflict, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
+            }
+            catch (ReplicatedTableStaleViewException)
+            {
+                Assert.Fail("InsertOrReplace() is expected to get Conflict, but got RTableStaleViewException !");
+            }
 
             //
             // Merge with lower viewId
