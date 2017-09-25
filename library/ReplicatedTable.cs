@@ -319,7 +319,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                     // If Etag is not supplied, retrieve the row first before writing
                     TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
                     TableResult retrievedResult = RetrieveFromReplica(txnView, index, operation, requestOptions, operationContext);
-                    if (retrievedResult == null)
+                    if (retrievedResult == null ||
+                       (retrievedResult.Result == null && retrievedResult.HttpStatusCode == (int)HttpStatusCode.ServiceUnavailable))
                     {
                         return null;
                     }
@@ -940,6 +941,15 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 if (retrievedResult.Result == null)
                 {
+                    if (retrievedResult.HttpStatusCode == (int)HttpStatusCode.ServiceUnavailable &&
+                        index != txnView.ReadHeadIndex)
+                    {
+                        // If failed to read, from other than the Head, try from a previous replica
+                        index--;
+                        continue;
+                    }
+
+
                     // entity does not exist, so return the error code returned by any replica  
                     return retrievedResult;
                 }
@@ -1442,17 +1452,13 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 // When we are in ConvertToRTable, the existing entities were created as XStore entities.
                 // Hence, need to use InitDynamicReplicatedTableEntity which catches KeyNotFoundException
-                TableOperation operation = TableOperation.Retrieve<InitDynamicReplicatedTableEntity>(row.PartitionKey,
-                    row.RowKey);
-                retrievedResult = RetrieveFromReplica(txnView, txnView.WriteHeadIndex, operation, requestOptions,
-                    operationContext);
+                TableOperation operation = TableOperation.Retrieve<InitDynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
+                retrievedResult = RetrieveFromReplica(txnView, txnView.WriteHeadIndex, operation, requestOptions, operationContext);
             }
             else
             {
-                TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey,
-                    row.RowKey);
-                retrievedResult = RetrieveFromReplica(txnView, txnView.WriteHeadIndex, operation, requestOptions,
-                    operationContext);
+                TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(row.PartitionKey, row.RowKey);
+                retrievedResult = RetrieveFromReplica(txnView, txnView.WriteHeadIndex, operation, requestOptions, operationContext);
             }
 
             if (retrievedResult == null)
@@ -1468,7 +1474,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             if (retrievedResult.HttpStatusCode != (int) HttpStatusCode.OK)
             {
-                // Row may not have been present, return the error code 
+                // return the error code!
                 return retrievedResult;
             }
 
@@ -1773,7 +1779,11 @@ namespace Microsoft.Azure.Toolkit.Replication
                     {
                         case HttpStatusCode.BadRequest:
                         {
-                            throw se;
+                            throw;
+                        }
+                        case HttpStatusCode.ServiceUnavailable:
+                        {
+                            return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable };
                         }
 
                         default:
@@ -1781,7 +1791,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                     }
                 }
                 return null;
-
             }
             catch (Exception e)
             {
@@ -1985,11 +1994,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             // TODO: this read seems redundant. remove it.
             // If Etag is not supplied, retrieve the row first before writing
             TableResult retrievedResult = RetrieveFromReplica(txnView, index, operation, requestOptions, operationContext);
-            if (retrievedResult == null)
+            if (retrievedResult == null || retrievedResult.HttpStatusCode == (int)HttpStatusCode.ServiceUnavailable)
             {
                 // If retrieve fails for some reason then return "service unavailable - 503 " error code
                 ReplicatedTableLogger.LogError(
-                    "IUD: Failed to access replica with index: {0} when reading a row with row key: {1}", index,
+                    "IUD: Failed to access replica with index: {0} when reading a row with row key: {1}",
+                    index,
                     row.RowKey);
                 return null;
             }
@@ -2546,7 +2556,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             // read from the head of the read view
             TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>(partitionKey, rowKey);
             TableResult readHeadResult = RetrieveFromReplica(txnView, txnView.ReadHeadIndex, operation);
-            if (readHeadResult == null)
+            if (readHeadResult == null || readHeadResult.HttpStatusCode == (int)HttpStatusCode.ServiceUnavailable)
             {
                 // If retrieve fails for some reason then return "service unavailable - 503 " error code
                 return new TableResult()
@@ -2559,7 +2569,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // read from the head of the write view
             TableResult writeHeadResult = RetrieveFromReplica(txnView, txnView.WriteHeadIndex, operation);
-            if (writeHeadResult == null)
+            if (writeHeadResult == null || writeHeadResult.HttpStatusCode == (int)HttpStatusCode.ServiceUnavailable)
             {
                 // If retrieve fails for some reason then return "service unavailable - 503 " error code
                 return new TableResult()

@@ -714,6 +714,157 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
+        #region // moving from [WO]->[RW] to [RW]->[none] without prior repair"
+
+        [Test(Description = "Read a row in old view, cut-off Tail w/o prior repair to Head, then update the row")]
+        public void CaseNoRepair_ReadRowFromOldViewCutOffTailUpdateRow()
+        {
+            string firstName = "FirstName";
+            string lastName = "LastName";
+
+            TableOperation operation;
+            TableResult result;
+            CustomerEntity customer;
+
+            // - View has 2 replicas ?
+            View view = this.configurationWrapper.GetWriteView();
+            Assert.IsTrue(view.Chain.Count == 2, "expects 2 replicas only!");
+
+
+            // 1 - [None]->[RW]
+            ReplicatedTableConfiguration config;
+            this.configurationService.RetrieveConfiguration(out config);
+            ReplicatedTableConfigurationStore viewConfg = config.GetView(view.Name);
+            viewConfg.ReplicaChain[0].Status = ReplicaStatus.None;
+            viewConfg.ViewId++;
+            this.configurationService.UpdateConfiguration(config);
+
+            // *** - Insert entries in old viewId
+            var rtable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+            for (int i = 0; i < 3; i++)
+            {
+                customer = new CustomerEntity(firstName + i, lastName + i);
+
+                operation = TableOperation.Insert(customer);
+                rtable.Execute(operation);
+            }
+
+
+            // 2 - Insert Head => [WO]->[RW]
+            this.configurationService.RetrieveConfiguration(out config);
+            viewConfg = config.GetView(view.Name);
+            viewConfg.ReplicaChain[0].Status = ReplicaStatus.WriteOnly;
+            viewConfg.ViewId++;
+            this.configurationService.UpdateConfiguration(config);
+
+            // *** - Insert entries in new viewId
+            rtable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+            for (int i = 10; i < 13; i++)
+            {
+                customer = new CustomerEntity(firstName + i, lastName + i);
+
+                operation = TableOperation.Insert(customer);
+                rtable.Execute(operation);
+            }
+
+
+            // => Read old entry - from Tail -
+            int entryId = 1;
+            operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
+            result = rtable.Execute(operation);
+
+
+            // 3 - Cut-off Tail without repairing replicas
+            configurationService.RetrieveConfiguration(out config);
+            viewConfg = config.GetView(view.Name);
+            viewConfg.ReplicaChain[0].Status = ReplicaStatus.ReadWrite;
+            viewConfg.ReplicaChain[1].Status = ReplicaStatus.None;
+            viewConfg.ViewId++;
+            this.configurationService.UpdateConfiguration(config);
+
+            // => Update the row
+            customer = (CustomerEntity)result.Result;
+            customer.Email = "new_view@email.com";
+            operation = TableOperation.Replace(customer);
+            result = rtable.Execute(operation);
+            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NotFound, "Update customer should failed");
+        }
+
+        [Test(Description = "Read a row in new view, cut-off Tail w/o prior repair to Head, then update the row")]
+        public void CaseNoRepair_ReadRowFromNewViewCutOffTailUpdateRow()
+        {
+            string firstName = "FirstName";
+            string lastName = "LastName";
+
+            TableOperation operation;
+            TableResult result;
+            CustomerEntity customer;
+
+            // - View has 2 replicas ?
+            View view = this.configurationWrapper.GetWriteView();
+            Assert.IsTrue(view.Chain.Count == 2, "expects 2 replicas only!");
+
+
+            // 1 - [None]->[RW]
+            ReplicatedTableConfiguration config;
+            this.configurationService.RetrieveConfiguration(out config);
+            ReplicatedTableConfigurationStore viewConfg = config.GetView(view.Name);
+            viewConfg.ReplicaChain[0].Status = ReplicaStatus.None;
+            viewConfg.ViewId++;
+            this.configurationService.UpdateConfiguration(config);
+
+            // *** - Insert entries in old viewId
+            var rtable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+            for (int i = 0; i < 3; i++)
+            {
+                customer = new CustomerEntity(firstName + i, lastName + i);
+
+                operation = TableOperation.Insert(customer);
+                rtable.Execute(operation);
+            }
+
+
+            // 2 - Insert Head => [WO]->[RW]
+            this.configurationService.RetrieveConfiguration(out config);
+            viewConfg = config.GetView(view.Name);
+            viewConfg.ReplicaChain[0].Status = ReplicaStatus.WriteOnly;
+            viewConfg.ViewId++;
+            this.configurationService.UpdateConfiguration(config);
+
+            // *** - Insert entries in new viewId
+            rtable = new ReplicatedTable(this.repTable.TableName, this.configurationService);
+            for (int i = 10; i < 13; i++)
+            {
+                customer = new CustomerEntity(firstName + i, lastName + i);
+
+                operation = TableOperation.Insert(customer);
+                rtable.Execute(operation);
+            }
+
+
+            // => Read old entry - from Tail -
+            int entryId = 10;
+            operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
+            result = rtable.Execute(operation);
+
+
+            // 3 - Cut-off Tail without repairing replicas
+            configurationService.RetrieveConfiguration(out config);
+            viewConfg = config.GetView(view.Name);
+            viewConfg.ReplicaChain[0].Status = ReplicaStatus.ReadWrite;
+            viewConfg.ReplicaChain[1].Status = ReplicaStatus.None;
+            viewConfg.ViewId++;
+            this.configurationService.UpdateConfiguration(config);
+
+            // => Update the row
+            customer = (CustomerEntity)result.Result;
+            customer.Email = "new_view@email.com";
+            operation = TableOperation.Replace(customer);
+            result = rtable.Execute(operation);
+            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent, "Update customer failed");
+        }
+
+        #endregion
 
         #region Config helpers
 
@@ -757,7 +908,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         #endregion
 
-
         #region Customer APIs
 
         private void InsertCustormer(CustomerEntity customer, ReplicatedTable repTable)
@@ -792,6 +942,5 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         }
 
         #endregion
-
     }
 }
