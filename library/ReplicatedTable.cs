@@ -31,9 +31,12 @@ namespace Microsoft.Azure.Toolkit.Replication
     using Microsoft.WindowsAzure.Storage.Table;
     using System.Threading.Tasks;
     using System.Threading;
+    using System.Runtime.Remoting.Messaging;
 
     public class ReplicatedTable : IReplicatedTable
     {
+        private const string ParentThreadCallContextKey = "ParentThreadId";
+
         /// <summary>
         /// Configuration wrapper (layer) on top of RTable ConfigurationService instance to present a simplified interface to ReplicatedTable class.
         /// ReplicatedTable needs access to a subset of the configuration service that deals with the "TableName".
@@ -2336,9 +2339,10 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="viewIdToRecoverFrom"></param>
         /// <param name="unfinishedOps"></param>
         /// <param name="maxBatchSize"></param>
+        /// <param name="parallelizationDegree"></param>
         /// <returns></returns>
         public ReconfigurationStatus RepairTable(int viewIdToRecoverFrom, TableBatchOperation unfinishedOps,
-            long maxBatchSize = 100L, RepairRowDelegate filter = null)
+            long maxBatchSize = 100L, int parallelizationDegree = 1, RepairRowDelegate filter = null)
         {
             using (new StopWatchInternal(this.TableName, "RepairTable", this._configurationWrapper))
             {
@@ -2351,6 +2355,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
                 if (this._configurationWrapper.IsViewStable())
                 {
+                    ReplicatedTableLogger.LogWarning("Returning Success for Table : {1} as the view is stable", this.TableName);
                     return ReconfigurationStatus.SUCCESS;
                 }
 
@@ -2380,39 +2385,31 @@ namespace Microsoft.Azure.Toolkit.Replication
                     where ent._rtable_ViewId >= viewIdToRecoverFrom
                     select ent;
 
-                foreach (DynamicReplicatedTableEntity entry in query)
+                ReplicatedTableLogger.LogInformational("RepairReplica: Parallelization Degree : {0}",
+                        parallelizationDegree);
+
+                if (parallelizationDegree <= 1)
                 {
-                    // What to do with this row ?
-                    RepairRowActionType action = filter(entry);
-
-                    switch (action)
+                    ReplicatedTableLogger.LogInformational("RepairReplica: Non Parallel Path");
+                    foreach (var entry in query)
                     {
-                        case RepairRowActionType.RepairRow:
-                            ReplicatedTableLogger.LogWarning("RepairReplica: RepairRow: Pk: {0}, Rk: {1}",
-                                entry.PartitionKey, entry.RowKey);
-                            break;
-
-                        case RepairRowActionType.SkipRow:
-                            ReplicatedTableLogger.LogWarning("RepairReplica: SkipRow: Pk: {0}, Rk: {1}",
-                                entry.PartitionKey, entry.RowKey);
-                            continue;
-
-                        case RepairRowActionType.InvalidRow:
-                        default:
-                            status = ReconfigurationStatus.PARTIAL_FAILURE;
-                            ReplicatedTableLogger.LogWarning("RepairReplica: InvalidRow: Pk: {0}, Rk: {1}",
-                                entry.PartitionKey, entry.RowKey);
-                            continue;
+                        RunRepairInternal(filter, entry, ref status);
                     }
+                }
+                else
+                {
+                    ReplicatedTableLogger.LogInformational("RepairReplica: Parallelization Path");
 
-                    TableResult result = RepairRow(entry.PartitionKey, entry.RowKey, null);
+                    // We set parent thread onto call context to be used by every child.
+                    var parentThreadId = Thread.CurrentThread.ManagedThreadId;
+                    CallContext.LogicalSetData(ParentThreadCallContextKey, parentThreadId);
 
-                    if (result == null ||
-                        (result.HttpStatusCode != (int) HttpStatusCode.OK &&
-                         result.HttpStatusCode != (int) HttpStatusCode.NoContent))
-                    {
-                        status = ReconfigurationStatus.PARTIAL_FAILURE;
-                    }
+                    Parallel.ForEach(query, new ParallelOptions { MaxDegreeOfParallelism = parallelizationDegree }, 
+                        entry => RunRepairInternal(filter, entry, ref status));
+
+                    //Clearing the call context being pessimistic
+                    CallContext.FreeNamedDataSlot(ParentThreadCallContextKey);
+
                 }
 
                 // now find any entries that are in the write view but not in the read view
@@ -2435,9 +2432,44 @@ namespace Microsoft.Azure.Toolkit.Replication
                     }
                 }
 
-                ReplicatedTableLogger.LogInformational("RepairTable: took {0}", DateTime.UtcNow - startTime);
+                ReplicatedTableLogger.LogInformational("RepairTable: took {0} for table : {1}", DateTime.UtcNow - startTime, this.TableName);
 
                 return status;
+            }
+        }
+
+        private void RunRepairInternal(RepairRowDelegate filter, DynamicReplicatedTableEntity entry, ref ReconfigurationStatus status)
+        {
+            // What to do with this row ?
+            RepairRowActionType action = filter(entry);
+
+            switch (action)
+            {
+                case RepairRowActionType.RepairRow:
+                    ReplicatedTableLogger.LogWarning("RepairReplica: RepairRow: Pk: {0}, Rk: {1}",
+                        entry.PartitionKey, entry.RowKey);
+                    break;
+
+                case RepairRowActionType.SkipRow:
+                    ReplicatedTableLogger.LogWarning("RepairReplica: SkipRow: Pk: {0}, Rk: {1}",
+                        entry.PartitionKey, entry.RowKey);
+                    return;
+
+                case RepairRowActionType.InvalidRow:
+                default:
+                    status = ReconfigurationStatus.PARTIAL_FAILURE;
+                    ReplicatedTableLogger.LogWarning("RepairReplica: InvalidRow: Pk: {0}, Rk: {1}",
+                        entry.PartitionKey, entry.RowKey);
+                    return;
+            }
+
+            TableResult result = RepairRow(entry.PartitionKey, entry.RowKey, null);
+
+            if (result == null ||
+                (result.HttpStatusCode != (int)HttpStatusCode.OK &&
+                 result.HttpStatusCode != (int)HttpStatusCode.NoContent))
+            {
+                status = ReconfigurationStatus.PARTIAL_FAILURE;
             }
         }
 
