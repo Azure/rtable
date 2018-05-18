@@ -2355,7 +2355,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
                 if (this._configurationWrapper.IsViewStable())
                 {
-                    ReplicatedTableLogger.LogWarning("Returning Success for Table : {1} as the view is stable", this.TableName);
+                    ReplicatedTableLogger.LogWarning("Returning Success for Table : {0} as the view is stable", this.TableName);
                     return ReconfigurationStatus.SUCCESS;
                 }
 
