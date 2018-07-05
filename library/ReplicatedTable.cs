@@ -28,7 +28,9 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Net;
     using System.Reflection;
     using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.RetryPolicies;
     using Microsoft.WindowsAzure.Storage.Table;
+    using Microsoft.WindowsAzure.Storage.Table.Queryable;
     using System.Threading.Tasks;
     using System.Threading;
     using System.Runtime.Remoting.Messaging;
@@ -69,6 +71,8 @@ namespace Microsoft.Azure.Toolkit.Replication
         // 2PC protocol constants
         private const int PREPARE_PHASE = 1;
         private const int COMMIT_PHASE = 2;
+
+        private const int RETRY_LIMIT = 10;
 
         // Following fields are used by the caller to find the 
         // number of replicas created or deleted when 
@@ -1374,7 +1378,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             //
 
             var rnd = new Random((int)DateTime.UtcNow.Ticks);
-            int retryLimit = 10;
+            int retryLimit = RETRY_LIMIT;
 
             Func<bool> RetryIf = RetryPolicy.RetryWithDelayIf(() => rnd.Next(100, 300), () => --retryLimit > 0);
 
@@ -2372,11 +2376,14 @@ namespace Microsoft.Azure.Toolkit.Replication
                 CloudTableClient readHeadTableClient = txnView[txnView.ReadHeadIndex];
                 CloudTable readHeadTable = readHeadTableClient.GetTableReference(this.TableName);
 
+                TableRequestOptions options = new TableRequestOptions();
+                options.RetryPolicy = new LinearRetry(TimeSpan.FromMilliseconds(300), RETRY_LIMIT);
+
                 DateTime startTime = DateTime.UtcNow;
-                IQueryable<DynamicReplicatedTableEntity> query =
-                    from ent in readHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
+                TableQuery<DynamicReplicatedTableEntity> query =
+                    (from ent in readHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
                     where ent._rtable_ViewId >= viewIdToRecoverFrom
-                    select ent;
+                    select ent).WithOptions(options);
 
                 ReplicatedTableLogger.LogInformational("RepairReplica: Parallelization Degree : {0}",
                         parallelizationDegree);
@@ -2406,9 +2413,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
 
                 // now find any entries that are in the write view but not in the read view
-                query = from ent in writeHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
+                query = (from ent in writeHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
                     where ent._rtable_ViewId < txnView.ViewId
-                    select ent;
+                    select ent).WithOptions(options);
 
                 foreach (DynamicReplicatedTableEntity extraEntity in query)
                 {
@@ -2605,7 +2612,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             using (new StopWatchInternal(this.TableName, "RepairRow", _configurationWrapper))
             {
                 var rnd = new Random((int)DateTime.UtcNow.Ticks);
-                int retryLimit = 10;
+                int retryLimit = RETRY_LIMIT;
                 Func<bool> RetryIf = RetryPolicy.RetryWithDelayIf(() => rnd.Next(100, 300), () => --retryLimit > 0);
                 TableResult result;
                 do
