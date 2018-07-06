@@ -28,7 +28,9 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Net;
     using System.Reflection;
     using Microsoft.WindowsAzure.Storage;
+    using Microsoft.WindowsAzure.Storage.RetryPolicies;
     using Microsoft.WindowsAzure.Storage.Table;
+    using Microsoft.WindowsAzure.Storage.Table.Queryable;
     using System.Threading.Tasks;
     using System.Threading;
     using System.Runtime.Remoting.Messaging;
@@ -69,6 +71,8 @@ namespace Microsoft.Azure.Toolkit.Replication
         // 2PC protocol constants
         private const int PREPARE_PHASE = 1;
         private const int COMMIT_PHASE = 2;
+
+        private const int RETRY_LIMIT = 10;
 
         // Following fields are used by the caller to find the 
         // number of replicas created or deleted when 
@@ -195,7 +199,6 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         private TableOperationType GetOpType(TableOperation operation)
         {
-
             // WARNING: We use reflection to read an internal field in OperationType.
             //          We have a dependency on TableOperation fields in WindowsAzureStorage dll
             PropertyInfo opType = operation.GetType()
@@ -1375,7 +1378,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             //
 
             var rnd = new Random((int)DateTime.UtcNow.Ticks);
-            int retryLimit = 10;
+            int retryLimit = RETRY_LIMIT;
 
             Func<bool> RetryIf = RetryPolicy.RetryWithDelayIf(() => rnd.Next(100, 300), () => --retryLimit > 0);
 
@@ -2346,12 +2349,6 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             using (new StopWatchInternal(this.TableName, "RepairTable", this._configurationWrapper))
             {
-                // By default all rows are taken
-                if (filter == null)
-                {
-                    filter = (row => RepairRowActionType.RepairRow);
-                }
-
                 ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
                 if (this._configurationWrapper.IsViewStable())
                 {
@@ -2379,11 +2376,14 @@ namespace Microsoft.Azure.Toolkit.Replication
                 CloudTableClient readHeadTableClient = txnView[txnView.ReadHeadIndex];
                 CloudTable readHeadTable = readHeadTableClient.GetTableReference(this.TableName);
 
+                TableRequestOptions options = new TableRequestOptions();
+                options.RetryPolicy = new LinearRetry(TimeSpan.FromMilliseconds(300), RETRY_LIMIT);
+
                 DateTime startTime = DateTime.UtcNow;
-                IQueryable<DynamicReplicatedTableEntity> query =
-                    from ent in readHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
+                TableQuery<DynamicReplicatedTableEntity> query =
+                    (from ent in readHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
                     where ent._rtable_ViewId >= viewIdToRecoverFrom
-                    select ent;
+                    select ent).WithOptions(options);
 
                 ReplicatedTableLogger.LogInformational("RepairReplica: Parallelization Degree : {0}",
                         parallelizationDegree);
@@ -2393,7 +2393,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     ReplicatedTableLogger.LogInformational("RepairReplica: Non Parallel Path");
                     foreach (var entry in query)
                     {
-                        RunRepairInternal(filter, entry, ref status);
+                        RepairRowWithFilter(filter, entry, ref status);
                     }
                 }
                 else
@@ -2405,7 +2405,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     CallContext.LogicalSetData(ParentThreadCallContextKey, parentThreadId);
 
                     Parallel.ForEach(query, new ParallelOptions { MaxDegreeOfParallelism = parallelizationDegree }, 
-                        entry => RunRepairInternal(filter, entry, ref status));
+                        entry => RepairRowWithFilter(filter, entry, ref status));
 
                     //Clearing the call context being pessimistic
                     CallContext.FreeNamedDataSlot(ParentThreadCallContextKey);
@@ -2413,9 +2413,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
 
                 // now find any entries that are in the write view but not in the read view
-                query = from ent in writeHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
+                query = (from ent in writeHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
                     where ent._rtable_ViewId < txnView.ViewId
-                    select ent;
+                    select ent).WithOptions(options);
 
                 foreach (DynamicReplicatedTableEntity extraEntity in query)
                 {
@@ -2428,6 +2428,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                         (result.HttpStatusCode != (int) HttpStatusCode.OK &&
                          result.HttpStatusCode != (int) HttpStatusCode.NoContent))
                     {
+                        ReplicatedTableLogger.LogError("RepairReplica: RepairRow Failed: Pk: {0}, Rk: {1}", 
+                            extraEntity.PartitionKey, extraEntity.RowKey);
                         status = ReconfigurationStatus.PARTIAL_FAILURE;
                     }
                 }
@@ -2438,11 +2440,17 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        private void RunRepairInternal(RepairRowDelegate filter, DynamicReplicatedTableEntity entry, ref ReconfigurationStatus status)
+        private void RepairRowWithFilter(RepairRowDelegate filter, DynamicReplicatedTableEntity entry, ref ReconfigurationStatus status)
         {
+            // By default all rows are taken
+            if (filter == null)
+            {
+                filter = (row => RepairRowActionType.RepairRow);
+            }
+
             // What to do with this row ?
             RepairRowActionType action = filter(entry);
-
+            
             switch (action)
             {
                 case RepairRowActionType.RepairRow:
@@ -2469,6 +2477,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 (result.HttpStatusCode != (int)HttpStatusCode.OK &&
                  result.HttpStatusCode != (int)HttpStatusCode.NoContent))
             {
+                ReplicatedTableLogger.LogError("RepairReplica: RepairRow Failed: Pk: {0}, Rk: {1}",
+                        entry.PartitionKey, entry.RowKey);
                 status = ReconfigurationStatus.PARTIAL_FAILURE;
             }
         }
@@ -2560,6 +2570,37 @@ namespace Microsoft.Azure.Toolkit.Replication
         }
 
         /// <summary>
+        /// Repairs a row coditionally based on filter
+        /// </summary>
+        /// <param name="partitionKey"></param>
+        /// <param name="rowKey"></param>
+        /// <param name="filter">Delegate used to check if the row should be repaired or not</param>
+        /// <returns></returns>
+        public ReconfigurationStatus RepairRowWithFilter(string partitionKey, string rowKey, RepairRowDelegate filter = null)
+        {
+            using (new StopWatchInternal(this.TableName, "RepairRowWithFilter", _configurationWrapper))
+            {
+                View txnView = CurrentView;
+                ValidateTxnView(txnView);
+
+                CloudTableClient readHeadTableClient = txnView[txnView.ReadHeadIndex];
+                CloudTable readHeadTable = readHeadTableClient.GetTableReference(this.TableName);
+                DynamicReplicatedTableEntity entity = (from ent in readHeadTable.CreateQuery<DynamicReplicatedTableEntity>()
+                                                       where ent.PartitionKey == partitionKey && ent.RowKey == rowKey
+                                                       select ent).FirstOrDefault();
+                if (entity == null)
+                {
+                    ReplicatedTableLogger.LogError("RepairRowWithFilter: Entity with PartitionKey {0} and RowKey {1} does not exist", partitionKey, rowKey);
+                    return ReconfigurationStatus.FAILURE;
+                }
+
+                ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
+                RepairRowWithFilter(filter, entity, ref status);
+                return status;
+            }
+        }
+
+        /// <summary>
         /// Repair a single row from the current read view to the write view.
         /// </summary>
         /// <param name="partitionKey"></param>
@@ -2570,9 +2611,18 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             using (new StopWatchInternal(this.TableName, "RepairRow", _configurationWrapper))
             {
-                View txnView = CurrentView;
-                ValidateTxnView(txnView);
-                return RepairRowInternal(txnView, partitionKey, rowKey, existingRow);
+                var rnd = new Random((int)DateTime.UtcNow.Ticks);
+                int retryLimit = RETRY_LIMIT;
+                Func<bool> RetryIf = RetryPolicy.RetryWithDelayIf(() => rnd.Next(100, 300), () => --retryLimit > 0);
+                TableResult result;
+                do
+                {
+                    View txnView = CurrentView;
+                    ValidateTxnView(txnView);
+                    result = RepairRowInternal(txnView, partitionKey, rowKey, existingRow);
+                }
+                while (result != null && result.HttpStatusCode != (int)HttpStatusCode.OK && result.HttpStatusCode != (int)HttpStatusCode.NoContent && RetryIf());
+                return result;
             }
         }
 
