@@ -796,15 +796,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
 
             OperationContext opContext = new OperationContext();
-            try
-            {
-                this.repTable.ExecuteBatch(batch, null, opContext);
-                Assert.Fail();
-            }
-            catch (StorageException)
-            {
-                TestHelper.ValidateResponse(opContext, 1, (int)HttpStatusCode.BadRequest, new string[] { "InvalidInput" }, "One of the request inputs is not valid.");
-            }
+
+            TestHelper.ExpectedException<InvalidOperationException>(
+                    () => this.repTable.ExecuteBatch(batch, null, opContext),
+                    "The maximum number of operations allowed in one batch has been exceeded.");
         }
 
         [Test(Description = "Ensure that a batch with entity over 1 MB will throw")]
