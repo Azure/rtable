@@ -2393,7 +2393,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     ReplicatedTableLogger.LogInformational("RepairReplica: Non Parallel Path");
                     foreach (var entry in query)
                     {
-                        RunRepairInternal(filter, entry, ref status);
+                        RepairRowWithFilter(filter, entry, ref status);
                     }
                 }
                 else
@@ -2405,7 +2405,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     CallContext.LogicalSetData(ParentThreadCallContextKey, parentThreadId);
 
                     Parallel.ForEach(query, new ParallelOptions { MaxDegreeOfParallelism = parallelizationDegree }, 
-                        entry => RunRepairInternal(filter, entry, ref status));
+                        entry => RepairRowWithFilter(filter, entry, ref status));
 
                     //Clearing the call context being pessimistic
                     CallContext.FreeNamedDataSlot(ParentThreadCallContextKey);
@@ -2440,7 +2440,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        private void RunRepairInternal(RepairRowDelegate filter, DynamicReplicatedTableEntity entry, ref ReconfigurationStatus status)
+        private void RepairRowWithFilter(RepairRowDelegate filter, DynamicReplicatedTableEntity entry, ref ReconfigurationStatus status)
         {
             // By default all rows are taken
             if (filter == null)
@@ -2595,7 +2595,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
 
                 ReconfigurationStatus status = ReconfigurationStatus.SUCCESS;
-                RunRepairInternal(filter, entity, ref status);
+                RepairRowWithFilter(filter, entity, ref status);
                 return status;
             }
         }
