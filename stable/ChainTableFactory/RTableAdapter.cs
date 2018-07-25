@@ -228,7 +228,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // WARNING: We use reflection to read an internal field in OperationType.
             //          We have a dependency on TableOperation fields in WindowsAzureStorage dll
             PropertyInfo opType = operation.GetType().GetProperty("OperationType", System.Reflection.BindingFlags.GetProperty |
-                                                               System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                                                               System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
             TableOperationType opTypeValue = (TableOperationType)(opType.GetValue(operation, null));
 
             return opTypeValue;
@@ -240,7 +240,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // WARNING: We use reflection to read an internal field in OperationType.
             //          We have a dependency on TableOperation fields WindowsAzureStorage dll
             PropertyInfo entity = operation.GetType().GetProperty("Entity", System.Reflection.BindingFlags.GetProperty |
-                                                                   System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                                                                   System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
             return (ITableEntity)(entity.GetValue(operation, null));
         }
 
@@ -270,7 +270,7 @@ namespace Microsoft.WindowsAzure.Storage.RTable
             // WARNING: We use reflection to read an internal field in OperationType.
             //          We have a dependency on TableOperation fields WindowsAzureStorage dll
             PropertyInfo entity = operation.GetType().GetProperty("Entity", System.Reflection.BindingFlags.GetProperty |
-                                                                   System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                                                                   System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public);
             entity.SetValue(operation, encapsulatedRow);
         }
 

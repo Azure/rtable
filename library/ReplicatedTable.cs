@@ -204,7 +204,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             PropertyInfo opType = operation.GetType()
                 .GetProperty("OperationType", System.Reflection.BindingFlags.GetProperty |
                                               System.Reflection.BindingFlags.Instance |
-                                              System.Reflection.BindingFlags.NonPublic);
+                                              System.Reflection.BindingFlags.Public);
             TableOperationType opTypeValue = (TableOperationType)(opType.GetValue(operation, null));
 
             return opTypeValue;
@@ -467,7 +467,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             //          We have a dependency on TableOperation fields WindowsAzureStorage dll
             PropertyInfo entity = operation.GetType().GetProperty("Entity", System.Reflection.BindingFlags.GetProperty |
                                                                             System.Reflection.BindingFlags.Instance |
-                                                                            System.Reflection.BindingFlags.NonPublic);
+                                                                            System.Reflection.BindingFlags.Public);
             return (ITableEntity)(entity.GetValue(operation, null));
         }
 

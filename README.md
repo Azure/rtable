@@ -51,8 +51,8 @@ To get started, clone the repo and build using `msbuild` or Visual Studio.
 
 The RTable library has the following build dependencies (NuGet packages):
 
-- Azure storage library: `WindowsAzure.Storage.4.3.0` (and its own dependencies)
-- JSON.NET: `Newtonsoft.Json.5.0.8`
+- Azure storage library: `WindowsAzure.Storage.8.7.0` (and its own dependencies)
+- JSON.NET: `Newtonsoft.Json.10.0.3`
 - Configuration: `Microsoft.WindowsAzure.ConfigurationManager.1.8.0.0`
 - NUnit Framework
 - FiddlerCore
