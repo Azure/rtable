@@ -143,7 +143,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             get
             {
-                return Math.Max(((int)LeaseDuration.TotalSeconds / 2 - Constants.MinimumLeaseRenewalInterval), Constants.MinimumLeaseRenewalInterval);
+                return Math.Max(((int)LeaseDuration.TotalSeconds / 3 - Constants.MinimumLeaseRenewalInterval), Constants.MinimumLeaseRenewalInterval);
             }
         }
 
