@@ -134,7 +134,8 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             try
             {
-                string content = await blob.DownloadTextAsync(ct);
+                BlobRequestOptions options = new BlobRequestOptions() { ServerTimeout = TimeSpan.FromSeconds(30) };
+                string content = await blob.DownloadTextAsync(null, null, options, null, ct);
                 if (content == Constants.ConfigurationStoreUpdatingText)
                 {
                     return new ReplicatedTableReadBlobResult(ReadBlobCode.UpdateInProgress, "Blob update in progress ...");
