@@ -1819,20 +1819,16 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 ThrowIfViewIdNotConsistent(txnView.ViewId, readRow._rtable_ViewId);
             }
-            catch (ReplicatedTableStaleViewException ex)
+            catch (ReplicatedTableStaleViewException)
             {
-                StaleViewHandling staleViewHandling = GetBehaviorOnStaleView();
-                switch (staleViewHandling)
+                // Assert(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
+                if (this._configurationWrapper.IsIgnoreHigherViewIdRows())
                 {
-                    case StaleViewHandling.TreatAsNotFound:
-                        return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
-                    case StaleViewHandling.NoThrowOnStaleView:
-                        ReplicatedTableLogger.LogWarning("Ignoring ReplicatedStaleViewException {0}", ex.Message);
-                        return retrievedResult;
-                    case StaleViewHandling.ThrowOnStaleView:
-                    default:
-                        throw;
+                    // Treat as NotFound!
+                    return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
                 }
+
+                throw;
             }
 
             return retrievedResult;
