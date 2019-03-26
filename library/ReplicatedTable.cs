@@ -1438,7 +1438,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     row.RowKey);
 
                 // Row still locked
-                if (repairRowTableResult.HttpStatusCode == (int)HttpStatusCode.Conflict)
+                if (repairRowTableResult != null && repairRowTableResult.HttpStatusCode == (int)HttpStatusCode.Conflict)
                 {
                     return repairRowTableResult;
                 }
@@ -1780,7 +1780,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                 var innerException = se.InnerException as WebException;
                 if (innerException != null)
                 {
-                    var statusCode = ((HttpWebResponse) innerException.Response).StatusCode;
+                    HttpWebResponse httpWebResponse = (HttpWebResponse)innerException.Response;
+                    if(httpWebResponse == null)
+                    {
+                        return null;
+                    }
+                    var statusCode = httpWebResponse.StatusCode;
                     switch (statusCode)
                     {
                         case HttpStatusCode.BadRequest:
