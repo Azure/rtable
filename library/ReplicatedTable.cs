@@ -1783,8 +1783,10 @@ namespace Microsoft.Azure.Toolkit.Replication
                     HttpWebResponse httpWebResponse = (HttpWebResponse)innerException.Response;
                     if(httpWebResponse == null)
                     {
-                        return null;
+                        ReplicatedTableLogger.LogError("Unable to get HTTPWebResponse from Storage exception returning ServiceUnavailable");
+                        return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable };
                     }
+
                     var statusCode = httpWebResponse.StatusCode;
                     switch (statusCode)
                     {
