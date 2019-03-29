@@ -96,7 +96,12 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             try
             {
-                string content = blob.DownloadText();
+                BlobRequestOptions options = new BlobRequestOptions()
+                {
+                    ServerTimeout = TimeSpan.FromSeconds(5),
+                    MaximumExecutionTime = TimeSpan.FromSeconds(30)
+                };
+                string content = blob.DownloadText(null, null, options, null);
                 if (content == Constants.ConfigurationStoreUpdatingText)
                 {
                     return new ReplicatedTableReadBlobResult(ReadBlobCode.UpdateInProgress, "Blob update in progress ...");
@@ -134,7 +139,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             try
             {
-                BlobRequestOptions options = new BlobRequestOptions() { ServerTimeout = TimeSpan.FromSeconds(30) };
+                BlobRequestOptions options = new BlobRequestOptions()
+                {
+                    ServerTimeout = TimeSpan.FromSeconds(5),
+                    MaximumExecutionTime = TimeSpan.FromSeconds(30)
+                };
                 string content = await blob.DownloadTextAsync(null, null, options, null, ct);
                 if (content == Constants.ConfigurationStoreUpdatingText)
                 {

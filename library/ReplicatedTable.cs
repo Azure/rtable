@@ -1438,7 +1438,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     row.RowKey);
 
                 // Row still locked
-                if (repairRowTableResult.HttpStatusCode == (int)HttpStatusCode.Conflict)
+                if (repairRowTableResult != null && repairRowTableResult.HttpStatusCode == (int)HttpStatusCode.Conflict)
                 {
                     return repairRowTableResult;
                 }
@@ -1780,7 +1780,14 @@ namespace Microsoft.Azure.Toolkit.Replication
                 var innerException = se.InnerException as WebException;
                 if (innerException != null)
                 {
-                    var statusCode = ((HttpWebResponse) innerException.Response).StatusCode;
+                    HttpWebResponse httpWebResponse = (HttpWebResponse)innerException.Response;
+                    if(httpWebResponse == null)
+                    {
+                        ReplicatedTableLogger.LogError("Unable to get HTTPWebResponse from Storage exception returning ServiceUnavailable");
+                        return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable };
+                    }
+
+                    var statusCode = httpWebResponse.StatusCode;
                     switch (statusCode)
                     {
                         case HttpStatusCode.BadRequest:
@@ -1819,20 +1826,16 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 ThrowIfViewIdNotConsistent(txnView.ViewId, readRow._rtable_ViewId);
             }
-            catch (ReplicatedTableStaleViewException ex)
+            catch (ReplicatedTableStaleViewException)
             {
-                StaleViewHandling staleViewHandling = GetBehaviorOnStaleView();
-                switch (staleViewHandling)
+                // Assert(ex.ErrorCode == ReplicatedTableViewErrorCodes.ViewIdSmallerThanEntryViewId);
+                if (this._configurationWrapper.IsIgnoreHigherViewIdRows())
                 {
-                    case StaleViewHandling.TreatAsNotFound:
-                        return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
-                    case StaleViewHandling.NoThrowOnStaleView:
-                        ReplicatedTableLogger.LogWarning("Ignoring ReplicatedStaleViewException {0}", ex.Message);
-                        return retrievedResult;
-                    case StaleViewHandling.ThrowOnStaleView:
-                    default:
-                        throw;
+                    // Treat as NotFound!
+                    return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
                 }
+
+                throw;
             }
 
             return retrievedResult;
