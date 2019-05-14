@@ -1,130 +1,30 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{0F6D71F2-1322-4B32-BB08-A6A99EB812D4}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Microsoft.Azure.Toolkit.Replication</RootNamespace>
-    <AssemblyName>Microsoft.Azure.Toolkit.Replication</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
+    <TargetFramework>net45</TargetFramework>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <AssemblyVersion>0.9.22.0</AssemblyVersion>
+    <FileVersion>0.9.22.0</FileVersion>
+    <Version>0.9.22</Version>
+    <Authors />
+    <Company>Microsoft</Company>
+    <Product>Microsoft Azure ToolKit ReplicatedTable</Product>
+    <Description>Microsoft Azure ToolKit ReplicatedTable Library</Description>
+    <Copyright>Copyright © Microsoft Corporation</Copyright>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.Data.Edm, Version=5.8.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>..\packages\Microsoft.Data.Edm.5.8.2\lib\net40\Microsoft.Data.Edm.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.Data.OData, Version=5.8.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>..\packages\Microsoft.Data.OData.5.8.2\lib\net40\Microsoft.Data.OData.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.Data.Services.Client, Version=5.8.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>..\packages\Microsoft.Data.Services.Client.5.8.2\lib\net40\Microsoft.Data.Services.Client.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.WindowsAzure.Configuration, Version=3.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>..\packages\Microsoft.WindowsAzure.ConfigurationManager.3.1.0\lib\net40\Microsoft.WindowsAzure.Configuration.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="Microsoft.WindowsAzure.Storage, Version=8.7.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\packages\WindowsAzure.Storage.8.7.0\lib\net45\Microsoft.WindowsAzure.Storage.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json, Version=10.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>..\packages\Newtonsoft.Json.10.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Runtime.Serialization" />
-    <Reference Include="System.ServiceModel" />
-    <Reference Include="System.Spatial, Version=5.8.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
-      <HintPath>..\packages\System.Spatial.5.8.2\lib\net40\System.Spatial.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
+    <PackageReference Include="Microsoft.WindowsAzure.ConfigurationManager">
+      <Version>3.1.0</Version>
+    </PackageReference>
+    <PackageReference Include="Newtonsoft.Json">
+      <Version>10.0.3</Version>
+    </PackageReference>
+    <PackageReference Include="WindowsAzure.Storage">
+      <Version>8.7.0</Version>
+    </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="IReplicatedLogger.cs" />
-    <Compile Include="IReplicatedTableConfigurationWrapper.cs" />
-    <Compile Include="ReplicatedTableEnumerable.cs" />
-    <Compile Include="ReplicatedTableEnumerator.cs" />
-    <Compile Include="ReplicatedTableEtwLogger.cs" />
-    <Compile Include="ReplicatedTableConfigurationWrapper.cs" />
-    <Compile Include="ReplicatedTableConfigurationV2Wrapper.cs" />
-    <Compile Include="ReplicatedTableEventListener.cs" />
-    <Compile Include="ReplicatedTableQueryProvider.cs" />
-    <Compile Include="ReplicatedTableQuorumReadResult.cs" />
-    <Compile Include="ReplicatedTableQuorumWriteResult.cs" />
-    <Compile Include="ReplicatedTableReadBlobResult.cs" />
-    <Compile Include="CloudBlobHelpers.cs" />
-    <Compile Include="Constants.cs" />
-    <Compile Include="ConfigurationStore.cs" />
-    <Compile Include="ConfigurationStoreLocationInfo.cs" />
-    <Compile Include="DynamicReplicatedTableEntity.cs" />
-    <Compile Include="IReplicatedTable.cs" />
-    <Compile Include="IReplicatedTableConfigurationParser.cs" />
-    <Compile Include="IReplicatedTableEntity.cs" />
-    <Compile Include="JsonStore.cs" />
-    <Compile Include="ReconfigurationStatus.cs" />
-    <Compile Include="ReplicatedTableConfiguration.cs" />
-    <Compile Include="ReplicatedTableConfigurationManager.cs" />
-    <Compile Include="ReplicatedTableConfigurationParser.cs" />
-    <Compile Include="ReplicatedTableConfigurationServiceV2.cs" />
-    <Compile Include="ReplicatedTableConfigurationStoreParser.cs" />
-    <Compile Include="ReplicatedTableLogger.cs" />
-    <Compile Include="PeriodicTimer.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="ReplicaInfo.cs" />
-    <Compile Include="ReplicatedTable.cs" />
-    <Compile Include="ReplicatedTableConflictException.cs" />
-    <Compile Include="ReplicatedTableEntity.cs" />
-    <Compile Include="ReplicatedTableRepairResult.cs" />
-    <Compile Include="ReplicatedTableStaleViewException.cs" />
-    <Compile Include="ReplicatedTableConfigurationService.cs" />
-    <Compile Include="ReplicatedTableConfigurationStore.cs" />
-    <Compile Include="ReplicatedTableEventSource.cs" />
-    <Compile Include="ReplicatedTableConfiguredTable.cs" />
-    <Compile Include="ReplicatedTableV2.cs" />
-    <Compile Include="ReplicatedTableWriteBlobResult.cs" />
-    <Compile Include="RetryPolicy.cs" />
-    <Compile Include="SecureStringHelper.cs" />
-    <Compile Include="StopWatchInternal.cs" />
-    <Compile Include="View.cs" />
+    <Folder Include="Properties\" />
   </ItemGroup>
-  <ItemGroup>
-    <None Include="app.config" />
-    <None Include="packages.config">
-      <SubType>Designer</SubType>
-    </None>
-  </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
 </Project>

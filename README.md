@@ -70,8 +70,9 @@ A comprehensive suite of tests can be found under the Test folder. To run unit t
 
 ### NuGet
 
-At this time, the RTable library is only being released as a source download. To use 
-the component, a developer will need to build it themselves.
+At this time, the RTable library is only being released as a source download.
+To use the component, a developer will need to build it themselves.
+The build of `Microsoft.Azure.Toolkit.Replication` produces a nuget package than can be uploaded to a feed.
 
 In the future, as the library matures, a great experience, including published 
 NuGet packages, will appear. Thanks for your patience.
