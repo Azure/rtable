@@ -199,15 +199,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         private TableOperationType GetOpType(TableOperation operation)
         {
-            // WARNING: We use reflection to read an internal field in OperationType.
-            //          We have a dependency on TableOperation fields in WindowsAzureStorage dll
-            PropertyInfo opType = operation.GetType()
-                .GetProperty("OperationType", System.Reflection.BindingFlags.GetProperty |
-                                              System.Reflection.BindingFlags.Instance |
-                                              System.Reflection.BindingFlags.Public);
-            TableOperationType opTypeValue = (TableOperationType)(opType.GetValue(operation, null));
-
-            return opTypeValue;
+            return operation.OperationType;
         }
 
         //
@@ -462,13 +454,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         private ITableEntity GetEntityFromOperation(TableOperation operation)
         {
-
-            // WARNING: We use reflection to read an internal field in OperationType.
-            //          We have a dependency on TableOperation fields WindowsAzureStorage dll
-            PropertyInfo entity = operation.GetType().GetProperty("Entity", System.Reflection.BindingFlags.GetProperty |
-                                                                            System.Reflection.BindingFlags.Instance |
-                                                                            System.Reflection.BindingFlags.Public);
-            return (ITableEntity)(entity.GetValue(operation, null));
+            return operation.OperationType;
         }
 
         private void GetEntityKeysFromOperation(TableOperation operation, out string pk, out string rk)
