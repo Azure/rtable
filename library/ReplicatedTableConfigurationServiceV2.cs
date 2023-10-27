@@ -26,7 +26,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Threading;
     using System.Linq;
     using System.Security;
-    using Microsoft.WindowsAzure.Storage.Blob;
+    using global::Azure.Storage.Blobs;
 
     public class ReplicatedTableConfigurationServiceV2 : IDisposable
     {
@@ -99,7 +99,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 throw new ArgumentNullException("configuration");
             }
 
-            List<CloudBlockBlob> blobs = new List<CloudBlockBlob>();
+            List<BlobClient> blobs = new List<BlobClient>();
             foreach (var blobIndex in blobIndexes)
             {
                 if (blobIndex < this.configManager.GetBlobs().Count)

@@ -20,32 +20,34 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using System;
     using System.Collections.Generic;
-    using Microsoft.WindowsAzure.Storage;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using System.Linq.Expressions;
+    using global::Azure;
+    using global::Azure.Data.Tables;
 
     public interface IReplicatedTable
     {
         string TableName { get; }
-        bool CreateIfNotExists(TableRequestOptions requestOptions = null, OperationContext operationContext = null);
+        bool CreateIfNotExists();
         bool Exists();
         bool DeleteIfExists();
-        TableResult Execute(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        IList<TableResult> CheckRetrieveInBatch(TableBatchOperation batch, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        IList<TableResult> ExecuteBatch(TableBatchOperation batch, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        TableResult Retrieve(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        TableResult Delete(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        TableResult Merge(TableOperation operation, TableResult retrievedResult, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        TableResult InsertOrMerge(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        TableResult Replace(TableOperation operation, TableResult retrievedResult, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        TableResult Insert(TableOperation operation, TableResult retrievedResult, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        TableResult InsertOrReplace(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null);
-        TableResult FlushAndRetrieve(IReplicatedTableEntity row, TableRequestOptions requestOptions = null, OperationContext operationContext = null, bool virtualizeEtag = true);
-        IEnumerable<TElement> ExecuteQuery<TElement>(TableQuery<TElement> query, TableRequestOptions requestOptions = null, OperationContext operationContext = null) where TElement : ITableEntity, new();
-        TableQuery<TElement> CreateQuery<TElement>()
-            where TElement : ITableEntity, new();
-        ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>()
-            where TElement : ITableEntity, new();
+        //TableResult Execute(TableOperation operation);
+        //IList<TableResult> CheckRetrieveInBatch(IEnumerable<TableTransactionAction> batch);
+        IList<TableResult> ExecuteBatch(IEnumerable<TableTransactionAction> batch);
+        TableResult Retrieve(string partitionKey, string rowKey);
+        TableResult Delete(ITableEntity entity);
+        TableResult Merge(ITableEntity entity, TableResult retrievedResult = null);
+        TableResult InsertOrMerge(ITableEntity entity);
+        TableResult Replace(ITableEntity entity, TableResult retrievedResult = null);
+        TableResult Insert(ITableEntity entity, TableResult retrievedResult = null);
+        TableResult InsertOrReplace(ITableEntity entity);
+        TableResult FlushAndRetrieve(IReplicatedTableEntity row, bool virtualizeEtag = true);
+        IEnumerable<TElement> ExecuteQuery<TElement>(Expression<Func<TElement, bool>> filter) where TElement : ReplicatedTableEntity, new();
+        Pageable<TElement> CreateQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
+            where TElement : ReplicatedTableEntity, new();
+        ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
+            where TElement : ReplicatedTableEntity, new();
         TableResult RepairRow(string partitionKey, string rowKey, IReplicatedTableEntity existingRow);
     }
 }

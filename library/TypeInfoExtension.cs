@@ -21,19 +21,27 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
-    using System;
-    using global::Azure;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Reflection;
 
-    public class ReplicatedTableConflictException : RequestFailedException
+    //this is the class that users extend to store their own data in a row
+    public static class TypeInfoExtension
     {
-        public ReplicatedTableConflictException(string message)
-            : base(message)
+        public static IEnumerable<PropertyInfo> GetAllProperties(this TypeInfo typeInfo)
         {
-        }
+            IList<PropertyInfo> propertyList = new List<PropertyInfo>();
+            while ((object)typeInfo != null)
+            {
+                foreach (PropertyInfo item in typeInfo.DeclaredProperties.Where((PropertyInfo declaredProperty) => propertyList.All((PropertyInfo x) => x.Name != declaredProperty.Name)))
+                {
+                    propertyList.Add(item);
+                }
 
-        public ReplicatedTableConflictException(string message, Exception inner)
-            : base(message, inner)
-        {
+                typeInfo = typeInfo.BaseType?.GetTypeInfo();
+            }
+
+            return propertyList;
         }
     }
 }

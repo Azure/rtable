@@ -19,21 +19,27 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
+using Azure;
+using Azure.Data.Tables;
+
 namespace Microsoft.Azure.Toolkit.Replication
 {
-    using System;
-    using global::Azure;
-
-    public class ReplicatedTableConflictException : RequestFailedException
+    public class TableResult
     {
-        public ReplicatedTableConflictException(string message)
-            : base(message)
-        {
-        }
+        public object Result { get; set; }
 
-        public ReplicatedTableConflictException(string message, Exception inner)
-            : base(message, inner)
+        public int HttpStatusCode { get; set; }
+
+        public string Etag { get; set; }
+
+        public static TableResult ConvertResponseToTableResult(Response resp, object obj)
         {
+            return new TableResult()
+            {
+                Result = obj,
+                Etag = resp.Headers.ETag.ToString(),
+                HttpStatusCode = resp.Status
+            };
         }
     }
 }

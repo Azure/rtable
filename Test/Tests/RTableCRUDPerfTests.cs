@@ -21,13 +21,14 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
+    using global::Azure;
+    using global::Azure.Data.Tables;
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
     using System.Linq;
     using System.Net;
     using System.Text;
-    using Microsoft.WindowsAzure.Storage.Table;
 
     /// <summary>
     /// Keeps track of data points, and returns min/max/avg
@@ -142,8 +143,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 this.SetupRTableEnv(tableName, true, "", new List<int> { 0 });
                 Console.WriteLine("tableName = {0}", tableName);
 
-                CloudTableClient tableClient = this.cloudTableClients[0];
-                CloudTable table = tableClient.GetTableReference(tableName);
+                TableServiceClient tableClient = this.cloudTableClients[0];
+                TableClient table = tableClient.GetTableClient(tableName);
 
                 Console.WriteLine("[C]reate stats ...");
                 entries = ShuffleList(entries);
@@ -189,18 +190,17 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        private DataSampling CreateEntriesStats(CloudTable table, List<CustomerEntity> entries)
+        private DataSampling CreateEntriesStats(TableClient table, List<CustomerEntity> entries)
         {
             var stats = new DataSampling("[C]reate");
 
             foreach (var entry in entries)
             {
-                TableOperation insertOperation = TableOperation.Insert(entry);
-
                 TableResult insertResult = null;
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 {
-                    insertResult = table.Execute(insertOperation);
+                    var resp = table.AddEntity(entry);
+                    insertResult = TableResult.ConvertResponseToTableResult(resp, entry);
                 }
                 watch.Stop();
                 stats.AddPoint(watch.ElapsedMilliseconds);
@@ -212,18 +212,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             return stats;
         }
 
-        private DataSampling RetrieveEntriesPerf(CloudTable table, List<CustomerEntity> entries)
+        private DataSampling RetrieveEntriesPerf(TableClient table, List<CustomerEntity> entries)
         {
             var stats = new DataSampling("[R]etrieve");
 
             foreach (var entry in entries)
             {
-                TableOperation retrieveOperation = TableOperation.Retrieve<CustomerEntity>(entry.PartitionKey, entry.RowKey);
-
                 TableResult retrieveResult = null;
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 {
-                    retrieveResult = table.Execute(retrieveOperation);
+                    var resp = table.GetEntity<CustomerEntity>(entry.PartitionKey, entry.RowKey);
+                    retrieveResult = new TableResult
+                    {
+                        Result = resp.Value,
+                        Etag = resp.HasValue ? resp.Value.ETag.ToString() : null,
+                        HttpStatusCode = (int)resp?.GetRawResponse().Status
+                    };
                 }
                 watch.Stop();
                 stats.AddPoint(watch.ElapsedMilliseconds);
@@ -238,77 +242,70 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             return stats;
         }
 
-        private DataSampling UpdateEntriesPerf(CloudTable table, List<CustomerEntity> entries)
+        private DataSampling UpdateEntriesPerf(TableClient table, List<CustomerEntity> entries)
         {
             var stats = new DataSampling("[U]pdate");
 
             foreach (var entry in entries)
             {
-                TableOperation retrieveOperation = TableOperation.Retrieve<CustomerEntity>(entry.PartitionKey, entry.RowKey);
-                TableResult retrieveResult = table.Execute(retrieveOperation);
+                var retrieveResult = table.GetEntity<CustomerEntity>(entry.PartitionKey, entry.RowKey);
 
                 Assert.IsNotNull(retrieveResult, "retrieveResult = null");
-                Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
-                Assert.IsNotNull((CustomerEntity)retrieveResult.Result, "Retrieve: customer = null");
+                Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult?.GetRawResponse().Status, "retrieveResult.HttpStatusCode mismatch");
+                Assert.IsNotNull(retrieveResult.Value, "Retrieve: customer = null");
 
                 // Update entity
-                var customer = (CustomerEntity)retrieveResult.Result;
+                var customer = retrieveResult.Value;
                 customer.Email = string.Format("{0}.{1}@email.com", entry.PartitionKey, entry.RowKey);
 
-                TableOperation updateOperation = TableOperation.Replace(customer);
-
-                TableResult updateResult;
+                Response updateResult;
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 {
-                    updateResult = table.Execute(updateOperation);
+                    updateResult = table.UpdateEntity(customer, customer.ETag, TableUpdateMode.Replace);
                 }
                 watch.Stop();
                 stats.AddPoint(watch.ElapsedMilliseconds);
 
                 Assert.IsNotNull(updateResult, "updateResult = null");
-                Assert.AreEqual((int)HttpStatusCode.NoContent, updateResult.HttpStatusCode, "updateResult.HttpStatusCode mismatch");
+                Assert.AreEqual((int)HttpStatusCode.NoContent, updateResult.Status, "updateResult.HttpStatusCode mismatch");
             }
 
             return stats;
         }
 
-        private DataSampling DeleteEntriesPerf(CloudTable table, List<CustomerEntity> entries)
+        private DataSampling DeleteEntriesPerf(TableClient table, List<CustomerEntity> entries)
         {
             var stats = new DataSampling("[D]elete");
 
             foreach (var entry in entries)
             {
-                TableOperation retrieveOperation = TableOperation.Retrieve<CustomerEntity>(entry.PartitionKey, entry.RowKey);
-                TableResult retrieveResult = table.Execute(retrieveOperation);
+                var retrieveResult = table.GetEntity<CustomerEntity>(entry.PartitionKey, entry.RowKey);
 
                 Assert.IsNotNull(retrieveResult, "retrieveResult = null");
-                Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
-                Assert.IsNotNull((CustomerEntity)retrieveResult.Result, "Retrieve: customer = null");
+                Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult?.GetRawResponse().Status, "retrieveResult.HttpStatusCode mismatch");
+                Assert.IsNotNull(retrieveResult.Value, "Retrieve: customer = null");
 
                 // Delete entity
-                var customer = (CustomerEntity)retrieveResult.Result;
+                var customer = retrieveResult.Value;
 
-                TableOperation deleteOperation = TableOperation.Delete(customer);
-
-                TableResult deleteResult;
+                Response deleteResult;
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 {
-                    deleteResult = table.Execute(deleteOperation);
+                    deleteResult = table.DeleteEntity(customer.PartitionKey, customer.RowKey, customer.ETag);
                 }
                 watch.Stop();
                 stats.AddPoint(watch.ElapsedMilliseconds);
 
                 Assert.IsNotNull(deleteResult, "deleteResult = null");
-                Assert.AreEqual((int)HttpStatusCode.NoContent, deleteResult.HttpStatusCode, "deleteResult.HttpStatusCode mismatch");
+                Assert.AreEqual((int)HttpStatusCode.NoContent, deleteResult.Status, "deleteResult.HttpStatusCode mismatch");
             }
 
             return stats;
         }
 
-        private IEnumerable<CustomerEntity> GetCustomerEntities(CloudTable table)
+        private IEnumerable<CustomerEntity> GetCustomerEntities(TableClient table)
         {
-            TableQuery<CustomerEntity> query = table.CreateQuery<CustomerEntity>();
-            return query.Execute();
+            return table.Query<CustomerEntity>();
         }
 
         #endregion
@@ -388,12 +385,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             foreach (var entry in entries)
             {
-                TableOperation insertOperation = TableOperation.Insert(entry);
-
                 TableResult insertResult = null;
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 {
-                    insertResult = rtable.Execute(insertOperation);
+                    insertResult = rtable.Insert(entry);
                 }
                 watch.Stop();
                 stats.AddPoint(watch.ElapsedMilliseconds);
@@ -411,12 +406,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             foreach (var entry in entries)
             {
-                TableOperation retrieveOperation = TableOperation.Retrieve<CustomerEntity>(entry.PartitionKey, entry.RowKey);
-
                 TableResult retrieveResult = null;
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 {
-                    retrieveResult = rtable.Execute(retrieveOperation);
+                    retrieveResult = rtable.Retrieve(entry.PartitionKey, entry.RowKey);
                 }
                 watch.Stop();
                 stats.AddPoint(watch.ElapsedMilliseconds);
@@ -439,8 +432,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             foreach (var entry in entries)
             {
-                TableOperation retrieveOperation = TableOperation.Retrieve<CustomerEntity>(entry.PartitionKey, entry.RowKey);
-                TableResult retrieveResult = rtable.Execute(retrieveOperation);
+                TableResult retrieveResult = rtable.Retrieve(entry.PartitionKey, entry.RowKey);
 
                 Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                 Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
@@ -450,12 +442,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 var customer = (CustomerEntity)retrieveResult.Result;
                 customer.Email = string.Format("{0}.{1}@email.com", entry.PartitionKey, entry.RowKey);
 
-                TableOperation updateOperation = TableOperation.Replace(customer);
-
                 TableResult updateResult;
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 {
-                    updateResult = rtable.Execute(updateOperation);
+                    updateResult = rtable.Replace(customer);
                 }
                 watch.Stop();
                 stats.AddPoint(watch.ElapsedMilliseconds);
@@ -473,8 +463,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             foreach (var entry in entries)
             {
-                TableOperation retrieveOperation = TableOperation.Retrieve<CustomerEntity>(entry.PartitionKey, entry.RowKey);
-                TableResult retrieveResult = rtable.Execute(retrieveOperation);
+                TableResult retrieveResult = rtable.Retrieve(entry.PartitionKey, entry.RowKey);
 
                 Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                 Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
@@ -484,12 +473,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 var customer = (CustomerEntity)retrieveResult.Result;
                 Assert.IsTrue(customer._rtable_Version == 2, "entry was updated once, version should be 2");
 
-                TableOperation deleteOperation = TableOperation.Delete(customer);
-
                 TableResult deleteResult;
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 {
-                    deleteResult = rtable.Execute(deleteOperation);
+                    deleteResult = rtable.Delete(customer);
                 }
                 watch.Stop();
                 stats.AddPoint(watch.ElapsedMilliseconds);
@@ -503,7 +490,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private IEnumerable<CustomerEntity> GetCustomerEntities(ReplicatedTable rtable)
         {
-            ReplicatedTableQuery<CustomerEntity> query = rtable.CreateReplicatedQuery<CustomerEntity>();
+            ReplicatedTableQuery<CustomerEntity> query = rtable.CreateReplicatedQuery<CustomerEntity>(e => true);
             return query.AsEnumerable();
         }
 

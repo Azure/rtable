@@ -22,14 +22,15 @@
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage;
-    using Microsoft.WindowsAzure.Storage.Table;
     using NUnit.Framework;
     using System;
     using System.Linq;
     using System.Threading;
     using System.Collections.Generic;
     using System.Net;
+    using global::Azure;
+    using global::Azure.Data.Tables;
+    using Newtonsoft.Json.Linq;
 
     [TestFixture]
     public class RTableQueryGenericTests : RTableLibraryTestBase
@@ -37,7 +38,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         private const int NumberOfBatches = 15;
         private const int BatchSize = 100;
 
-        private CloudTable currentTable = null;
+        private TableClient currentTable = null;
         
         [OneTimeSetUp]
         public void TestFixtureSetup()
@@ -47,20 +48,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.SetupRTableEnv(tableName);
 
             // Initialize the table to be queried to the tail replica         
-            CloudTableClient tableClient = this.repTable.GetTailTableClient();
-            this.currentTable = tableClient.GetTableReference(repTable.TableName);
+            TableServiceClient tableClient = this.repTable.GetTailTableClient();
+            this.currentTable = tableClient.GetTableClient(repTable.TableName);
 
             try
             {
                 for (int i = 0; i < NumberOfBatches; i++)
                 {
-                    TableBatchOperation batch = new TableBatchOperation();
+                    IList<TableTransactionAction> batch = new List<TableTransactionAction>();
 
                     for (int j = 0; j < BatchSize; j++)
                     {
                         BaseEntity ent = GenerateRandomEntity("tables_batch_" + i.ToString());
                         ent.RowKey = string.Format("{0:0000}", j);
-                        batch.Insert(ent);
+                        batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
                     }
 
                     repTable.ExecuteBatch(batch);
@@ -87,12 +88,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="A test to validate basic table query")]
         public void TableGenericQueryBasicSync()
         {
-            TableQuery<BaseEntity> query = new TableQuery<BaseEntity>().Where(
-                TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, "tables_batch_1"));
+            var query = currentTable.Query<BaseEntity>(e => e.PartitionKey == "tables_batch_1");
 
-            TableQuerySegment<BaseEntity> seg = currentTable.ExecuteQuerySegmented(query, null);
-
-            foreach (BaseEntity ent in seg)
+            foreach (BaseEntity ent in query)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
                 ent.Validate();
@@ -102,22 +100,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="Generic query with Continuation sync")]
         public void TableGenericQueryWithContinuationSync()
         {
-            TableQuery<BaseEntity> query = new TableQuery<BaseEntity>();
-            OperationContext opContext = new OperationContext();
-            TableQuerySegment<BaseEntity> seg = currentTable.ExecuteQuerySegmented(query, null, null, opContext);
+            var query = currentTable.Query<BaseEntity>();
             int count = 0;
-            foreach (BaseEntity ent in seg)
+            var seg = query.AsPages().FirstOrDefault();
+            foreach (BaseEntity ent in seg.Values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
                 ent.Validate();
                 count++;
             }
+
             Assert.IsTrue(NumberOfBatches * BatchSize > count);
 
             // Second segment
             Assert.IsNotNull(seg.ContinuationToken);
-            seg = currentTable.ExecuteQuerySegmented(query, seg.ContinuationToken, null, opContext);
-            foreach (BaseEntity ent in seg)
+            seg = query.AsPages(seg.ContinuationToken).FirstOrDefault();
+            foreach (BaseEntity ent in seg.Values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
                 ent.Validate();
@@ -132,13 +130,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             int ninety = 90;
             string ninetyString = string.Format("{0:0000}", ninety);
 
-            TableQuery<BaseEntity> query = new TableQuery<BaseEntity>().Where(
-                string.Format("(PartitionKey eq '{0}') and (RowKey ge '{1}')", "tables_batch_1", ninetyString));
-
-            OperationContext opContext = new OperationContext();
             int count = 0;
 
-            foreach (BaseEntity ent in currentTable.ExecuteQuery(query))
+            foreach (BaseEntity ent in currentTable.Query<BaseEntity>(string.Format("(PartitionKey eq '{0}') and (RowKey ge '{1}')", "tables_batch_1", ninetyString)))
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
                 Assert.AreEqual(ent.RowKey, string.Format("{0:0000}", count + ninety));
@@ -152,10 +146,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="query enumerate twice")]
         public void TableGenericQueryEnumerateTwice()
         {
-            TableQuery<BaseEntity> query = new TableQuery<BaseEntity>();
-
-            OperationContext opContext = new OperationContext();
-            IEnumerable<BaseEntity> enumerable = currentTable.ExecuteQuery(query);
+            IEnumerable<BaseEntity> enumerable = currentTable.Query<BaseEntity>();
 
             List<BaseEntity> firstIteration = new List<BaseEntity>();
             List<BaseEntity> secondIteration = new List<BaseEntity>();
@@ -189,9 +180,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="Basic projection test")]
         public void TableGenericQueryProjection()
         {
-            TableQuery<BaseEntity> query = new TableQuery<BaseEntity>().Select(new List<string>() { "A", "C" });
-
-            foreach (BaseEntity ent in currentTable.ExecuteQuery(query))
+            foreach (BaseEntity ent in currentTable.Query<BaseEntity>(select: new List<string>() { "A", "C" }))
             {
                 Assert.IsNotNull(ent.PartitionKey);
                 Assert.IsNotNull(ent.RowKey);
@@ -203,19 +192,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [Test(Description="Basic with resolver")]        
+        [Test(Description = "Basic with resolver")]
         public void TableGenericWithResolver()
         {
-            TableQuery<TableEntity> query = new TableQuery<TableEntity>().Select(new List<string>() { "A", "C" });
-            query.TakeCount = 1000;
-
-            foreach (string ent in currentTable.ExecuteQuery(query, (pk, rk, ts, prop, etag) => prop["A"].StringValue + prop["C"].StringValue))
+            foreach (string ent in currentTable.Query<TableEntity>(select: new List<string>() { "A", "C" }).Select(e => (string)e["A"] + (string)e["C"]))
             {
                 Assert.AreEqual("ac", ent);
             }
 
-            foreach (BaseEntity ent in currentTable.ExecuteQuery(query,
-                (pk, rk, ts, prop, etag) => new BaseEntity() { PartitionKey = pk, RowKey = rk, Timestamp = ts, A = prop["A"].StringValue, C = prop["C"].StringValue, ETag = etag }))
+            foreach (BaseEntity ent in currentTable.Query<TableEntity>().Select(e => 
+                new BaseEntity() { PartitionKey = e.PartitionKey, RowKey = e.RowKey, Timestamp = e.Timestamp, A = (string)e["A"], C = (string)e["C"], ETag = e.ETag }))
             {
                 Assert.IsNotNull(ent.PartitionKey);
                 Assert.IsNotNull(ent.RowKey);
@@ -227,43 +213,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Assert.AreEqual("c", ent.C);
                 Assert.IsNull(ent.D);
             }
-
-            Assert.AreEqual(1000, query.TakeCount);
         }
 
-        [Test(Description="query resolver with dynamic")]
-        public void TableQueryResolverWithDynamic()
-        {
-            TableQuery query = new TableQuery().Select(new List<string>() { "A", "C" });
-            foreach (string ent in currentTable.ExecuteQuery(query, (pk, rk, ts, prop, etag) => prop["A"].StringValue + prop["C"].StringValue))
-            {
-                Assert.AreEqual("ac", ent);
-            }
-            foreach (BaseEntity ent in currentTable.ExecuteQuery(query,
-                            (pk, rk, ts, prop, etag) => new BaseEntity() { PartitionKey = pk, RowKey = rk, Timestamp = ts, A = prop["A"].StringValue, C = prop["C"].StringValue, ETag = etag }))
-            {
-                Assert.IsNotNull(ent.PartitionKey);
-                Assert.IsNotNull(ent.RowKey);
-                Assert.IsNotNull(ent.Timestamp);
-
-                Assert.AreEqual("a", ent.A);
-                Assert.IsNull(ent.B);
-                Assert.AreEqual("c", ent.C);
-                Assert.IsNull(ent.D);
-            }
-        }
-
-        [Test(Description="TableQuerySegmented resolver test")]
+        [Test(Description = "TableQuerySegmented resolver test")]
         public void TableQuerySegmentedResolver()
         {
-            TableQuery<TableEntity> query = new TableQuery<TableEntity>().Select(new List<string>() { "A", "C" });
-            TableContinuationToken token = null;
+            string token = null;
             List<string> list = new List<string>();
             do
             {
-                TableQuerySegment<string> segment = currentTable.ExecuteQuerySegmented<TableEntity, string>(query, (pk, rk, ts, prop, etag) => prop["A"].StringValue + prop["C"].StringValue, token);
-                list.AddRange(segment.Results);
-                token = segment.ContinuationToken;
+                var query = currentTable.Query<TableEntity>(select: new List<string>() { "A", "C" });
+                var page = query.AsPages(token).FirstOrDefault();
+                var segment = page.Values.Select(e => (string)e["A"] + (string)e["C"]);
+                list.AddRange(segment);
+                token = page.ContinuationToken;
             } while (token != null);
 
             foreach (string ent in list)
@@ -272,11 +235,15 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
 
             List<BaseEntity> list1 = new List<BaseEntity>();
+            token = null;
             do
             {
-                TableQuerySegment<BaseEntity> segment = currentTable.ExecuteQuerySegmented<TableEntity, BaseEntity>(query, (pk, rk, ts, prop, etag) => new BaseEntity() { PartitionKey = pk, RowKey = rk, Timestamp = ts, A = prop["A"].StringValue, C = prop["C"].StringValue, ETag = etag }, token);
-                list1.AddRange(segment.Results);
-                token = segment.ContinuationToken;
+                var query = currentTable.Query<TableEntity>();
+                var page = query.AsPages(token).FirstOrDefault();
+                var segment = page.Values.Select(e =>
+                    new BaseEntity() { PartitionKey = e.PartitionKey, RowKey = e.RowKey, Timestamp = e.Timestamp, A = (string)e["A"], C = (string)e["C"], ETag = e.ETag });
+                list1.AddRange(segment);
+                token = page.ContinuationToken;
             } while (token != null);
 
             foreach (BaseEntity ent in list1)
@@ -293,31 +260,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [Test(Description="TableQuerySegmented resolver test")]
+        [Test(Description = "TableQuerySegmented resolver test")]
         public void TableQuerySegmentedResolverWithDynamic()
         {
-            TableQuery query = new TableQuery().Select(new List<string>() { "A", "C" });
-            TableContinuationToken token = null;
-            List<string> list = new List<string>();
-            do
-            {
-                TableQuerySegment<string> segment = currentTable.ExecuteQuerySegmented<string>(query, (pk, rk, ts, prop, etag) => prop["A"].StringValue + prop["C"].StringValue, token);
-                list.AddRange(segment.Results);
-                token = segment.ContinuationToken;
-            } while (token != null);
-
-            foreach (string ent in list)
-            {
-                Assert.AreEqual("ac", ent);
-            }
-
+            string token = null;
             List<BaseEntity> list1 = new List<BaseEntity>();
+
             do
             {
-                TableQuerySegment<BaseEntity> segment = currentTable.ExecuteQuerySegmented<BaseEntity>(query, (pk, rk, ts, prop, etag) => new BaseEntity() { PartitionKey = pk, RowKey = rk, Timestamp = ts, A = prop["A"].StringValue, C = prop["C"].StringValue, ETag = etag }, token);
-                list1.AddRange(segment.Results);
-                token = segment.ContinuationToken;
+                var query = currentTable.Query<BaseEntity>();
+                var page = query.AsPages(token).FirstOrDefault();
+                var segment = page.Values.Select(e =>
+                    new BaseEntity() { PartitionKey = e.PartitionKey, RowKey = e.RowKey, Timestamp = e.Timestamp, A = e.A, C = e.C, ETag = e.ETag });
+                list1.AddRange(segment);
+                token = page.ContinuationToken;
             } while (token != null);
+
 
             foreach (BaseEntity ent in list1)
             {
@@ -331,161 +289,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Assert.AreEqual("c", ent.C);
                 Assert.IsNull(ent.D);
             }
-        }
-        
-        [Test(Description="Basic with resolver")]
-        public void TableGenericWithResolverAPM()
-        {
-            TableQuery<TableEntity> query = new TableQuery<TableEntity>().Select(new List<string>() { "A", "C" });
-
-            using (AutoResetEvent waitHandle = new AutoResetEvent(false))
-            {
-                TableContinuationToken token = null;
-                List<string> list = new List<string>();
-                do
-                {
-                    IAsyncResult result = currentTable.BeginExecuteQuerySegmented(query, (pk, rk, ts, prop, etag) => prop["A"].StringValue + prop["C"].StringValue, token, ar => waitHandle.Set(), null);
-                    waitHandle.WaitOne();
-                    TableQuerySegment<string> segment = currentTable.EndExecuteQuerySegmented<TableEntity, string>(result);
-                    list.AddRange(segment.Results);
-                    token = segment.ContinuationToken;
-                } while (token != null);
-
-                foreach (string ent in list)
-                {
-                    Assert.AreEqual("ac", ent);
-                }
-
-                List<BaseEntity> list1 = new List<BaseEntity>();
-                do
-                {
-                    IAsyncResult result = currentTable.BeginExecuteQuerySegmented(query, (pk, rk, ts, prop, etag) => new BaseEntity()
-                    {
-                        PartitionKey = pk,
-                        RowKey = rk,
-                        Timestamp = ts,
-                        A = prop["A"].StringValue,
-                        C = prop["C"].StringValue,
-                        ETag = etag
-                    }, token, ar => waitHandle.Set(), null);
-                    waitHandle.WaitOne();
-                    TableQuerySegment<BaseEntity> segment = currentTable.EndExecuteQuerySegmented<TableEntity, BaseEntity>(result);
-                    list1.AddRange(segment.Results);
-                    token = segment.ContinuationToken;
-                } while (token != null);
-
-                foreach (BaseEntity ent in list1)
-                {
-                    Assert.IsNotNull(ent.PartitionKey);
-                    Assert.IsNotNull(ent.RowKey);
-                    Assert.IsNotNull(ent.Timestamp);
-                    Assert.IsNotNull(ent.ETag);
-
-                    Assert.AreEqual("a", ent.A);
-                    Assert.IsNull(ent.B);
-                    Assert.AreEqual("c", ent.C);
-                    Assert.IsNull(ent.D);
-                }
-            }
-        }
-
-        [Test(Description="Basic resolver test")]
-        public void TableQueryResolverWithDynamicAPM()
-        {
-            TableQuery query = new TableQuery().Select(new List<string>() { "A", "C" });
-            using (AutoResetEvent waitHandle = new AutoResetEvent(false))
-            {
-                TableContinuationToken token = null;
-                List<string> list = new List<string>();
-                do
-                {
-                    IAsyncResult result = currentTable.BeginExecuteQuerySegmented(query, (pk, rk, ts, prop, etag) => prop["A"].StringValue + prop["C"].StringValue, token, ar => waitHandle.Set(), null);
-                    waitHandle.WaitOne();
-                    TableQuerySegment<string> segment = currentTable.EndExecuteQuerySegmented<string>(result);
-                    list.AddRange(segment.Results);
-                    token = segment.ContinuationToken;
-                } while (token != null);
-
-                foreach (string ent in list)
-                {
-                    Assert.AreEqual(ent, "ac");
-                }
-
-                List<BaseEntity> list1 = new List<BaseEntity>();
-                do
-                {
-                    IAsyncResult result = currentTable.BeginExecuteQuerySegmented(query, (pk, rk, ts, prop, etag) => new BaseEntity() { PartitionKey = pk, RowKey = rk, Timestamp = ts, A = prop["A"].StringValue, C = prop["C"].StringValue, ETag = etag }, token, ar => waitHandle.Set(), null);
-                    waitHandle.WaitOne();
-                    TableQuerySegment<BaseEntity> segment = currentTable.EndExecuteQuerySegmented<BaseEntity>(result);
-                    list1.AddRange(segment.Results);
-                    token = segment.ContinuationToken;
-                } while (token != null);
-
-                foreach (BaseEntity ent in list1)
-                {
-                    Assert.IsNotNull(ent.PartitionKey);
-                    Assert.IsNotNull(ent.RowKey);
-                    Assert.IsNotNull(ent.Timestamp);
-                    Assert.IsNotNull(ent.ETag);
-
-                    Assert.AreEqual("a", ent.A);
-                    Assert.IsNull(ent.B);
-                    Assert.AreEqual("c", ent.C);
-                    Assert.IsNull(ent.D);
-                }
-            }
-        }      
-       
-        [Test(Description="A test to validate basic take Count with and without continuations")]
-        public void TableQueryGenericWithTakeCount()
-        {
-            // No continuation
-            TableQuery<BaseEntity> query = new TableQuery<BaseEntity>().Take(100);
-
-            OperationContext opContext = new OperationContext();
-            IEnumerable<BaseEntity> enumerable = currentTable.ExecuteQuery(query, null, opContext);
-
-            Assert.AreEqual(query.TakeCount, enumerable.Count());
-            TestHelper.AssertNAttempts(opContext, 1);
-
-            // With continuations
-            query.TakeCount = 1200;
-            opContext = new OperationContext();
-            enumerable = currentTable.ExecuteQuery(query, null, opContext);
-
-            Assert.AreEqual(query.TakeCount, enumerable.Count());
-            TestHelper.AssertNAttempts(opContext, 2);
-        }
-
-        [Test(Description="A test to validate basic take Count with a resolver, with and without continuations")]
-        public void TableQueryGenericWithTakeCountAndResolver()
-        {
-            // No continuation
-            TableQuery<BaseEntity> query = new TableQuery<BaseEntity>().Take(100);
-
-            OperationContext opContext = new OperationContext();
-            IEnumerable<string> enumerable = currentTable.ExecuteQuery(query, (pk, rk, ts, prop, etag) => pk + rk, null, opContext);
-
-            Assert.AreEqual(query.TakeCount, enumerable.Count());
-            TestHelper.AssertNAttempts(opContext, 1);
-
-            // With continuations
-            query.TakeCount = 1200;
-            opContext = new OperationContext();
-            enumerable = currentTable.ExecuteQuery(query, (pk, rk, ts, prop, etag) => pk + rk, null, opContext);
-
-            Assert.AreEqual(query.TakeCount, enumerable.Count());
-            TestHelper.AssertNAttempts(opContext, 2);
         }
 
         [Test(Description = "Query with internal type (InternalEntity)")]
         public void TableGenericQueryWithInternalType()
         {
-            TableQuery<InternalEntity> query = new TableQuery<InternalEntity>().Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, "tables_batch_1"));
+            var query = currentTable.Query<InternalEntity>(e => e.PartitionKey == "tables_batch_1");
 
-            TableQuerySegment<InternalEntity> seg = currentTable.ExecuteQuerySegmented(query, null);
-
-            foreach (InternalEntity ent in seg)
+            foreach (InternalEntity ent in query)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
                 ent.Validate();
@@ -495,7 +306,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="A test to ensure that a generic query must have a type with a default constructor ")]
         public void TableGenericQueryOnTypeWithNoCtor()
         {
-            TestHelper.ExpectedException<NotSupportedException>(() => new TableQuery<NoCtorEntity>(), "TableQuery should not be able to be instantiated with a generic type that has no default constructor");
+            TestHelper.ExpectedException<NotSupportedException>(() => currentTable.Query<NoCtorEntity>(), "Query should not be able to be instantiated with a generic type that has no default constructor");
         }
 
         [Test(Description = "IQueryable - A test to validate basic CreateQuery")]
@@ -506,21 +317,21 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             localRTable.CreateIfNotExists();
             RTableWrapperForSampleRTableEntity localRTableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(localRTable);
 
-            CloudTableClient tableClient = localRTable.GetTailTableClient();
-            CloudTable table = tableClient.GetTableReference(localRTable.TableName);
+            TableServiceClient tableClient = localRTable.GetTailTableClient();
+            TableClient table = tableClient.GetTableClient(localRTable.TableName);
 
             string pk = "0";
             try
             {
                 try
                 {
-                    TableBatchOperation batch = new TableBatchOperation();
+                    IList<TableTransactionAction> batch = new List<TableTransactionAction>();
 
                     for (int j = 0; j < 10; j++)
                     {
                         BaseEntity ent = GenerateRandomEntity(pk);
                         ent.RowKey = string.Format("{0:0000}", j);
-                        batch.Insert(ent);
+                        batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
                     }
 
                     localRTable.ExecuteBatch(batch);
@@ -531,8 +342,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     throw;
                 }
                 
-                IQueryable<BaseEntity> tableQuery = table.CreateQuery<BaseEntity>().Where(x => x.PartitionKey == pk);
-                IQueryable<BaseEntity> rtableQuery = localRTable.CreateQuery<BaseEntity>().Where(x => x.PartitionKey == pk);
+                var tableQuery = table.Query<BaseEntity>(x => x.PartitionKey == pk);
+                var rtableQuery = localRTable.CreateQuery<BaseEntity>(x => x.PartitionKey == pk);
 
                 var list = tableQuery.AsEnumerable();
 
@@ -546,34 +357,33 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 {
                     rtableCount++;
 
-                    Assert.IsTrue(ent.ETag != ent._rtable_Version.ToString(), "ETag is not virtualized when using CreateQuery()");
+                    Assert.IsTrue(ent.ETag != new ETag(ent._rtable_Version.ToString()), "ETag is not virtualized when using CreateQuery()");
                 }
 
                 Assert.IsTrue(tableCount == rtableCount, "Query counts are different");
                 Assert.IsTrue(tableCount == 10, "Query counts are different");
 
                 // But, with "CreateReplicatedQuery" ETag is virtualized
-                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>().Where(x => x.PartitionKey == pk);
+                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(x => x.PartitionKey == pk);
 
                 foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
                 {
                     Assert.IsTrue(ent._rtable_Version == 0);
-                    Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+                    Assert.IsTrue(ent.ETag == new ETag(ent._rtable_Version.ToString()), "ETag is virtualized when using CreateReplicatedQuery()");
 
                     ent.A += "`";
 
                     // Update should go fine since ETag is virtualized
-                    TableOperation operation = TableOperation.Replace(ent);
-                    TableResult result = localRTable.Execute(operation);
+                    TableResult result = localRTable.Replace(ent);
                     Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent);
                 }
 
-                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>().Where(x => x.PartitionKey == pk);
+                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(x => x.PartitionKey == pk);
 
                 foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
                 {
                     Assert.IsTrue(ent._rtable_Version == 1);
-                    Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+                    Assert.IsTrue(ent.ETag == new ETag(ent._rtable_Version.ToString()), "ETag is virtualized when using CreateReplicatedQuery()");
                 }
             }
             catch(Exception e)
@@ -597,21 +407,21 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             localRTable.CreateIfNotExists();
             RTableWrapperForSampleRTableEntity localRTableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(localRTable);
 
-            CloudTableClient tableClient = localRTable.GetTailTableClient();
-            CloudTable table = tableClient.GetTableReference(localRTable.TableName);
+            TableServiceClient tableClient = localRTable.GetTailTableClient();
+            TableClient table = tableClient.GetTableClient(localRTable.TableName);
 
             string pk = "0";
             try
             {
                 try
                 {
-                    TableBatchOperation batch = new TableBatchOperation();
+                    IList<TableTransactionAction> batch = new List<TableTransactionAction>();
 
                     for (int j = 0; j < 10; j++)
                     {
                         BaseEntity ent = GenerateRandomEntity(pk);
                         ent.RowKey = string.Format("{0:0000}", j);
-                        batch.Insert(ent);
+                        batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
                     }
 
                     localRTable.ExecuteBatch(batch);
@@ -625,13 +435,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 try
                 {
                     pk = "1";
-                    TableBatchOperation batch = new TableBatchOperation();
+                    IList<TableTransactionAction> batch = new List<TableTransactionAction>();
 
                     for (int j = 0; j < 10; j++)
                     {
                         BaseEntity ent = GenerateRandomEntity(pk);
                         ent.RowKey = string.Format("{0:0000}", j);
-                        batch.Insert(ent);
+                        batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
                     }
 
                     localRTable.ExecuteBatch(batch);
@@ -642,8 +452,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     throw;
                 }
 
-                IQueryable<BaseEntity> tableQuery = table.CreateQuery<BaseEntity>();
-                IQueryable<BaseEntity> rtableQuery = localRTable.CreateQuery<BaseEntity>();
+                var tableQuery = table.Query<BaseEntity>();
+                var rtableQuery = localRTable.CreateQuery<BaseEntity>(e => true);
 
                 var list = tableQuery.AsEnumerable();
 
@@ -657,34 +467,33 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 {
                     rtableCount++;
 
-                    Assert.IsTrue(ent.ETag != ent._rtable_Version.ToString(), "ETag is not virtualized when using CreateQuery()");
+                    Assert.IsTrue(ent.ETag != new ETag(ent._rtable_Version.ToString()), "ETag is not virtualized when using CreateQuery()");
                 }
 
                 Assert.IsTrue(tableCount == rtableCount, "Query counts are different");
                 Assert.IsTrue(tableCount == 20, "Query counts are different");
 
                 // But, with "CreateReplicatedQuery" ETag is virtualized
-                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>();
+                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(e => true);
 
                 foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
                 {
                     Assert.IsTrue(ent._rtable_Version == 0);
-                    Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+                    Assert.IsTrue(ent.ETag == new ETag(ent._rtable_Version.ToString()), "ETag is virtualized when using CreateReplicatedQuery()");
 
                     ent.A += "`";
 
                     // Update should go fine since ETag is virtualized
-                    TableOperation operation = TableOperation.Replace(ent);
-                    TableResult result = localRTable.Execute(operation);
+                    TableResult result = localRTable.Replace(ent);
                     Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent);
                 }
 
-                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>();
+                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(e => true);
 
                 foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
                 {
                     Assert.IsTrue(ent._rtable_Version == 1);
-                    Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+                    Assert.IsTrue(ent.ETag == new ETag(ent._rtable_Version.ToString()), "ETag is virtualized when using CreateReplicatedQuery()");
                 }
             }
             catch (Exception e)
@@ -702,11 +511,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         
 
         #region Helpers
-
-        private static void ExecuteQueryAndAssertResults(CloudTable table, string filter, int expectedResults)
-        {
-            Assert.AreEqual(expectedResults, table.ExecuteQuery(new TableQuery<ComplexEntity>().Where(filter)).Count());
-        }
 
         private static BaseEntity GenerateRandomEntity(string pk)
         {

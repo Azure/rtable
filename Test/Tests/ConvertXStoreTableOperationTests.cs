@@ -20,7 +20,7 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure.Data.Tables;
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
@@ -216,8 +216,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 this.GenerateJobId(jobId, 0, 0),
                 out partitionKey,
                 out rowKey);
-            TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
-            TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+            var getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+            var retrieveResult = new TableResult
+            {
+                Result = getResp.Value,
+                Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                HttpStatusCode = (int)getResp?.GetRawResponse().Status
+            };
 
             Assert.IsNotNull(retrieveResult, "retrieveResult = null");
             SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
@@ -241,8 +246,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             InitDynamicReplicatedTableEntity replaceTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
 
-            TableOperation replaceOperation = TableOperation.Replace(replaceTableEntity);
-            TableResult replaceResult = this.repTable.Execute(replaceOperation);
+            var updateResp = this.xstoreCloudTable.UpdateEntity(replaceTableEntity, replaceTableEntity.ETag, TableUpdateMode.Replace);
+            var replaceResult = new TableResult
+            {
+                Result = replaceTableEntity,
+                Etag = updateResp.Headers.ETag.ToString(),
+                HttpStatusCode = updateResp.Status
+            };
+
             Assert.IsNotNull(replaceResult, "replaceResult = null");
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.updatedMessage, true); // check _rtable_ViewId
 
@@ -271,8 +282,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 this.GenerateJobId(jobId, 0, 0),
                 out partitionKey,
                 out rowKey);
-            TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
-            TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+            var getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+            var retrieveResult = new TableResult
+            {
+                Result = getResp.Value,
+                Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                HttpStatusCode = (int)getResp?.GetRawResponse().Status
+            };
 
             Assert.IsNotNull(retrieveResult, "retrieveResult = null");
             SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
@@ -296,8 +312,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             InitDynamicReplicatedTableEntity mergeTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
 
-            TableOperation mergeOperation = TableOperation.Merge(mergeTableEntity);
-            TableResult mergeResult = this.repTable.Execute(mergeOperation);
+            var updateResp = this.xstoreCloudTable.UpdateEntity(mergeTableEntity, mergeTableEntity.ETag, TableUpdateMode.Merge);
+            var mergeResult = new TableResult
+            {
+                Result = mergeTableEntity,
+                Etag = updateResp.Headers.ETag.ToString(),
+                HttpStatusCode = updateResp.Status
+            };
+
             Assert.IsNotNull(mergeResult, "mergeResult = null");
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.updatedMessage, true); // check _rtable_ViewId
 
@@ -326,8 +348,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 this.GenerateJobId(jobId, 0, 0),
                 out partitionKey,
                 out rowKey);
-            TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
-            TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+            var getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+            var retrieveResult = new TableResult
+            {
+                Result = getResp.Value,
+                Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                HttpStatusCode = (int)getResp?.GetRawResponse().Status
+            };
 
             Assert.IsNotNull(retrieveResult, "retrieveResult = null");
             SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
@@ -348,12 +375,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             InitDynamicReplicatedTableEntity deleteTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
 
-            TableOperation deleteOperation = TableOperation.Delete(deleteTableEntity);
-            TableResult deleteResult = this.repTable.Execute(deleteOperation);
+            var deleteResp = this.xstoreCloudTable.DeleteEntity(deleteTableEntity.PartitionKey, deleteTableEntity.RowKey, deleteTableEntity.ETag);
+            var deleteResult = new TableResult
+            {
+                Result = deleteTableEntity,
+                Etag = deleteResp.Headers.ETag.ToString(),
+                HttpStatusCode = deleteResp.Status
+            };
             Assert.IsNotNull(deleteResult, "deleteResult = null");
 
-            retrieveOperation = TableOperation.Retrieve(partitionKey, rowKey);
-            retrieveResult = this.repTable.Execute(retrieveOperation);
+            getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+            retrieveResult = new TableResult
+            {
+                Result = getResp.Value,
+                Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                HttpStatusCode = (int)getResp?.GetRawResponse().Status
+            };
             Assert.IsNotNull(retrieveResult, "retrieveResult = null");
             Assert.AreEqual(retrieveResult.HttpStatusCode, (int)HttpStatusCode.NotFound, "entry should not exist!");
 

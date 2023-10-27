@@ -21,9 +21,9 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using global::Azure.Data.Tables;
     using System;
     using System.Collections.Generic;
-    using Microsoft.WindowsAzure.Storage.Table;
 
     public class View
     {
@@ -32,7 +32,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.Name = name;
             this.RefreshTime = DateTime.MinValue;
             this.LeaseDuration = TimeSpan.FromSeconds(0);
-            this.Chain = new List<Tuple<ReplicaInfo, CloudTableClient>>();
+            this.Chain = new List<Tuple<ReplicaInfo, TableServiceClient>>();
             this.ReadTailIndex = TailIndex;
         }
 
@@ -55,7 +55,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                     SetConnectionString(replica);
 
-                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
+                    TableServiceClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
                     if (tableClient == null)
                     {
                         // All replicas MUST exist or View is not relevant
@@ -65,7 +65,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                         break;
                     }
 
-                    view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                    view.Chain.Add(new Tuple<ReplicaInfo, TableServiceClient>(replica, tableClient));
                 }
 
                 // If not configured use Tail. Chain must be defined at this point, so don't move this code up!
@@ -103,7 +103,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     SetConnectionString(replica);
 
-                    CloudTableClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
+                    TableServiceClient tableClient = ReplicatedTableConfigurationManager.GetTableClientForReplica(replica);
                     if (tableClient == null)
                     {
                         // All replicas MUST exist or View is not relevant
@@ -113,7 +113,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                         break;
                     }
 
-                    view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(replica, tableClient));
+                    view.Chain.Add(new Tuple<ReplicaInfo, TableServiceClient>(replica, tableClient));
                 }
 
                 // Infered: first readable replica
@@ -138,9 +138,9 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public long ViewId { get; set; }
 
-        public List<Tuple<ReplicaInfo, CloudTableClient>> Chain;
+        public List<Tuple<ReplicaInfo, TableServiceClient>> Chain;
 
-        public CloudTableClient this[int index]
+        public TableServiceClient this[int index]
         {
             get
             {

@@ -21,15 +21,40 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure;
+    using global::Azure.Data.Tables;
     using System;
     using System.Collections.Generic;
 
     /// <summary>
     /// Exactly the same as SampleRTableEntity, except this class is an "XStore Table Entity"
     /// </summary>
-    public sealed class SampleXStoreEntity : TableEntity
+    public sealed class SampleXStoreEntity : ITableEntity
     {
+        /// <summary>
+        /// Gets or sets the entity's partition key.
+        /// </summary>
+        /// <value>The entity partition key.</value>
+        public string PartitionKey { get; set; }
+
+        /// <summary>
+        /// Gets or sets the entity's row key.
+        /// </summary>
+        /// <value>The entity row key.</value>
+        public string RowKey { get; set; }
+
+        /// <summary>
+        /// Gets or sets the entity's timestamp.
+        /// </summary>
+        /// <value>The entity timestamp.</value>
+        public DateTimeOffset? Timestamp { get; set; }
+
+        /// <summary>
+        /// Gets or sets the entity's current ETag. Set this value to '*' to blindly overwrite an entity as part of an update operation.
+        /// </summary>
+        /// <value>The entity ETag.</value>
+        public ETag ETag { get; set; }
+
         /// <summary>
         /// PartitionKey = JobType.ToLower().Replace(" ", "") 
         /// </summary>
@@ -149,26 +174,26 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             };
 
             // we could reflect, but keeping it simple.
-            entity.JobType = dynamicReplicatedTableEntity.Properties["JobType"].StringValue;
-            entity.JobId = dynamicReplicatedTableEntity.Properties["JobId"].StringValue;
-            entity.Message = dynamicReplicatedTableEntity.Properties["Message"].StringValue;
+            entity.JobType = (string)dynamicReplicatedTableEntity.Properties["JobType"];
+            entity.JobId = (string)dynamicReplicatedTableEntity.Properties["JobId"];
+            entity.Message = (string)dynamicReplicatedTableEntity.Properties["Message"];
 
             return entity;
         }
 
         public static InitDynamicReplicatedTableEntity ToInitDynamicReplicatedTableEntity(SampleXStoreEntity xstoreEntity)
         {
-            IDictionary<string, EntityProperty> properties = new Dictionary<string, EntityProperty>();
+            IDictionary<string, object> properties = new Dictionary<string, object>();
 
             // we could reflect, but keeping it simple.
-            properties.Add("JobType", new EntityProperty(xstoreEntity.JobType));
-            properties.Add("JobId", new EntityProperty(xstoreEntity.JobId));
-            properties.Add("Message", new EntityProperty(xstoreEntity.Message));
+            properties.Add("JobType", xstoreEntity.JobType);
+            properties.Add("JobId", xstoreEntity.JobId);
+            properties.Add("Message", xstoreEntity.Message);
 
             InitDynamicReplicatedTableEntity entity = new InitDynamicReplicatedTableEntity(
                                                                 xstoreEntity.PartitionKey,
                                                                 xstoreEntity.RowKey,
-                                                                xstoreEntity.ETag,
+                                                                xstoreEntity.ETag.ToString(),
                                                                 properties);
             return entity;
         }

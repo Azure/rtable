@@ -22,47 +22,41 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
+    using global::Azure;
     using NUnit.Framework;
     using System;
     using System.Linq;
-    using Microsoft.WindowsAzure.Storage;
 
     public class TestHelper
     {
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Anvil.RdUsage!Perf", "27146")]       
-        public static void AssertNAttempts(OperationContext ctx, int n)
+        public static void ValidateResponse(RequestFailedException ex, int expectedAttempts, int expectedStatusCode, string[] allowedErrorCodes, string errorMessageBeginsWith)
         {
-            Assert.AreEqual(n, ctx.RequestResults.Count(), String.Format("_rtable_Operation took more than {0} attempt(s) to complete", n));
+            ValidateResponse(ex, expectedAttempts, expectedStatusCode, allowedErrorCodes, new string[] { errorMessageBeginsWith });
         }
 
-        public static void ValidateResponse(OperationContext opContext, int expectedAttempts, int expectedStatusCode, string[] allowedErrorCodes, string errorMessageBeginsWith)
+        public static void ValidateResponse(RequestFailedException ex, int expectedAttempts, int expectedStatusCode, string[] allowedErrorCodes, string[] errorMessageBeginsWith)
         {
-            ValidateResponse(opContext, expectedAttempts, expectedStatusCode, allowedErrorCodes, new string[] { errorMessageBeginsWith });
+            ValidateResponse(ex, expectedAttempts, expectedStatusCode, allowedErrorCodes, errorMessageBeginsWith, true);
         }
 
-        public static void ValidateResponse(OperationContext opContext, int expectedAttempts, int expectedStatusCode, string[] allowedErrorCodes, string[] errorMessageBeginsWith)
+        public static void ValidateResponse(RequestFailedException ex, int expectedAttempts, int expectedStatusCode, string[] allowedErrorCodes, string[] errorMessageBeginsWith, bool stripIndex)
         {
-            ValidateResponse(opContext, expectedAttempts, expectedStatusCode, allowedErrorCodes, errorMessageBeginsWith, true);
-        }
-
-        public static void ValidateResponse(OperationContext opContext, int expectedAttempts, int expectedStatusCode, string[] allowedErrorCodes, string[] errorMessageBeginsWith, bool stripIndex)
-        {
-            AssertNAttempts(opContext, expectedAttempts);
-            Assert.AreEqual(expectedStatusCode, opContext.LastResult.HttpStatusCode, "expectedStatusCode is wrong.");
-            Assert.IsTrue(allowedErrorCodes.Contains(opContext.LastResult.ExtendedErrorInformation.ErrorCode), "Unexpected Error Code, received: " + opContext.LastResult.ExtendedErrorInformation.ErrorCode);
+            Assert.AreEqual(expectedStatusCode, ex.Status, "expectedStatusCode is wrong.");
+            Assert.IsTrue(allowedErrorCodes.Contains(ex.ErrorCode), "Unexpected Error Code, received: " + ex.ErrorCode);
 
             if (errorMessageBeginsWith != null)
             {
-                Assert.IsNotNull(opContext.LastResult.ExtendedErrorInformation.ErrorMessage);
+                Assert.IsNotNull(ex.Message);
 
-                string message = opContext.LastResult.ExtendedErrorInformation.ErrorMessage;
+                string message = ex.Message;
                 if (stripIndex)
                 {
-                    int semDex = opContext.LastResult.ExtendedErrorInformation.ErrorMessage.IndexOf(":");
+                    int semDex = ex.Message.IndexOf(":");
                     semDex = semDex > 2 ? -1 : semDex;
                     message = message.Substring(semDex + 1);
                 }
-                Assert.IsTrue(errorMessageBeginsWith.Where((s) => message.StartsWith(s)).Any(), "Got this opContext.LastResult.ExtendedErrorInformation = {0}", opContext.LastResult.ExtendedErrorInformation.ErrorMessage);            
+                Assert.IsTrue(errorMessageBeginsWith.Where((s) => message.StartsWith(s)).Any(), "Got this opContext.LastResult.ExtendedErrorInformation = {0}", ex.Message);            
             }
         }
 

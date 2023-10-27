@@ -22,7 +22,7 @@
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
-    using Microsoft.WindowsAzure.Storage;
+    using global::Azure;
 
     public enum ReplicatedTableViewErrorCodes
     {
@@ -32,14 +32,9 @@ namespace Microsoft.Azure.Toolkit.Replication
         ViewIdSmallerThanEntryViewId,
     }
 
-    public class ReplicatedTableStaleViewException : StorageException
+    public class ReplicatedTableStaleViewException : RequestFailedException
     {
-        public ReplicatedTableViewErrorCodes ErrorCode { get; private set; }
-
-        public ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes error)
-        {
-            ErrorCode = error;
-        }
+        public new ReplicatedTableViewErrorCodes ErrorCode { get; private set; }
 
         public ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes error, string message)
             : base(message)

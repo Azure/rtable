@@ -27,7 +27,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Net;
     using System.Threading;
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage.Table;
     
     [TestFixture]
     public class RTableConfigurationServiceTests : RTableLibraryTestBase
@@ -174,8 +173,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             SampleRTableEntity newCustomer = new SampleRTableEntity("firstname1", "lastname1", "email1@company.com");
 
-            TableOperation operation = TableOperation.Insert(newCustomer);
-            TableResult result = repTable.Execute(operation);
+            TableResult result = repTable.Insert(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
             ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
 
@@ -199,8 +197,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Retrieve Entity
             Console.WriteLine("Calling TableOperation.Retrieve<SampleRtableEntity>(firstName, lastName)...");
-            operation = TableOperation.Retrieve<SampleRTableEntity>("firstname1", "lastname1");
-            TableResult retrievedResult = repTable.Execute(operation);
+            TableResult retrievedResult = repTable.Retrieve("firstname1", "lastname1");
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
 
             Assert.AreEqual((int) HttpStatusCode.OK, retrievedResult.HttpStatusCode,
@@ -230,8 +227,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             SampleRTableEntity newCustomer = new SampleRTableEntity("firstName1", "lastName1", "email1@company.com");
 
-            TableOperation operation = TableOperation.Insert(newCustomer);
-            TableResult result = repTable.Execute(operation);
+            TableResult result = repTable.Insert(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
             ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
 
@@ -250,8 +246,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(configurationWrapper.IsViewStable());
 
             // delete row
-            TableOperation deleteOperation = TableOperation.Delete(newCustomer);
-            result = repTable.Execute(deleteOperation);
+            result = repTable.Delete(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int) HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
@@ -265,8 +260,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Retrieve Entity
             Console.WriteLine("Calling TableOperation.Retrieve<SampleRtableEntity>(firstName, lastName)...");
-            operation = TableOperation.Retrieve<SampleRTableEntity>("firstname1", "lastName1");
-            TableResult retrievedResult = repTable.Execute(operation);
+            TableResult retrievedResult = repTable.Retrieve("firstname1", "lastName1");
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
 
             Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode,
@@ -296,23 +290,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             SampleRTableEntity customer1 = new SampleRTableEntity("firstName1", "lastName1", "email1@company.com");
 
-            TableOperation operation = TableOperation.Insert(customer1);
-            TableResult result = repTable.Execute(operation);
+            TableResult result = repTable.Insert(customer1);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
             SampleRTableEntity customer2 = new SampleRTableEntity("firstName2", "lastName2", "email2@company.com");
 
-            operation = TableOperation.Insert(customer2);
-            result = repTable.Execute(operation);
+            result = repTable.Insert(customer2);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
             customer2 = (SampleRTableEntity) result.Result;
 
             SampleRTableEntity customer3 = new SampleRTableEntity("firstName3", "lastName3", "email3@company.com");
 
-            operation = TableOperation.Insert(customer3);
-            result = repTable.Execute(operation);
+            result = repTable.Insert(customer3);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
@@ -325,23 +316,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(configurationWrapper.IsViewStable());
 
             // delete a row
-            TableOperation deleteOperation = TableOperation.Delete(customer1);
-            result = repTable.Execute(deleteOperation);
+            result = repTable.Delete(customer1);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
             // add a row
             SampleRTableEntity customer4 = new SampleRTableEntity("firstName4", "lastName4", "email4@company.com");
 
-            operation = TableOperation.Insert(customer4);
-            result = repTable.Execute(operation);
+            result = repTable.Insert(customer4);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
             // replace a row
             customer2.Message = "updated after view update";
-            operation = TableOperation.Replace(customer2);
-            result = repTable.Execute(operation);
+            result = repTable.Replace(customer2);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 

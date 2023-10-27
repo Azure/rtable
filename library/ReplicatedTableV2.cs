@@ -21,10 +21,11 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using global::Azure;
+    using global::Azure.Data.Tables;
     using System;
     using System.Collections.Generic;
-    using Microsoft.WindowsAzure.Storage;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using System.Linq.Expressions;
 
     public class ReplicatedTableV2 : IReplicatedTable
     {
@@ -44,7 +45,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             _replicatedTableInstance = new ReplicatedTable(name, replicatedTableConfigurationAgent);
         }
 
-        public bool CreateIfNotExists(TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public bool CreateIfNotExists()
         {
             throw new NotImplementedException();
         }
@@ -59,75 +60,75 @@ namespace Microsoft.Azure.Toolkit.Replication
             throw new NotImplementedException();
         }
 
-        public TableResult Execute(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        //public TableResult Execute(TableOperation operation)
+        //{
+        //    throw new NotImplementedException();
+        //}
+
+        //public IList<TableResult> CheckRetrieveInBatch(IEnumerable<TableTransactionAction> batch)
+        //{
+        //    throw new NotImplementedException();
+        //}
+
+        public IList<TableResult> ExecuteBatch(IEnumerable<TableTransactionAction> batch)
         {
             throw new NotImplementedException();
         }
 
-        public IList<TableResult> CheckRetrieveInBatch(TableBatchOperation batch, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public TableResult Retrieve(string partitionKey, string rowKey)
         {
             throw new NotImplementedException();
         }
 
-        public IList<TableResult> ExecuteBatch(TableBatchOperation batch, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public TableResult Delete(ITableEntity entity)
         {
             throw new NotImplementedException();
         }
 
-        public TableResult Retrieve(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public TableResult Merge(ITableEntity entity, TableResult retrievedResult = null)
         {
             throw new NotImplementedException();
         }
 
-        public TableResult Delete(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public TableResult InsertOrMerge(ITableEntity entity)
         {
             throw new NotImplementedException();
         }
 
-        public TableResult Merge(TableOperation operation, TableResult retrievedResult, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public TableResult Replace(ITableEntity entity, TableResult retrievedResult = null)
         {
             throw new NotImplementedException();
         }
 
-        public TableResult InsertOrMerge(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public TableResult Insert(ITableEntity entity, TableResult retrievedResult = null)
         {
             throw new NotImplementedException();
         }
 
-        public TableResult Replace(TableOperation operation, TableResult retrievedResult, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public TableResult InsertOrReplace(ITableEntity entity)
         {
             throw new NotImplementedException();
         }
 
-        public TableResult Insert(TableOperation operation, TableResult retrievedResult, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public TableResult FlushAndRetrieve(IReplicatedTableEntity row, bool virtualizeEtag = true)
         {
             throw new NotImplementedException();
         }
 
-        public TableResult InsertOrReplace(TableOperation operation, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public IEnumerable<TElement> ExecuteQuery<TElement>(Expression<Func<TElement, bool>> filter)
+            where TElement : ReplicatedTableEntity, new()
         {
             throw new NotImplementedException();
         }
 
-        public TableResult FlushAndRetrieve(IReplicatedTableEntity row, TableRequestOptions requestOptions = null, OperationContext operationContext = null, bool virtualizeEtag = true)
+        public Pageable<TElement> CreateQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
+                where TElement : ReplicatedTableEntity, new()
         {
             throw new NotImplementedException();
         }
 
-        public IEnumerable<TElement> ExecuteQuery<TElement>(TableQuery<TElement> query, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
-            where TElement : ITableEntity, new()
-        {
-            throw new NotImplementedException();
-        }
-
-        public TableQuery<TElement> CreateQuery<TElement>()
-                where TElement : ITableEntity, new()
-        {
-            throw new NotImplementedException();
-        }
-
-        public ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>()
-            where TElement : ITableEntity, new()
+        public ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
+            where TElement : ReplicatedTableEntity, new()
         {
             throw new NotImplementedException();
         }
@@ -137,12 +138,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             throw new NotImplementedException();
         }
 
-        public ReconfigurationStatus RepairTable(int viewIdToRecoverFrom, TableBatchOperation unfinishedOps, long maxBatchSize = 100L)
+        public ReconfigurationStatus RepairTable(int viewIdToRecoverFrom, IEnumerable<TableTransactionAction> unfinishedOps, long maxBatchSize = 100L)
         {
             throw new NotImplementedException();
         }
 
-        public void ConvertXStoreTable(out long successCount, out long skippedCount, out long failedCount, TableRequestOptions requestOptions = null, OperationContext operationContext = null)
+        public void ConvertXStoreTable(out long successCount, out long skippedCount, out long failedCount)
         {
             successCount = 0;
             skippedCount = 0;

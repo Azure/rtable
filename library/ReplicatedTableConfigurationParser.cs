@@ -24,12 +24,12 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System;
     using System.Collections.Generic;
     using System.Linq;
-    using Microsoft.WindowsAzure.Storage.Blob;
+    using global::Azure.Storage.Blobs;
 
     internal class ReplicatedTableConfigurationParser : IReplicatedTableConfigurationParser
     {
         public List<View> ParseBlob(
-                                List<CloudBlockBlob> blobs,
+                                List<BlobClient> blobs,
                                 Action<ReplicaInfo> SetConnectionString,
                                 out List<ReplicatedTableConfiguredTable> tableConfigList,
                                 out int leaseDuration,

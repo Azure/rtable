@@ -22,7 +22,6 @@
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage.Table;
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;

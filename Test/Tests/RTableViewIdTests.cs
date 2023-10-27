@@ -21,18 +21,13 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
+    using global::Azure;
+    using global::Azure.Data.Tables;
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage.RTableTest;
-    using Microsoft.WindowsAzure.Storage.Table;
-    using Microsoft.WindowsAzure.Test.Network;
-    using Microsoft.WindowsAzure.Test.Network.Behaviors;
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
-    using System.IO;
     using System.Net;
-    using System.Text;
-    using System.Threading;
 
     /// <summary>
     /// Testing the viewId field of the config blob. Create some entries using a viewId. 
@@ -83,8 +78,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             newCustomer.Email = email;
             newCustomer.PhoneNumber = phone;
 
-            TableOperation operation = TableOperation.Insert(newCustomer);
-            TableResult result = this.repTable.Execute(operation);
+            TableResult result = this.repTable.Insert(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
             ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
@@ -97,8 +91,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Console.WriteLine("Successfully created an entity");
 
             // Retrieve entity
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-            TableResult retrievedResult = this.repTable.Execute(operation);
+            TableResult retrievedResult = this.repTable.Retrieve(firstName, lastName);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
             CustomerEntity customer = (CustomerEntity)retrievedResult.Result;
 
@@ -123,10 +116,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Retrieve with bad viewId
             //
             Console.WriteLine("\nCalling Retrieve with badViewId...");
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);                   
+                retrievedResult = this.repTable.Retrieve(firstName, lastName);                   
                 Assert.Fail("Retrieve() is expected to get an RTableStaleViewException but did not get it.");
             }
             catch (ReplicatedTableStaleViewException ex)
@@ -140,10 +132,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Replace with bad viewId
             //
             Console.WriteLine("\nCalling Replace with badViewId...");
-            operation = TableOperation.Replace(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.Replace(customer);
                 Assert.Fail("Replace() is expected to get an RTableStaleViewException but did not get it.");
             }
             catch (ReplicatedTableStaleViewException ex)
@@ -157,10 +148,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // InsertOrMerge with bad viewId
             //
             Console.WriteLine("\nCalling InsertOrMerge with badViewId...");
-            operation = TableOperation.InsertOrMerge(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.InsertOrMerge(customer);
                 Assert.Fail("InsertOrMerge() is expected to get an RTableStaleViewException but did not get it.");
             }
             catch (ReplicatedTableStaleViewException ex)
@@ -174,10 +164,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // InsertOrReplace with bad viewId
             //
             Console.WriteLine("\nCalling InsertOrReplace with badViewId...");
-            operation = TableOperation.InsertOrReplace(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.InsertOrReplace(customer);
                 Assert.Fail("InsertOrReplace() is expected to get an RTableStaleViewException but did not get it.");
             }
             catch (ReplicatedTableStaleViewException ex)
@@ -191,10 +180,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Merge with bad viewId
             //
             Console.WriteLine("\nCalling Merge with badViewId...");
-            operation = TableOperation.Merge(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.Merge(customer);
                 Assert.Fail("Merge() is expected to get an RTableStaleViewException but did not get it.");
             }
             catch (ReplicatedTableStaleViewException ex)
@@ -208,10 +196,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Delete with bad viewId
             //
             Console.WriteLine("\nCalling Delete with badViewId...");
-            operation = TableOperation.Delete(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.Delete(customer);
                 Assert.Fail("Delete() is expected to get an RTableStaleViewException but did not get it.");
             }
             catch (ReplicatedTableStaleViewException ex)
@@ -240,14 +227,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             newCustomer.Email = email;
             newCustomer.PhoneNumber = phone;
 
-            TableOperation operation = TableOperation.Insert(newCustomer);
-            TableResult result = this.repTable.Execute(operation);
+            TableResult result = this.repTable.Insert(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
             // Retrieve entity
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-            TableResult retrievedResult = this.repTable.Execute(operation);
+            TableResult retrievedResult = this.repTable.Retrieve(firstName, lastName);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
             Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
@@ -277,10 +262,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Retrieve with lower viewId
             //
             Console.WriteLine("\nCalling Retrieve with lower ViewId...");
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.Retrieve(firstName, lastName);
 
                 Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                 Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
@@ -294,10 +278,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Replace with lower viewId
             //
             Console.WriteLine("\nCalling Replace with lower ViewId...");
-            operation = TableOperation.Replace(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.Replace(customer);
 
                 Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                 Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
@@ -311,10 +294,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // InsertOrMerge with lower viewId
             //
             Console.WriteLine("\nCalling InsertOrMerge with lower ViewId...");
-            operation = TableOperation.InsertOrMerge(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.InsertOrMerge(customer);
 
                 Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                 Assert.AreEqual((int)HttpStatusCode.Conflict, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
@@ -328,10 +310,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // InsertOrReplace with lower viewId
             //
             Console.WriteLine("\nCalling InsertOrReplace with lower ViewId...");
-            operation = TableOperation.InsertOrReplace(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.InsertOrReplace(customer);
 
                 Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                 Assert.AreEqual((int)HttpStatusCode.Conflict, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
@@ -345,10 +326,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Merge with lower viewId
             //
             Console.WriteLine("\nCalling Merge with lower ViewId...");
-            operation = TableOperation.Merge(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.Merge(customer);
 
                 Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                 Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
@@ -362,10 +342,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Delete with lower viewId
             //
             Console.WriteLine("\nCalling Delete with lower ViewId...");
-            operation = TableOperation.Delete(customer);
             try
             {
-                retrievedResult = this.repTable.Execute(operation);
+                retrievedResult = this.repTable.Delete(customer);
 
                 Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                 Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
@@ -394,8 +373,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             newCustomer.Email = email;
             newCustomer.PhoneNumber = phone;
 
-            TableOperation operation = TableOperation.Insert(newCustomer);
-            TableResult result = this.repTable.Execute(operation);
+            TableResult result = this.repTable.Insert(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
             ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
@@ -408,8 +386,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Console.WriteLine("Successfully created an entity");
 
             // Retrieve entity
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-            TableResult retrievedResult = this.repTable.Execute(operation);
+            TableResult retrievedResult = this.repTable.Retrieve(firstName, lastName);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
             CustomerEntity customer = (CustomerEntity)retrievedResult.Result;
 
@@ -438,8 +415,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             phone = "1-800-123-0002";            
             customer.Email = email;
             customer.PhoneNumber = phone;
-            operation = TableOperation.Replace(customer);
-            result = repTable.Execute(operation);
+            result = repTable.Replace(customer);
             Assert.AreNotEqual(null, result, "result = null");
 
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
@@ -447,8 +423,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Retrieve Entity
             Console.WriteLine("\nCalling Retrieve() with larger viewId...");
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-            retrievedResult = repTable.Execute(operation);
+            retrievedResult = repTable.Retrieve(firstName, lastName);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
             CustomerEntity customer2 = (CustomerEntity)retrievedResult.Result;
 
@@ -467,16 +442,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Delete entity
             //
             Console.WriteLine("\nCalling Delete with larger viewId...");
-            operation = TableOperation.Delete(customer);
-            TableResult deleteResult = repTable.Execute(operation);
+            TableResult deleteResult = repTable.Delete(customer);
             Assert.AreNotEqual(null, deleteResult, "deleteResult = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, deleteResult.HttpStatusCode, "deleteResult.HttpStatusCode mismatch");
             Assert.IsNotNull(deleteResult.Result, "deleteResult.Result = null");
 
             // Retrieve
             Console.WriteLine("Calling TableOperation.Retrieve() after Delete() was called...");
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-            TableResult retrievedResult2 = repTable.Execute(operation);
+            TableResult retrievedResult2 = repTable.Retrieve(firstName, lastName);
             Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult2.HttpStatusCode, "retrievedResult2.HttpStatusCode mismatch");
             Assert.IsNull(retrievedResult2.Result, "retrievedResult2.Result != null");
 
@@ -493,9 +466,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Insert Entity            
             DynamicReplicatedTableEntity baseEntity = new DynamicReplicatedTableEntity("merge test02", "foo02");
-            baseEntity.Properties.Add("prop1", new EntityProperty("value1"));
+            baseEntity.Properties.Add("prop1", "value1");
             Console.WriteLine("Calling TableOperation.Insert()...");
-            TableResult result = this.repTable.Execute(TableOperation.Insert(baseEntity));
+            TableResult result = this.repTable.Insert(baseEntity);
             Assert.AreNotEqual(null, result, "Insert(): result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "Insert(): result.HttpStatusCode mismatch");
 
@@ -508,10 +481,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             // Merge
             //
-            DynamicReplicatedTableEntity mergeEntity = new DynamicReplicatedTableEntity(baseEntity.PartitionKey, baseEntity.RowKey) { ETag = result.Etag };
-            mergeEntity.Properties.Add("prop2", new EntityProperty("value2"));
+            DynamicReplicatedTableEntity mergeEntity = new DynamicReplicatedTableEntity(baseEntity.PartitionKey, baseEntity.RowKey) { ETag = new ETag(result.Etag) };
+            mergeEntity.Properties.Add("prop2", "value2");
             Console.WriteLine("\nCalling TableOperation.Merge() with a larger viewId...");
-            result = this.repTable.Execute(TableOperation.Merge(mergeEntity));
+            result = this.repTable.Merge(mergeEntity);
             expectedVersion++;
             Assert.AreNotEqual(null, result, "Merge(): result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "Merge(): result.HttpStatusCode mismatch");
@@ -519,17 +492,17 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             // InsertOrMerge
             //
-            DynamicReplicatedTableEntity mergeEntity2 = new DynamicReplicatedTableEntity(baseEntity.PartitionKey, baseEntity.RowKey) { ETag = result.Etag };
-            mergeEntity2.Properties.Add("prop3", new EntityProperty("value3"));
+            DynamicReplicatedTableEntity mergeEntity2 = new DynamicReplicatedTableEntity(baseEntity.PartitionKey, baseEntity.RowKey) { ETag = new ETag(result.Etag) };
+            mergeEntity2.Properties.Add("prop3", "value3");
             Console.WriteLine("\nCalling TableOperation.InsertOrMerge() with a larger viewId...");
-            result = this.repTable.Execute(TableOperation.InsertOrMerge(mergeEntity2));
+            result = this.repTable.InsertOrMerge(mergeEntity2);
             expectedVersion++;
             Assert.AreNotEqual(null, result, "InsertOrMerge(): result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "InsertOrMerge(): result.HttpStatusCode mismatch");
 
             // Retrieve Entity & Verify Contents
             Console.WriteLine("\nCalling TableOperation.Retrieve() with a larger viewId...");
-            result = this.repTable.Execute(TableOperation.Retrieve<DynamicReplicatedTableEntity>(baseEntity.PartitionKey, baseEntity.RowKey));
+            result = this.repTable.Retrieve(baseEntity.PartitionKey, baseEntity.RowKey);
             Assert.AreNotEqual(null, result, "Retrieve(): result = null");
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
@@ -579,7 +552,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     string.Format(jobIdTemplate, i),
                     string.Format(messageTemplate, i));
 
-                this.repTable.Execute(TableOperation.Insert(originalEntity));
+                this.repTable.Insert(originalEntity);
                 partitionKey = originalEntity.PartitionKey;
             }
 
@@ -587,7 +560,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Retrieve entities and use them to create batchOperation to Replace or Delete
             //
             IEnumerable<SampleRTableEntity> allEntities = this.rtableWrapper.GetAllRows(partitionKey);
-            TableBatchOperation batchOperation = new TableBatchOperation();
+            IList<TableTransactionAction> batchOperation = new List<TableTransactionAction>();
             int m = 0;
             foreach (SampleRTableEntity entity in allEntities)
             {
@@ -602,7 +575,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     {
                         ETag = entity.ETag
                     };
-                    batchOperation.Replace(replaceEntity);
+                    batchOperation.Add(new TableTransactionAction(TableTransactionActionType.UpdateReplace, replaceEntity, replaceEntity.ETag));
+
                 }
                 else if (opTypes[m] == TableOperationType.InsertOrReplace)
                 {
@@ -613,11 +587,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     {
                         ETag = entity.ETag
                     };
-                    batchOperation.InsertOrReplace(replaceEntity);
+                    batchOperation.Add(new TableTransactionAction(TableTransactionActionType.UpsertReplace, replaceEntity, replaceEntity.ETag));
                 }
                 else if (opTypes[m] == TableOperationType.Delete)
                 {
-                    batchOperation.Delete(entity);
+                    batchOperation.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
                 }
                 else
                 {
@@ -686,7 +660,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     string.Format(jobIdTemplate, i),
                     string.Format(messageTemplate, i));
 
-                this.repTable.Execute(TableOperation.Insert(originalEntity));
+                this.repTable.Insert(originalEntity);
                 partitionKey = originalEntity.PartitionKey;
             }
 
@@ -694,7 +668,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Retrieve entities and use them to create batchOperation to Replace or Delete
             //
             IEnumerable<SampleRTableEntity> allEntities = this.rtableWrapper.GetAllRows(partitionKey);
-            TableBatchOperation batchOperation = new TableBatchOperation();
+            IList<TableTransactionAction> batchOperation = new List<TableTransactionAction>();
             int m = 0;
             foreach (SampleRTableEntity entity in allEntities)
             {
@@ -709,7 +683,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     {
                         ETag = entity.ETag
                     };
-                    batchOperation.Replace(replaceEntity);
+                    batchOperation.Add(new TableTransactionAction(TableTransactionActionType.UpdateReplace, replaceEntity, replaceEntity.ETag));
                 }
                 else if (opTypes[m] == TableOperationType.InsertOrReplace)
                 {
@@ -720,11 +694,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     {
                         ETag = entity.ETag
                     };
-                    batchOperation.InsertOrReplace(replaceEntity);
+                    batchOperation.Add(new TableTransactionAction(TableTransactionActionType.UpsertReplace, replaceEntity, replaceEntity.ETag));
                 }
                 else if (opTypes[m] == TableOperationType.Delete)
                 {
-                    batchOperation.Delete(entity);
+                    batchOperation.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
                 }
                 else
                 {

@@ -23,24 +23,22 @@
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage;
-    using Microsoft.WindowsAzure.Storage.Table;
-    using Microsoft.WindowsAzure.Storage.Table.Queryable;
     using NUnit.Framework;
     using System;
     using System.Linq;
     using System.Reflection;
     using System.Threading;
     using System.Collections.Generic;
-    
+    using global::Azure.Data.Tables;
+
     [TestFixture]
     public class RTableQueryableTests : RTableLibraryTestBase
     {
         private const int NumberOfBatches = 15;
         private const int BatchSize = 100;
 
-        private CloudTable currentTable = null;
-        private CloudTable complexEntityTable = null;
+        private TableClient currentTable = null;
+        private TableClient complexEntityTable = null;
         private ComplexEntity middleRef = null;
 
         private ReplicatedTable repComplexTable = null;
@@ -53,23 +51,24 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.SetupRTableEnv(tableName);
 
             // Initialize the table to be queried to the tail replica
-            CloudTableClient tableClient = this.repTable.GetTailTableClient();
-            this.currentTable = tableClient.GetTableReference(this.repTable.TableName);
+            TableServiceClient tableClient = this.repTable.GetTailTableClient();
+            this.currentTable = tableClient.GetTableClient(this.repTable.TableName);
 
             // Bulk Query Entities
             for (int i = 0; i < NumberOfBatches; i++)
             {
-                TableBatchOperation batch = new TableBatchOperation();
+                IList<TableTransactionAction> batch = new List<TableTransactionAction>();
 
                 for (int j = 0; j < BatchSize; j++)
                 {
                     DynamicReplicatedTableEntity ent = GenerateRandomEnitity("tables_batch_" + i.ToString());
                     ent.RowKey = string.Format("{0:0000}", j);
 
-                    batch.Insert(ent);
+                    batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
+
                 }
 
-                this.currentTable.ExecuteBatch(batch);
+                this.currentTable.SubmitTransaction(batch);
             }
 
             // Create another ReplicatedTable.
@@ -78,10 +77,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.repComplexTable.CreateIfNotExists();
 
             tableClient = repComplexTable.GetTailTableClient();
-            this.complexEntityTable = tableClient.GetTableReference(repComplexTable.TableName);
+            this.complexEntityTable = tableClient.GetTableClient(repComplexTable.TableName);
 
             // Setup
-            TableBatchOperation complexBatch = new TableBatchOperation();
+            IList<TableTransactionAction> complexBatch = new List<TableTransactionAction>();
             string pk = Guid.NewGuid().ToString();
             for (int m = 0; m < 100; m++)
             {
@@ -102,7 +101,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 complexEntity.LongPrimitiveN = (long)int.MaxValue + m;
                 complexEntity.Guid = Guid.NewGuid();
 
-                complexBatch.Insert(complexEntity);
+                complexBatch.Add(new TableTransactionAction(TableTransactionActionType.Add, complexEntity, complexEntity.ETag));
 
                 if (m == 50)
                 {
@@ -138,16 +137,15 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             localRTable.CreateIfNotExists();
             RTableWrapperForSampleRTableEntity localRTableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(localRTable);
 
-            CloudTableClient tableClient = localRTable.GetTailTableClient();
-            CloudTable table = tableClient.GetTableReference(localRTable.TableName);
+            TableServiceClient tableClient = localRTable.GetTailTableClient();
+            TableClient table = tableClient.GetTableClient(localRTable.TableName);
 
             try
             {
                 BaseEntity entity = new BaseEntity("mypk", "myrk");
-                TableOperation operation = TableOperation.Insert(entity);
-                table.Execute(operation);
+                table.AddEntity(entity);
 
-                IQueryable<BaseEntity> query = table.CreateQuery<BaseEntity>().Where(x => x.PartitionKey == "mypk");
+                var query = table.Query<BaseEntity>(x => x.PartitionKey == "mypk");
                 int itemCount = 0;
                 foreach (BaseEntity ent in query.ToList())
                 {
@@ -175,23 +173,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test to validate basic table query")]
         public void TableQueryableExecuteQuerySync()
         {
-            TableQuery<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where ent.PartitionKey == "tables_batch_1"
-                                                     select ent).AsTableQuery<DynamicReplicatedTableEntity>();
-
-            IEnumerable<DynamicReplicatedTableEntity> seg = query.Execute();
-            int itemCount = 0;
-            foreach (DynamicReplicatedTableEntity ent in seg)
-            {
-                Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
-                Assert.AreEqual(ent.Properties.Count, 4);
-                itemCount++;
-            }
-            Assert.IsTrue(itemCount > 0, "itemCount = 0");
-
             // Try running the query on the Table object.
-            List<DynamicReplicatedTableEntity> segList = currentTable.ExecuteQuery(query).ToList();
-            itemCount = 0;
+            List<DynamicReplicatedTableEntity> segList = currentTable.Query<DynamicReplicatedTableEntity>(e => e.PartitionKey == "tables_batch_1").ToList();
+            var itemCount = 0;
             foreach (DynamicReplicatedTableEntity ent in segList)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
@@ -201,15 +185,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(itemCount > 0, "itemCount = 0");
         }
 
-        [Test(Description="IQueryable - A test to validate basic table query")]
+        [Test(Description = "IQueryable - A test to validate basic table query")]
         public void TableQueryableExecuteQueryWithResolverSync()
         {
-            TableQuery<string> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        where ent.PartitionKey == "tables_batch_1"
-                                        select ent).Resolve((pk, rk, ts, props, etag) => props["a"].StringValue).AsTableQuery();
-
-            IEnumerable<string> seg = query.Execute();
-
+            var seg = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1").Select(e => (string)e["A"]);
             int count = 0;
             foreach (string ent in seg)
             {
@@ -218,14 +197,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
 
             Assert.AreEqual(100, count);
-
-            TableQuery<DynamicReplicatedTableEntity> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where ent.PartitionKey == "tables_batch_1"
-                                                      select ent).AsTableQuery();
-
             // Try running the query on the Table object.
-            List<string> segList = currentTable.ExecuteQuery(query2, (pk, rk, ts, props, etag) => props["a"].StringValue).ToList();
-
+            List<string> segList = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1").Select(e => (string)e["A"]).ToList();
             count = 0;
             foreach (string ent in segList)
             {
@@ -239,14 +212,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test to validate basic table query")]
         public void TableQueryableBasicSync()
         {
-            TableQuery<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where ent.PartitionKey == "tables_batch_1"
-                                                     select ent).AsTableQuery();
-
-            TableQuerySegment<DynamicReplicatedTableEntity> seg = query.ExecuteSegmented(null);
-
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1");
+            var seg = query.AsPages().FirstOrDefault();
             int itemCount = 0;
-            foreach (DynamicReplicatedTableEntity ent in seg)
+            foreach (DynamicReplicatedTableEntity ent in seg.Values)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
                 Assert.AreEqual(ent.Properties.Count, 4);
@@ -255,7 +224,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(itemCount > 0, "itemCount == 0");
 
             // Try running the query on the Table object.
-            List<DynamicReplicatedTableEntity> segList = currentTable.ExecuteQuerySegmented(query, null).ToList();
+            List<DynamicReplicatedTableEntity> segList = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1").ToList();
             itemCount = 0;
             foreach (DynamicReplicatedTableEntity ent in segList)
             {
@@ -266,15 +235,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(itemCount > 0, "itemCount = 0");
         }
 
-        [Test(Description="IQueryable - A test to validate basic table query")]
+        [Test(Description = "IQueryable - A test to validate basic table query")]
         public void TableQueryableBasicWithResolverSync()
         {
-            TableQuery<string> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        where ent.PartitionKey == "tables_batch_1"
-                                        select ent).Resolve((pk, rk, ts, props, etag) => props["a"].StringValue).AsTableQuery();
-
-            TableQuerySegment<string> seg = query.ExecuteSegmented(null);
-
+            var seg = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1").Select(e => (string)e["A"]);
             int count = 0;
             foreach (string ent in seg)
             {
@@ -284,13 +248,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             Assert.AreEqual(100, count);
 
-            TableQuery<DynamicReplicatedTableEntity> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where ent.PartitionKey == "tables_batch_1"
-                                                      select ent).AsTableQuery();
-
             // Try running the query on the Table object.
-            List<string> segList = currentTable.ExecuteQuerySegmented(query2, (pk, rk, ts, props, etag) => props["a"].StringValue, null).ToList();
-
+            List<string> segList = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1").Select(e => (string)e["A"]).ToList();
             count = 0;
             foreach (string ent in segList)
             {
@@ -305,11 +264,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         public void TableQueryableBinaryOperatorsSync()
         {
             // == 
-            TableQuery<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where ent.PartitionKey == "tables_batch_1"
-                                                     select ent).AsTableQuery();
-
-            IEnumerable<DynamicReplicatedTableEntity> seg = query.Execute();
+            var seg = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1");
             int count = 0;
             foreach (DynamicReplicatedTableEntity ent in seg)
             {
@@ -320,11 +275,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(100, count, "count != 100");
 
             // !=
-            TableQuery<DynamicReplicatedTableEntity> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where ent.PartitionKey == "tables_batch_1" &&
-                                                      ent.RowKey != "0050"
-                                                      select ent).AsTableQuery();
-            IEnumerable<DynamicReplicatedTableEntity> seg2 = query2.Execute();
+            var seg2 = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1" && ent.RowKey != "0050");
             count = 0;
             foreach (DynamicReplicatedTableEntity ent in seg2)
             {
@@ -336,11 +287,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(99, count, "count != 99");
 
             // <
-            TableQuery<DynamicReplicatedTableEntity> query3 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where ent.PartitionKey == "tables_batch_1" &&
-                                                      ent.RowKey.CompareTo("0050") < 0
-                                                      select ent).AsTableQuery();
-            IEnumerable<DynamicReplicatedTableEntity> seg3 = query3.Execute();
+            var seg3 = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") < 0);
             count = 0;
             foreach (DynamicReplicatedTableEntity ent in seg3)
             {
@@ -352,11 +299,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(50, count);
 
             // >
-            TableQuery<DynamicReplicatedTableEntity> query4 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where ent.PartitionKey == "tables_batch_1" &&
-                                                      ent.RowKey.CompareTo("0050") > 0
-                                                      select ent).AsTableQuery();
-            IEnumerable<DynamicReplicatedTableEntity> seg4 = query4.Execute();
+            var seg4 = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0);
             count = 0;
             foreach (DynamicReplicatedTableEntity ent in seg4)
             {
@@ -368,11 +311,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(49, count);
 
             // >=
-            TableQuery<DynamicReplicatedTableEntity> query5 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where ent.PartitionKey == "tables_batch_1" &&
-                                                      ent.RowKey.CompareTo("0050") >= 0
-                                                      select ent).AsTableQuery();
-            IEnumerable<DynamicReplicatedTableEntity> seg5 = query5.Execute();
+            var seg5 = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") >= 0);
             bool flag = false;
             count = 0;
             foreach (DynamicReplicatedTableEntity ent in seg5)
@@ -389,11 +328,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(flag);
 
             // <=
-            TableQuery<DynamicReplicatedTableEntity> query6 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where ent.PartitionKey == "tables_batch_1" &&
-                                                      ent.RowKey.CompareTo("0050") <= 0
-                                                      select ent).AsTableQuery();
-            IEnumerable<DynamicReplicatedTableEntity> seg6 = query6.Execute();
+            var seg6 = currentTable.Query<DynamicReplicatedTableEntity>(ent => ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") <= 0);
             count = 0;
             flag = false;
             foreach (DynamicReplicatedTableEntity ent in seg6)
@@ -410,92 +345,61 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(flag);
 
             // +
-            TableQuery<ComplexEntity> query7 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                where (ent.Int32) < 1 + 50
-                                                select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg7 = query7.Execute();
+            var seg7 = currentTable.Query<ComplexEntity>(ent => ent.Int32 < 1 + 50);
             Assert.AreEqual(51, seg7.Count());
 
             // -
-            TableQuery<ComplexEntity> query8 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                where (ent.Int32) < 100 - 50
-                                                select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg8 = query8.Execute();
+            var seg8 = currentTable.Query<ComplexEntity>(ent => ent.Int32 < 100 - 50);
             Assert.AreEqual(50, seg8.Count());
 
             // *
-            TableQuery<ComplexEntity> query9 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                where (ent.Int32) < 2 * 25
-                                                select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg9 = query9.Execute();
+            var seg9 = currentTable.Query<ComplexEntity>(ent => ent.Int32 < 2 * 25);
             Assert.AreEqual(50, seg9.Count());
 
             // /
-            TableQuery<ComplexEntity> query10 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                 where (ent.Int32) < 100 / 2
-                                                 select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg10 = query10.Execute();
+            var seg10 = currentTable.Query<ComplexEntity>(ent => ent.Int32 < 100 / 2);
             Assert.AreEqual(50, seg10.Count());
 
             // %
-            TableQuery<ComplexEntity> query11 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                 where (ent.Int32) < 100 % 12
-                                                 select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg11 = query11.Execute();
+            var seg11 = currentTable.Query<ComplexEntity>(ent => ent.Int32 < 100 % 12);
             Assert.AreEqual(4, seg11.Count());
 
             // left shift
-            TableQuery<ComplexEntity> query12 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                 where (ent.Int32) < (1 << 2)
-                                                 select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg12 = query12.Execute();
+            var seg12 = currentTable.Query<ComplexEntity>(ent => ent.Int32 < (1 << 2));
             Assert.AreEqual(4, seg12.Count());
 
             // right shift
-            TableQuery<ComplexEntity> query13 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                 where (ent.Int32) < (8 >> 1)
-                                                 select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg13 = query13.Execute();
+            var seg13 = currentTable.Query<ComplexEntity>(ent => ent.Int32 < (8 >> 1));
             Assert.AreEqual(4, seg13.Count());
 
             // &
-            TableQuery<ComplexEntity> query14 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                 where (ent.Int32) > (2 & 4)
-                                                 select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg14 = query14.Execute();
+            var seg14 = currentTable.Query<ComplexEntity>(ent => ent.Int32 < (2 & 4));
             Assert.AreEqual(99, seg14.Count());
 
             // |
-            TableQuery<ComplexEntity> query15 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                 where (ent.Int32) > (2 | 4)
-                                                 select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg15 = query15.Execute();
+            var seg15 = currentTable.Query<ComplexEntity>(ent => ent.Int32 < (2 | 4));
             Assert.AreEqual(93, seg15.Count());
         }
 
         [Test(Description="IQueryable - A test to validate filter combinations")]
         public void TableQueryableCombineFilters()
         {
-            OperationContext opContext = new OperationContext();
-
-            TableQuery<DynamicReplicatedTableEntity> res = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                   where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") >= 0) ||
-                                                   (ent.PartitionKey == "tables_batch_2" && ent.RowKey.CompareTo("0050") >= 0)
-                                                   select ent).WithContext(opContext);
-
+            var res = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") >= 0) ||
+                (ent.PartitionKey == "tables_batch_2" && ent.RowKey.CompareTo("0050") >= 0));
             int count = 0;
             foreach (DynamicReplicatedTableEntity ent in res)
             {
-                Assert.AreEqual(ent.Properties["test"].StringValue, "test");
+                Assert.AreEqual((string)ent.Properties["test"], "test");
                 Assert.IsTrue(ent.RowKey.CompareTo("0050") >= 0);
                 count++;
             }
 
             Assert.AreEqual(100, count);
 
-            TableQuery<DynamicReplicatedTableEntity> res2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                    where ((ent.RowKey.CompareTo("0050") == 0 || ent.RowKey.CompareTo("0051") == 0) && ent.PartitionKey == "tables_batch_2")
-                                                    select ent).WithContext(opContext);
+            var res2 = currentTable.Query<DynamicReplicatedTableEntity>(ent => 
+                (ent.RowKey.CompareTo("0050") == 0 || ent.RowKey.CompareTo("0051") == 0) && 
+                ent.PartitionKey == "tables_batch_2");
             count = 0;
             foreach (DynamicReplicatedTableEntity ent in res2)
             {
@@ -509,73 +413,69 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test to validate First and FirstOrDefault")]
         public void TableQueryableFirst()
         {
-            DynamicReplicatedTableEntity res = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                       where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") < 0)
-                                       select ent).First();
+            DynamicReplicatedTableEntity res = currentTable.Query<DynamicReplicatedTableEntity>(ent => 
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") < 0)
+                .First();
             Assert.AreEqual("tables_batch_1", res.PartitionKey);
             Assert.AreEqual("0000", res.RowKey);
 
-            DynamicReplicatedTableEntity res2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") < 0)
-                                        select ent).FirstOrDefault();
+            DynamicReplicatedTableEntity res2 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") < 0)
+                .FirstOrDefault();
             Assert.AreEqual("tables_batch_1", res2.PartitionKey);
             Assert.AreEqual("0000", res2.RowKey);
 
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                                           where (ent.PartitionKey == "tables_batch_16" && ent.RowKey.CompareTo("0050") < 0)
-                                                                           select ent).First(), "Invoking First on a query that does not give any results should fail");
+            TestHelper.ExpectedException<TargetInvocationException>(() => currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_16" && ent.RowKey.CompareTo("0050") < 0).First(), "Invoking First on a query that does not give any results should fail");
 
-            DynamicReplicatedTableEntity res3 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        where (ent.PartitionKey == "tables_batch_16" && ent.RowKey.CompareTo("0050") < 0)
-                                        select ent).FirstOrDefault();
+            DynamicReplicatedTableEntity res3 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_16" && ent.RowKey.CompareTo("0050") < 0)
+                .FirstOrDefault();
             Assert.IsNull(res3);
         }
 
         [Test(Description="IQueryable - A test to validate Single and SingleOrDefault")]
         public void TableQueryableSingle()
         {
-            DynamicReplicatedTableEntity res = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                       where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0)
-                                       select ent).Single();
+            DynamicReplicatedTableEntity res = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0)
+                .Single();
             Assert.AreEqual("tables_batch_1", res.PartitionKey);
             Assert.AreEqual("0050", res.RowKey);
 
-            DynamicReplicatedTableEntity res2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0)
-                                        select ent).SingleOrDefault();
+            DynamicReplicatedTableEntity res2 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0)
+                .SingleOrDefault();
             Assert.AreEqual("tables_batch_1", res2.PartitionKey);
             Assert.AreEqual("0050", res2.RowKey);
 
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                                           where (ent.PartitionKey == "tables_batch_16" && ent.RowKey.CompareTo("0050") == 0)
-                                                                           select ent).Single(), "Invoking Single on a query that does not return anything should fail");
+            TestHelper.ExpectedException<TargetInvocationException>(() => currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_16" && ent.RowKey.CompareTo("0050") == 0).Single(), "Invoking Single on a query that does not return anything should fail");
+            TestHelper.ExpectedException<TargetInvocationException>(() => currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0).Single(), "Invoking Single on a query that returns more than one result should fail");
 
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                                           where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                                                           select ent).Single(), "Invoking Single on a query that returns more than one result should fail");
-
-            DynamicReplicatedTableEntity res3 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        where (ent.PartitionKey == "tables_batch_16" && ent.RowKey.CompareTo("0050") == 0)
-                                        select ent).SingleOrDefault();
+            DynamicReplicatedTableEntity res3 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+               ent.PartitionKey == "tables_batch_16" && ent.RowKey.CompareTo("0050") == 0)
+                .SingleOrDefault();
             Assert.IsNull(res3);
         }
 
         [Test(Description="IQueryable - A test to validate Take")]
         public void TableQueryableTake()
         {
-            IQueryable<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0)
-                                                     select ent).Take(1);
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0)
+                .Take(1);
             Assert.AreEqual(1, query.ToList().Count);
 
-            IQueryable<DynamicReplicatedTableEntity> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                                      select ent).Take(5);
+            var query2 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Take(5);
             Assert.AreEqual(5, query2.ToList().Count);
 
-            IQueryable<DynamicReplicatedTableEntity> query3 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                                      select ent).Take(51);
+            var query3 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Take(51);
             // If we do a Take with more than result number of entities, we just get the max. No error is thrown.
             Assert.AreEqual(49, query3.ToList().Count);
         }
@@ -584,28 +484,27 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test to validate multiple Take options")]
         public void TableQueryableMultipleTake()
         {
-            IQueryable<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                                     select ent).Take(5).Take(1);
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Take(5).Take(1);
             Assert.AreEqual(1, query.ToList().Count);
 
-            IQueryable<DynamicReplicatedTableEntity> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                                      select ent).Take(1).Take(5);
+            var query2 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+               ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+               .Take(1).Take(5);
             // Should still give just 1.
             Assert.AreEqual(1, query2.ToList().Count);
 
-            TestHelper.ExpectedException<ArgumentException>(() => (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                                   where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0)
-                                                                   select ent).Take(1).Take(-1).ToList(), "Negative Take count should fail");
+            TestHelper.ExpectedException<ArgumentException>(() => currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0).Take(1).Take(-1).ToList(), "Negative Take count should fail");
         }
 
         [Test(Description="IQueryable - A test to validate Cast")]
         public void TableQueryableCast()
         {
-            IQueryable<POCOEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                            where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                            select ent).Cast<POCOEntity>();
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Cast<POCOEntity>();
             int count = 0;
             foreach (POCOEntity ent in query)
             {
@@ -617,9 +516,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
             Assert.AreEqual(49, count);
 
-            IQueryable<ProjectedPOCO> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                                select ent).Cast<ProjectedPOCO>();
+            var query2 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Cast<ProjectedPOCO>();
             int count2 = 0;
             foreach (ProjectedPOCO ent in query2)
             {
@@ -636,9 +535,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test to validate multiple Cast options")]
         public void TableQueryableMultipleCast()
         {
-            IQueryable<ProjectedPOCO> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                               where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                               select ent).Cast<POCOEntity>().Cast<ProjectedPOCO>();
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Cast<POCOEntity>().Cast<ProjectedPOCO>();
             int count = 0;
             foreach (ProjectedPOCO ent in query)
             {
@@ -651,9 +550,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
             Assert.AreEqual(49, count);
 
-            IQueryable<POCOEntity> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                             where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                             select ent).Cast<ProjectedPOCO>().Cast<POCOEntity>();
+            var query2 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Cast<ProjectedPOCO>().Cast<POCOEntity>();
             int count2 = 0;
             foreach (POCOEntity ent in query2)
             {
@@ -670,19 +569,19 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test to validate ToArray")]
         public void TableQueryableToArray()
         {
-            DynamicReplicatedTableEntity[] query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                           where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0)
-                                           select ent).Take(1).ToArray();
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") == 0)
+                .Take(1).ToArray();
             Assert.AreEqual(1, query.Length);
 
-            DynamicReplicatedTableEntity[] query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                            where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                            select ent).Take(5).ToArray();
+            var query2 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Take(5).ToArray();
             Assert.AreEqual(5, query2.Length);
 
-            DynamicReplicatedTableEntity[] query3 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                            where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                            select ent).Take(51).ToArray();
+            var query3 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Take(51).ToArray();
             // If we do a Take with more than result number of entities, we just get the max. No error is thrown.
             Assert.AreEqual(49, query3.Length);
         }
@@ -691,9 +590,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         public void TableQueryableFilterPredicate()
         {
             // Filter before key predicate.
-            IQueryable<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where (ent.RowKey != "0050" && ent.PartitionKey == "tables_batch_1")
-                                                     select ent);
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.RowKey != "0050" && ent.PartitionKey == "tables_batch_1");
             int count = 0;
             foreach (DynamicReplicatedTableEntity ent in query)
             {
@@ -704,9 +602,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(99, count);
 
             // Key predicate before filter.
-            IQueryable<DynamicReplicatedTableEntity> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where (ent.PartitionKey == "tables_batch_1" && ent.RowKey != "0050")
-                                                      select ent);
+            var query2 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey != "0050");
             int count2 = 0;
             foreach (DynamicReplicatedTableEntity ent in query2)
             {
@@ -720,9 +617,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test to use a complex expression filter")]
         public void TableQueryableComplexFilter()
         {
-            IQueryable<ComplexEntity> query = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                               where ((ent.RowKey == "0050" && ent.Int32 == 50) || ((ent.Int32 == 30) && (ent.String == "wrong string" || ent.Bool == true)) || (ent.LongPrimitiveN == (long)int.MaxValue + 50))
-                                               select ent);
+            var query = currentTable.Query<ComplexEntity>(ent =>
+                (ent.RowKey == "0050" && ent.Int32 == 50) || ((ent.Int32 == 30) && (ent.String == "wrong string" || ent.Bool == true)));
             int count = 0;
             foreach (ComplexEntity ent in query)
             {
@@ -736,11 +632,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test to use a complex expression filter consisting of multiple nested paranthesis")]
         public void TableQueryableNestedParanthesis()
         {
-            IQueryable<ComplexEntity> query = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                               where ((ent.RowKey == "0050" && ent.Int32 == 50) ||
-                                               ((ent.Int32 == 30) && (ent.String == "wrong string" || ent.Bool == true) && !(ent.IntegerPrimitive == 31 && ent.LongPrimitive == (long)int.MaxValue + 31)) ||
-                                               (ent.LongPrimitiveN == (long)int.MaxValue + 50))
-                                               select ent);
+            var query = currentTable.Query<ComplexEntity>(ent =>
+                (ent.RowKey == "0050" && ent.Int32 == 50) ||
+                ((ent.Int32 == 30) && (ent.String == "wrong string" || ent.Bool == true) && !(ent.IntegerPrimitive == 31 && ent.LongPrimitive == (long)int.MaxValue + 31)) ||
+                (ent.LongPrimitiveN == (long)int.MaxValue + 50));
             int count = 0;
             foreach (ComplexEntity ent in query)
             {
@@ -754,14 +649,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test to validate Unary operators")]
         public void TableQueryableUnary()
         {
-            OperationContext opContext = new OperationContext();
-
             // Not.
-            TableQuery<DynamicReplicatedTableEntity> res = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                   where (ent.PartitionKey == "tables_batch_1" &&
-                                                   !(ent.RowKey.CompareTo("0050") == 0))
-                                                   select ent).WithContext(opContext);
-            IEnumerable<DynamicReplicatedTableEntity> queryResult = res.Execute();
+            var queryResult = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" &&
+                !(ent.RowKey.CompareTo("0050") == 0));
             Assert.AreEqual(99, queryResult.Count());
             foreach (DynamicReplicatedTableEntity ent in queryResult)
             {
@@ -769,31 +660,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
 
             // Unary +.
-            TableQuery<ComplexEntity> query = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                               where +(ent.Int32) < +50
-                                               select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg = query.Execute();
+            var seg = currentTable.Query<ComplexEntity>(ent =>
+                +ent.Int32 < +50);
             Assert.AreEqual(50, seg.Count());
 
             // Unary -.
-            TableQuery<ComplexEntity> query2 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                where (ent.Int32) > -1
-                                                select ent).AsTableQuery();
-            IEnumerable<ComplexEntity> seg2 = query2.Execute();
+            var seg2 = currentTable.Query<ComplexEntity>(ent =>
+                ent.Int32 > -1);
             Assert.AreEqual(100, seg2.Count());
         }
         
         [Test(Description="IQueryable - A test to validate basic table continuation")]
         public void TableQueryableWithContinuationSync()
         {
-            TableQuery<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     select ent).AsTableQuery();
-
-            OperationContext opContext = new OperationContext();
-            TableQuerySegment<DynamicReplicatedTableEntity> seg = query.ExecuteSegmented(null, null, opContext);
-
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(e => true);
+            var seg = query.AsPages().FirstOrDefault();
             int count = 0;
-            foreach (DynamicReplicatedTableEntity ent in seg)
+            foreach (DynamicReplicatedTableEntity ent in seg.Values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
                 Assert.AreEqual(ent.Properties.Count, 4);
@@ -802,8 +685,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Second segment
             Assert.IsNotNull(seg.ContinuationToken);
-            seg = query.ExecuteSegmented(seg.ContinuationToken, null, opContext);
-            foreach (DynamicReplicatedTableEntity ent in seg)
+            seg = query.AsPages(seg.ContinuationToken).FirstOrDefault();
+            foreach (DynamicReplicatedTableEntity ent in seg.Values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
                 Assert.AreEqual(ent.Properties.Count, 4);
@@ -811,197 +694,26 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
 
             Assert.AreEqual(1500, count);
-            TestHelper.AssertNAttempts(opContext, 2);
         }
 
         #endregion Sync
-
-        #region APM
-        [Test(Description="IQueryable - A test to validate basic table query APM")]
-        public void TableGenericQueryableBasicAPM()
-        {
-            TableQuery<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where ent.PartitionKey == "tables_batch_1"
-                                                     select ent).AsTableQuery();
-
-            TableQuerySegment<DynamicReplicatedTableEntity> seg = null;
-            using (ManualResetEvent evt = new ManualResetEvent(false))
-            {
-                IAsyncResult asyncRes = null;
-                query.BeginExecuteSegmented(null, (res) =>
-                {
-                    asyncRes = res;
-                    evt.Set();
-                }, null);
-                evt.WaitOne();
-
-                seg = query.EndExecuteSegmented(asyncRes);
-            }
-
-            int itemCount = 0;
-            foreach (DynamicReplicatedTableEntity ent in seg)
-            {
-                Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
-                Assert.AreEqual(ent.Properties.Count, 4);
-                itemCount++;
-            }
-            Assert.IsTrue(itemCount > 0, "itemCount = 0");
-
-            List<DynamicReplicatedTableEntity> segList = null;
-            using (ManualResetEvent evt = new ManualResetEvent(false))
-            {
-                IAsyncResult asyncRes = null;
-                currentTable.BeginExecuteQuerySegmented(query, null, (res) =>
-                {
-                    asyncRes = res;
-                    evt.Set();
-                }, null);
-                evt.WaitOne();
-
-                segList = currentTable.EndExecuteQuerySegmented<DynamicReplicatedTableEntity>(asyncRes).ToList();
-            }
-
-            itemCount = 0;
-            foreach (DynamicReplicatedTableEntity ent in segList)
-            {
-                Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
-                Assert.AreEqual(ent.Properties.Count, 4);
-                itemCount++;
-            }
-            Assert.IsTrue(itemCount > 0, "itemCount = 0");
-        }
-
-        [Test(Description="IQueryable - A test to validate basic table query APM")]
-        public void TableGenericQueryableBasicWithResolverAPM()
-        {
-            TableQuery<string> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        where ent.PartitionKey == "tables_batch_1"
-                                        select ent).Resolve((pk, rk, ts, props, etag) => props["a"].StringValue).AsTableQuery();
-
-            TableQuerySegment<string> seg = null;
-            using (ManualResetEvent evt = new ManualResetEvent(false))
-            {
-                IAsyncResult asyncRes = null;
-                query.BeginExecuteSegmented(null, (res) =>
-                {
-                    asyncRes = res;
-                    evt.Set();
-                }, null);
-                evt.WaitOne();
-
-                seg = query.EndExecuteSegmented(asyncRes);
-            }
-
-            int count = 0;
-            foreach (string ent in seg)
-            {
-                Assert.AreEqual("a", ent);
-                count++;
-            }
-
-            Assert.AreEqual(100, count);
-
-            TableQuery<DynamicReplicatedTableEntity> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where ent.PartitionKey == "tables_batch_1"
-                                                      select ent).AsTableQuery();
-            List<string> segList = null;
-            using (ManualResetEvent evt = new ManualResetEvent(false))
-            {
-                IAsyncResult asyncRes = null;
-                currentTable.BeginExecuteQuerySegmented(query2, (pk, rk, ts, props, etag) => props["a"].StringValue, null, (res) =>
-                {
-                    asyncRes = res;
-                    evt.Set();
-                }, null);
-                evt.WaitOne();
-
-                segList = currentTable.EndExecuteQuerySegmented<string>(asyncRes).ToList();
-            }
-
-            count = 0;
-            foreach (string ent in segList)
-            {
-                Assert.AreEqual("a", ent);
-                count++;
-            }
-
-            Assert.AreEqual(100, count);
-        }
-
-        [Test(Description="IQueryable - A test to validate basic table continuation APM")]
-        public void TableGenericQueryableWithContinuationAPM()
-        {
-            TableQuery<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     select ent).AsTableQuery();
-
-            OperationContext opContext = new OperationContext();
-            TableQuerySegment<DynamicReplicatedTableEntity> seg = null;
-            using (ManualResetEvent evt = new ManualResetEvent(false))
-            {
-                IAsyncResult asyncRes = null;
-                query.BeginExecuteSegmented(null, null, opContext, (res) =>
-                {
-                    asyncRes = res;
-                    evt.Set();
-                }, null);
-                evt.WaitOne();
-
-                seg = query.EndExecuteSegmented(asyncRes);
-            }
-
-            int count = 0;
-            foreach (DynamicReplicatedTableEntity ent in seg)
-            {
-                Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
-                Assert.AreEqual(ent.Properties.Count, 4);
-                count++;
-            }
-
-            // Second segment
-            Assert.IsNotNull(seg.ContinuationToken);
-            using (ManualResetEvent evt = new ManualResetEvent(false))
-            {
-                IAsyncResult asyncRes = null;
-                query.BeginExecuteSegmented(seg.ContinuationToken, null, opContext, (res) =>
-                {
-                    asyncRes = res;
-                    evt.Set();
-                }, null);
-                evt.WaitOne();
-
-                seg = query.EndExecuteSegmented(asyncRes);
-            }
-
-            foreach (DynamicReplicatedTableEntity ent in seg)
-            {
-                Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
-                Assert.AreEqual(ent.Properties.Count, 4);
-                count++;
-            }
-
-            Assert.AreEqual(1500, count);
-            TestHelper.AssertNAttempts(opContext, 2);
-        }
-        #endregion APM
 
         #region Task
         [Test(Description="IQueryable - A test to validate basic table query")]
         public void TableQueryableBasicTask()
         {
-            TableQuery<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where ent.PartitionKey == "tables_batch_1"
-                                                     select ent).AsTableQuery();
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1");
+            var seg = query.AsPages().FirstOrDefault();
 
-            TableQuerySegment<DynamicReplicatedTableEntity> seg = query.ExecuteSegmentedAsync(null).Result;
-
-            foreach (DynamicReplicatedTableEntity ent in seg)
+            foreach (DynamicReplicatedTableEntity ent in seg.Values)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
                 Assert.AreEqual(ent.Properties.Count, 4);
             }
 
             // Try running the query on the Table object.
-            List<DynamicReplicatedTableEntity> segList = currentTable.ExecuteQuerySegmentedAsync(query, null).Result.ToList();
+            List<DynamicReplicatedTableEntity> segList = query.AsPages(seg.ContinuationToken).FirstOrDefault().Values.ToList();
 
             foreach (DynamicReplicatedTableEntity ent in segList)
             {
@@ -1010,14 +722,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [Test(Description="IQueryable - A test to validate basic table query")]
+        [Test(Description = "IQueryable - A test to validate basic table query")]
         public void TableQueryableBasicWithResolverTask()
         {
-            TableQuery<string> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        where ent.PartitionKey == "tables_batch_1"
-                                        select ent).Resolve((pk, rk, ts, props, etag) => props["a"].StringValue).AsTableQuery();
-
-            TableQuerySegment<string> seg = query.ExecuteSegmentedAsync(null).Result;
+            var seg = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1")
+                .Select(e => (string)e["A"]);
 
             int count = 0;
             foreach (string ent in seg)
@@ -1027,13 +737,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
 
             Assert.AreEqual(100, count);
-
-            TableQuery<DynamicReplicatedTableEntity> query2 = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                      where ent.PartitionKey == "tables_batch_1"
-                                                      select ent).AsTableQuery();
-
+            
             // Try running the query on the Table object.
-            List<string> segList = currentTable.ExecuteQuerySegmentedAsync(query2, (pk, rk, ts, props, etag) => props["a"].StringValue, null).Result.ToList();
+            var segList = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1")
+                .Select(e => (string)e["A"])
+                .ToList();
 
             count = 0;
             foreach (string ent in segList)
@@ -1044,18 +753,15 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             Assert.AreEqual(100, count);
         }
-        
+
         [Test(Description="IQueryable - A test to validate basic table continuation")]
         public void TableQueryableWithContinuationTask()
         {
-            TableQuery<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     select ent).AsTableQuery();
-
-            OperationContext opContext = new OperationContext();
-            TableQuerySegment<DynamicReplicatedTableEntity> seg = query.ExecuteSegmentedAsync(null, null, opContext).Result;
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(e => true);
+            var seg = query.AsPages().FirstOrDefault();
 
             int count = 0;
-            foreach (DynamicReplicatedTableEntity ent in seg)
+            foreach (DynamicReplicatedTableEntity ent in seg.Values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
                 Assert.AreEqual(ent.Properties.Count, 4);
@@ -1064,9 +770,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Second segment
             Assert.IsNotNull(seg.ContinuationToken);
-            seg = query.ExecuteSegmentedAsync(seg.ContinuationToken, null, opContext).Result;
+            seg = query.AsPages(seg.ContinuationToken).FirstOrDefault();
 
-            foreach (DynamicReplicatedTableEntity ent in seg)
+            foreach (DynamicReplicatedTableEntity ent in seg.Values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
                 Assert.AreEqual(ent.Properties.Count, 4);
@@ -1074,7 +780,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
 
             Assert.AreEqual(1500, count);
-            TestHelper.AssertNAttempts(opContext, 2);
         }
 
         #endregion Task
@@ -1084,16 +789,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable DynamicTableEntityQuery")]
         public void TableQueryableDynamicTableEntityQuery()
         {
-            OperationContext opContext = new OperationContext();
-
             Func<string, string> identityFunc = (s) => s;
 
-            TableQuery<DynamicTableEntity> res = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                                                  where ent.PartitionKey == middleRef.PartitionKey &&
-                                                  ent.Properties[identityFunc("DateTimeOffset")].DateTimeOffsetValue >= middleRef.DateTimeOffset
-                                                  select ent).WithContext(opContext);
+            var res = complexEntityTable.Query<TableEntity>(ent =>
+                ent.PartitionKey == middleRef.PartitionKey &&
+                ent.GetDateTimeOffset("DateTimeOffset") >= middleRef.DateTimeOffset);
 
-            List<DynamicTableEntity> entities = res.ToList();
+            List<TableEntity> entities = res.ToList();
 
             Assert.AreEqual(entities.Count, 50);
         }
@@ -1101,40 +803,15 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable Where")]
         public void TableQueryableWhere()
         {
-            OperationContext opContext = new OperationContext();
-
-            TableQuery<DynamicReplicatedTableEntity> res = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                   where ent.PartitionKey == "tables_batch_1" &&
-                                                   ent.RowKey.CompareTo("0050") >= 0
-                                                   select ent).WithContext(opContext);
+            var res = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" &&
+                ent.RowKey.CompareTo("0050") >= 0);
 
             int count = 0;
             foreach (DynamicReplicatedTableEntity ent in res)
             {
-                Assert.AreEqual(ent.Properties["test"].StringValue, "test");
+                Assert.AreEqual((string)ent.Properties["test"], "test");
 
-                Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
-                Assert.AreEqual(ent.RowKey, string.Format("{0:0000}", count + 50));
-                count++;
-            }
-
-            Assert.AreEqual(count, 50);
-        }
-
-        [Test(Description="IQueryable - A test to validate a query with multiple where clauses")]
-        public void TableQueryableMultipleWhereSync()
-        {
-            OperationContext opContext = new OperationContext();
-            
-            TableQuery<DynamicReplicatedTableEntity> res = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                   where ent.PartitionKey == "tables_batch_1"
-                                                   where ent.RowKey.CompareTo("0050") >= 0
-                                                   select ent).WithContext(opContext);
-
-            int count = 0;
-            foreach (DynamicReplicatedTableEntity ent in res)
-            {
-                Assert.AreEqual(ent.Properties["test"].StringValue, "test");
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
                 Assert.AreEqual(ent.RowKey, string.Format("{0:0000}", count + 50));
                 count++;
@@ -1146,9 +823,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="TableQueryable - A test to validate basic table continuation & query is able to correctly execute multiple times")]
         public void TableQueryableEnumerateTwice()
         {
-            OperationContext opContext = new OperationContext();
-            TableQuery<DynamicReplicatedTableEntity> res = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                   select ent).WithContext(opContext);
+            var res = currentTable.Query<DynamicReplicatedTableEntity>(e => true);
 
             List<DynamicReplicatedTableEntity> firstIteration = new List<DynamicReplicatedTableEntity>();
             List<DynamicReplicatedTableEntity> secondIteration = new List<DynamicReplicatedTableEntity>();
@@ -1182,18 +857,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable Basic projection test")]
         public void TableQueryableProjection()
         {
-            OperationContext opContext = new OperationContext();
-            var baseQuery = currentTable.CreateQuery<POCOEntity>().WithContext(opContext);
+            var baseQuery = currentTable.Query<POCOEntity>(e => true);
+            var pocoRes = baseQuery.Select(ent => new ProjectedPOCO()
+            {
+                PartitionKey = ent.PartitionKey,
+                RowKey = ent.RowKey,
+                Timestamp = ent.Timestamp,
+                a = ent.a,
+                c = ent.c
+            });
 
-            var pocoRes = (from ent in baseQuery
-                           select new ProjectedPOCO()
-                           {
-                               PartitionKey = ent.PartitionKey,
-                               RowKey = ent.RowKey,
-                               Timestamp = ent.Timestamp,
-                               a = ent.a,
-                               c = ent.c
-                           });
             int count = 0;
 
             foreach (ProjectedPOCO ent in pocoRes)
@@ -1216,17 +889,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(stringRes.Count, count);
 
             // Project a single property and modify it via Select
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                                           where ent.RowKey == "0050"
-                                                                           select (ent.Int32 + 1)).Single(), "Specifying any operation after last navigation other than take should fail");
+            TestHelper.ExpectedException<TargetInvocationException>(() => complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.RowKey == "0050").Select(ent => ent.Int32 + 1).Single(), "Specifying any operation after last navigation other than take should fail");
 
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                                           where ent.RowKey.CompareTo("0050") > 0
-                                                                           select ent.Int32).Skip(5).Single(), "Specifying any operation after last navigation other than take should fail");
-            
+            TestHelper.ExpectedException<TargetInvocationException>(() => complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.RowKey.CompareTo("0050") > 0).Select(ent => ent.Int32).Skip(5).Single(), "Specifying any operation after last navigation other than take should fail");
+
             // TableQuery.Project no resolver
-            IQueryable<POCOEntity> projectionResult = (from ent in baseQuery
-                                                       select TableQuery.Project(ent, "a", "b"));
+            var projectionResult = currentTable.Query<POCOEntity>(e => true, select: new List<string>() { "a", "b" });
             count = 0;
             foreach (POCOEntity ent in projectionResult)
             {
@@ -1244,8 +914,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(stringRes.Count, count);
 
             // TableQuery.Project with resolver
-            IQueryable<string> resolverRes = (from ent in baseQuery
-                                              select TableQuery.Project(ent, "a", "b")).Resolve((pk, rk, ts, props, etag) => props["a"].StringValue);
+            var resolverRes = currentTable.Query<POCOEntity>(e => true, select: new List<string>() { "a", "b" })
+                .Select(e => e.a);
             count = 0;
             foreach (string s in resolverRes)
             {
@@ -1255,12 +925,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(stringRes.Count, count);
 
             // Project multiple properties via Select
-            IEnumerable<Tuple<string, string>> result = (from ent in baseQuery
-                                                         select new Tuple<string, string>
-                                                             (
-                                                                 ent.a,
-                                                                 ent.b
-                                                             )).ToList();
+            var result = currentTable.Query<POCOEntity>(e => true, select: new List<string>() { "a", "b" })
+                .Select(ent => new Tuple<string, string>
+                    (
+                        ent.a,
+                        ent.b
+                    )).ToList();
 
             count = 0;
             foreach (Tuple<string, string> entTuple in (IEnumerable<Tuple<string, string>>)result)
@@ -1273,16 +943,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(1500, count);
 
             // Project with query options
-            TableQuery<ProjectedPOCO> queryOptionsResult = (from ent in baseQuery
-                                                            where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                                            select new ProjectedPOCO()
-                                                            {
-                                                                PartitionKey = ent.PartitionKey,
-                                                                RowKey = ent.RowKey,
-                                                                Timestamp = ent.Timestamp,
-                                                                a = ent.a,
-                                                                c = ent.c
-                                                            }).AsTableQuery<ProjectedPOCO>();
+            var queryOptionsResult = currentTable.Query<POCOEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0, select: new List<string>() { "a", "b" })
+                .Select(ent => new ProjectedPOCO()
+                {
+                    PartitionKey = ent.PartitionKey,
+                    RowKey = ent.RowKey,
+                    Timestamp = ent.Timestamp,
+                    a = ent.a,
+                    c = ent.c
+                });
 
             count = 0;
             foreach (ProjectedPOCO ent in queryOptionsResult)
@@ -1309,12 +979,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(1500, anonymousRes.ToList().Count);
 
             // Project with resolver
-            IQueryable<string> resolverResult = (from ent in baseQuery
-                                                 select new ProjectedPOCO()
-                                                 {
-                                                     a = ent.a,
-                                                     c = ent.c
-                                                 }).AsTableQuery<ProjectedPOCO>().Resolve((pk, rk, ts, props, etag) => props["a"].StringValue);
+            var resolverResult = currentTable.Query<POCOEntity>(e => true)
+                .Select(ent => new ProjectedPOCO()
+                {
+                    a = ent.a,
+                    c = ent.c
+                }).Select(ent => ent.a);
             count = 0;
             foreach (string s in resolverResult)
             {
@@ -1401,111 +1071,95 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         public void TableQueryableOnSupportedTypes()
         {
             // 1. Filter on String
-            var stringQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                               where ent.String.CompareTo("0050") >= 0
-                               select ent);
+            var stringQuery = complexEntityTable.Query<ComplexEntity>(ent => 
+                ent.String.CompareTo("0050") >= 0);
 
-            Assert.AreEqual(50, stringQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, stringQuery.Count());
 
             // 2. Filter on Guid
-            var guidQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                             where ent.Guid == middleRef.Guid
-                             select ent);
+            var guidQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.Guid == middleRef.Guid);
 
-            Assert.AreEqual(1, guidQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(1, guidQuery.Count());
 
             // 3. Filter on Long
-            var longQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                             where ent.Int64 >= middleRef.Int64
-                             select ent);
+            var longQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.Int64 >= middleRef.Int64);
 
-            Assert.AreEqual(50, longQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, longQuery.Count());
 
-            var longPrimitiveQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                      where ent.LongPrimitive >= middleRef.LongPrimitive
-                                      select ent);
+            var longPrimitiveQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.LongPrimitive >= middleRef.LongPrimitive);
 
-            Assert.AreEqual(50, longPrimitiveQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, longPrimitiveQuery.Count());
 
-            var longNullableQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                     where ent.LongPrimitiveN >= middleRef.LongPrimitiveN
-                                     select ent);
+            var longNullableQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.LongPrimitiveN >= middleRef.LongPrimitiveN);
 
-            Assert.AreEqual(50, longNullableQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, longNullableQuery.Count());
 
             // 4. Filter on Double
-            var doubleQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                               where ent.Double >= middleRef.Double
-                               select ent);
+            var doubleQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.Double >= middleRef.Double);
 
-            Assert.AreEqual(50, doubleQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, doubleQuery.Count());
 
-            var doubleNullableQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                       where ent.DoublePrimitive >= middleRef.DoublePrimitive
-                                       select ent);
+            var doubleNullableQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.DoublePrimitive >= middleRef.DoublePrimitive);
 
-            Assert.AreEqual(50, doubleNullableQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, doubleNullableQuery.Count());
 
             // 5. Filter on Integer
-            var int32Query = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                              where ent.Int32 >= middleRef.Int32
-                              select ent);
+            var int32Query = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.Int32 >= middleRef.Int32);
 
-            Assert.AreEqual(50, int32Query.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, int32Query.Count());
 
-            var int32NullableQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                      where ent.Int32N >= middleRef.Int32N
-                                      select ent);
+            var int32NullableQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.Int32N >= middleRef.Int32N);
 
-            Assert.AreEqual(50, int32NullableQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, int32NullableQuery.Count());
 
             // 6. Filter on Date
-            var dtoQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                            where ent.DateTimeOffset >= middleRef.DateTimeOffset
-                            select ent);
+            var dtoQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.DateTimeOffset >= middleRef.DateTimeOffset);
 
-            Assert.AreEqual(50, dtoQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, dtoQuery.Count());
 
             // 7. Filter on Boolean
-            var boolQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                             where ent.Bool == middleRef.Bool
-                             select ent);
+            var boolQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.Bool == middleRef.Bool);
 
-            Assert.AreEqual(50, boolQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, boolQuery.Count());
 
-            var boolPrimitiveQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                      where ent.BoolPrimitive == middleRef.BoolPrimitive
-                                      select ent);
+            var boolPrimitiveQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.BoolPrimitive == middleRef.BoolPrimitive);
 
-            Assert.AreEqual(50, boolPrimitiveQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, boolPrimitiveQuery.Count());
 
             // 8. Filter on Binary 
-            var binaryQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                               where ent.Binary == middleRef.Binary
-                               select ent);
+            var binaryQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.Binary == middleRef.Binary);
 
-            Assert.AreEqual(1, binaryQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(1, binaryQuery.Count());
 
-            var binaryPrimitiveQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                        where ent.BinaryPrimitive == middleRef.BinaryPrimitive
-                                        select ent);
+            var binaryPrimitiveQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.BinaryPrimitive == middleRef.BinaryPrimitive);
 
-            Assert.AreEqual(1, binaryPrimitiveQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(1, binaryPrimitiveQuery.Count());
 
             // 10. Complex Filter on Binary GTE
+            var complexFilter = complexEntityTable.Query<ComplexEntity>(ent =>
+                ent.PartitionKey == middleRef.PartitionKey &&
+                ent.String.CompareTo("0050") >= 0 &&
+                ent.Int64 >= middleRef.Int64 &&
+                ent.LongPrimitive >= middleRef.LongPrimitive &&
+                ent.LongPrimitiveN >= middleRef.LongPrimitiveN &&
+                ent.Int32 >= middleRef.Int32 &&
+                ent.Int32N >= middleRef.Int32N &&
+                ent.DateTimeOffset >= middleRef.DateTimeOffset);
 
-            var complexFilter = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                 where ent.PartitionKey == middleRef.PartitionKey &&
-                                 ent.String.CompareTo("0050") >= 0 &&
-                                 ent.Int64 >= middleRef.Int64 &&
-                                 ent.LongPrimitive >= middleRef.LongPrimitive &&
-                                 ent.LongPrimitiveN >= middleRef.LongPrimitiveN &&
-                                 ent.Int32 >= middleRef.Int32 &&
-                                 ent.Int32N >= middleRef.Int32N &&
-                                 ent.DateTimeOffset >= middleRef.DateTimeOffset
-                                 select ent);
-
-            Assert.AreEqual(50, complexFilter.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, complexFilter.Count());
         }
 
         // CHECK: In the following function, we cannot use DynamicReplicatedTableEntity instead of
@@ -1515,110 +1169,95 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         public void TableQueryableOnSupportedTypesViaDynamicTableEntity()
         {
             // 1. Filter on String
-            var stringQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                               where ent.Properties["String"].StringValue.CompareTo("0050") >= 0
-                               select ent);
+            var stringQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetString("String").CompareTo("0050") >= 0);
 
-            Assert.AreEqual(50, stringQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, stringQuery.Count());
 
             // 2. Filter on Guid
-            var guidQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                             where ent.Properties["Guid"].GuidValue == middleRef.Guid
-                             select ent);
+            var guidQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetGuid("Guid") == middleRef.Guid);
 
-            Assert.AreEqual(1, guidQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(1, guidQuery.Count());
 
             // 3. Filter on Long
-            var longQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                             where ent.Properties["Int64"].Int64Value >= middleRef.Int64
-                             select ent);
+            var longQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetInt64("Int64") >= middleRef.Int64);
 
-            Assert.AreEqual(50, longQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, longQuery.Count());
 
-            var longPrimitiveQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                                      where ent.Properties["LongPrimitive"].Int64Value >= middleRef.LongPrimitive
-                                      select ent);
+            var longPrimitiveQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetInt64("LongPrimitive") >= middleRef.LongPrimitive);
 
-            Assert.AreEqual(50, longPrimitiveQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, longPrimitiveQuery.Count());
 
-            var longNullableQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                                     where ent.Properties["LongPrimitiveN"].Int64Value >= middleRef.LongPrimitiveN
-                                     select ent);
+            var longNullableQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetInt64("LongPrimitiveN") >= middleRef.LongPrimitiveN);
 
-            Assert.AreEqual(50, longNullableQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, longNullableQuery.Count());
 
             // 4. Filter on Double
-            var doubleQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                               where ent.Properties["Double"].DoubleValue >= middleRef.Double
-                               select ent);
+            var doubleQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetDouble("Double") >= middleRef.Double);
 
-            Assert.AreEqual(50, doubleQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, doubleQuery.Count());
 
-            var doubleNullableQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                                       where ent.Properties["DoublePrimitive"].DoubleValue >= middleRef.DoublePrimitive
-                                       select ent);
+            var doubleNullableQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetDouble("DoublePrimitive") >= middleRef.DoublePrimitive);
 
-            Assert.AreEqual(50, doubleNullableQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, doubleNullableQuery.Count());
 
             // 5. Filter on Integer
-            var int32Query = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                              where ent.Properties["Int32"].Int32Value >= middleRef.Int32
-                              select ent);
+            var int32Query = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetInt32("Int32") >= middleRef.Int32);
 
-            Assert.AreEqual(50, int32Query.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, int32Query.Count());
 
-            var int32NullableQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                                      where ent.Properties["Int32N"].Int32Value >= middleRef.Int32N
-                                      select ent);
+            var int32NullableQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetInt32("Int32N") >= middleRef.Int32N);
 
-            Assert.AreEqual(50, int32NullableQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, int32NullableQuery.Count());
 
             // 6. Filter on Date
-            var dtoQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                            where ent.Properties["DateTimeOffset"].DateTimeOffsetValue >= middleRef.DateTimeOffset
-                            select ent);
+            var dtoQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetDateTimeOffset("DateTimeOffset") >= middleRef.DateTimeOffset);
 
-            Assert.AreEqual(50, dtoQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, dtoQuery.Count());
 
             // 7. Filter on Boolean
-            var boolQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                             where ent.Properties["Bool"].BooleanValue == middleRef.Bool
-                             select ent);
+            var boolQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetBoolean("Bool") == middleRef.Bool);
 
-            Assert.AreEqual(50, boolQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, boolQuery.Count());
 
-            var boolPrimitiveQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                                      where ent.Properties["BoolPrimitive"].BooleanValue == middleRef.BoolPrimitive
-                                      select ent);
+            var boolPrimitiveQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetBoolean("BoolPrimitive") == middleRef.BoolPrimitive);
 
-            Assert.AreEqual(50, boolPrimitiveQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, boolPrimitiveQuery.Count());
 
             // 8. Filter on Binary 
-            var binaryQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                               where ent.Properties["Binary"].BinaryValue == middleRef.Binary
-                               select ent);
+            var binaryQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetBinary("Binary") == middleRef.Binary);
 
-            Assert.AreEqual(1, binaryQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(1, binaryQuery.Count());
 
-            var binaryPrimitiveQuery = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                                        where ent.Properties["BinaryPrimitive"].BinaryValue == middleRef.BinaryPrimitive
-                                        select ent);
+            var binaryPrimitiveQuery = complexEntityTable.Query<TableEntity>(ent =>
+                ent.GetBinary("BinaryPrimitive") == middleRef.BinaryPrimitive);
 
-            Assert.AreEqual(1, binaryPrimitiveQuery.AsTableQuery().Execute().Count());
+            Assert.AreEqual(1, binaryPrimitiveQuery.Count());
 
             // 10. Complex Filter on Binary GTE
-            var complexFilter = (from ent in complexEntityTable.CreateQuery<DynamicTableEntity>()
-                                 where ent.PartitionKey == middleRef.PartitionKey &&
-                                 ent.Properties["String"].StringValue.CompareTo("0050") >= 0 &&
-                                 ent.Properties["Int64"].Int64Value >= middleRef.Int64 &&
-                                 ent.Properties["LongPrimitive"].Int64Value >= middleRef.LongPrimitive &&
-                                 ent.Properties["LongPrimitiveN"].Int64Value >= middleRef.LongPrimitiveN &&
-                                 ent.Properties["Int32"].Int32Value >= middleRef.Int32 &&
-                                 ent.Properties["Int32N"].Int32Value >= middleRef.Int32N &&
-                                 ent.Properties["DateTimeOffset"].DateTimeOffsetValue >= middleRef.DateTimeOffset
-                                 select ent);
+            var complexFilter = complexEntityTable.Query<TableEntity>(ent =>
+                ent.PartitionKey == middleRef.PartitionKey &&
+                ent.GetString("String").CompareTo("0050") >= 0 &&
+                ent.GetInt64("Int64") >= middleRef.Int64 &&
+                ent.GetInt64("LongPrimitive") >= middleRef.LongPrimitive &&
+                ent.GetInt64("LongPrimitiveN") >= middleRef.LongPrimitiveN &&
+                ent.GetInt32("Int32") >= middleRef.Int32 &&
+                ent.GetInt32("Int32N") >= middleRef.Int32N &&
+                ent.GetDateTimeOffset("DateTimeOffset") >= middleRef.DateTimeOffset);
 
-            Assert.AreEqual(50, complexFilter.AsTableQuery().Execute().Count());
+            Assert.AreEqual(50, complexFilter.Count());
         }
         #endregion Other Tests
 
@@ -1628,9 +1267,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             try
             {
-                var stringQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                   where ent.String.CompareTo("0050") > 0
-                                   select ent).Take(0).ToList();
+                var stringQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                    ent.String.CompareTo("0050") > 0)
+                    .Take(0).ToList();
 
                 Assert.Fail();
             }
@@ -1645,9 +1284,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             try
             {
-                var stringQuery = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                   where ent.String.CompareTo("0050") > 0
-                                   select ent).Take(-1).ToList();
+                var stringQuery = complexEntityTable.Query<ComplexEntity>(ent =>
+                    ent.String.CompareTo("0050") > 0)
+                    .Take(-1).ToList();
                 Assert.Fail();
             }
             catch (ArgumentException ex)
@@ -1663,9 +1302,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - A test with invalid query")]
         public void TableQueryableWithInvalidQuery()
         {
-            IQueryable<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where (ent.PartitionKey == "tables_batch_1" && ent.PartitionKey == "tables_batch_2")
-                                                     select ent);
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.PartitionKey == "tables_batch_2");
             int count = 0;
             foreach (DynamicReplicatedTableEntity ent in query)
             {
@@ -1674,44 +1312,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(0, count);
         }
 
-        [Test(Description="IQueryable - multiple from")]
-        public void TableQueryableMultipleFrom()
-        {
-            TableQuery<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     from ent2 in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                     where ent.RowKey == ent2.RowKey
-                                                     select ent).AsTableQuery();
-
-            TestHelper.ExpectedException<NotSupportedException>(() => query.ExecuteSegmented(null), "Multiple from option not allowed in a query");
-        }
-
         [Test(Description="IQueryable - validate Reverse")]
         public void TableQueryableReverse()
         {
-            IQueryable<DynamicReplicatedTableEntity> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                     where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
-                                                     select ent).Reverse();
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") > 0)
+                .Reverse();
             TestHelper.ExpectedException<TargetInvocationException>(() => query.Count(), "Reverse option is not supported");
-        }
-
-        [Test(Description="IQueryable - validate GroupBy")]
-        public void TableQueryableGroupBy()
-        {
-            var query = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                         group ent.Int32 by ent.Int32 % 5 into mod5Group
-                         select new
-                         {
-                             numbers = mod5Group
-                         });
-
-            TestHelper.ExpectedException<TargetInvocationException>(() => query.Count(), "group by option is not supported");
         }
 
         [Test(Description="IQueryable - validate Distinct")]
         public void TableQueryableDistinct()
         {
-            IQueryable<string> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        select ent.RowKey).Distinct();
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(e => true)
+                .Distinct();
 
             TestHelper.ExpectedException<TargetInvocationException>(() => query.Count(), "Distinct option is not supported");
         }
@@ -1719,13 +1333,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - validate Set and miscellaneous operators")]
         public void TableQueryableSetOperators()
         {
-            IQueryable<string> query = (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                        where ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") >= 0
-                                        select ent.RowKey);
+            var query = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") >= 0)
+                .Select(e => e.RowKey);
 
-            IQueryable<string> query2 = (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                         where ent.RowKey.CompareTo("0050") <= 0
-                                         select ent.RowKey);
+            var query2 = currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+                ent.RowKey.CompareTo("0050") <= 0)
+                .Select(e => e.RowKey);
             // Set operators
             TestHelper.ExpectedException<TargetInvocationException>(() => query.Union(query2).Count(), "Union is not supported");
             TestHelper.ExpectedException<TargetInvocationException>(() => query.Intersect(query2).Count(), "Intersect is not supported");
@@ -1739,33 +1353,27 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="IQueryable - validate ElementAt")]
         public void TableQueryableElementAt()
         {
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                                           where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") < 0)
-                                                                           select ent).ElementAt(0), "ElementAt is not supported");
+            TestHelper.ExpectedException<TargetInvocationException>(() => currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+               ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") < 0).ElementAt(0), "ElementAt is not supported");
 
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in currentTable.CreateQuery<DynamicReplicatedTableEntity>()
-                                                                           where (ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") < 0)
-                                                                           select ent).ElementAtOrDefault(0), "ElementAtOrDefault is not supported");
+            TestHelper.ExpectedException<TargetInvocationException>(() => currentTable.Query<DynamicReplicatedTableEntity>(ent =>
+               ent.PartitionKey == "tables_batch_1" && ent.RowKey.CompareTo("0050") < 0).ElementAtOrDefault(0), "ElementAtOrDefault is not supported");
         }
 
         [Test(Description="IQueryable - validate various aggregation operators")]
         public void TableQueryableAggregation()
         {
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                                           where ent.RowKey.CompareTo("0050") > 0
-                                                                           select ent.Int32).Sum(), "Sum is not supported");
+            TestHelper.ExpectedException<TargetInvocationException>(() => currentTable.Query<ComplexEntity>(ent =>
+                ent.RowKey.CompareTo("0050") > 0).Select(ent => ent.Int32).Sum(), "Sum is not supported");
 
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                                           where ent.RowKey.CompareTo("0050") > 0
-                                                                           select ent.Int32).Min(), "Min is not supported");
+            TestHelper.ExpectedException<TargetInvocationException>(() => currentTable.Query<ComplexEntity>(ent =>
+                ent.RowKey.CompareTo("0050") > 0).Select(ent => ent.Int32).Min(), "Min is not supported");
 
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                                           where ent.RowKey.CompareTo("0050") > 0
-                                                                           select ent.Int32).Max(), "Max is not supported");
+            TestHelper.ExpectedException<TargetInvocationException>(() => currentTable.Query<ComplexEntity>(ent =>
+                ent.RowKey.CompareTo("0050") > 0).Select(ent => ent.Int32).Max(), "Max is not supported");
 
-            TestHelper.ExpectedException<TargetInvocationException>(() => (from ent in complexEntityTable.CreateQuery<ComplexEntity>()
-                                                                           where ent.RowKey.CompareTo("0050") > 0
-                                                                           select ent.Int32).Average(), "Average is not supported");
+            TestHelper.ExpectedException<TargetInvocationException>(() => currentTable.Query<ComplexEntity>(ent =>
+                ent.RowKey.CompareTo("0050") > 0).Select(ent => ent.Int32).Average(), "Average is not supported");
         }
         #endregion Negative Tests
 
@@ -1773,20 +1381,18 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
 
         #region Helper
-        private IEnumerable<T> GetEntities<T>(CloudTable table, string id) where T : ITableEntity, new()
+        private IEnumerable<T> GetEntities<T>(TableClient table, string id) where T : BaseEntity, new()
         {
-            IQueryable<T> query = table.CreateQuery<T>()
-               .Where(x => x.PartitionKey == "mypk");
-            return query.ToList();
+            return table.Query<T>(x => x.PartitionKey == "mypk").ToList();
         }
 
         private static DynamicReplicatedTableEntity GenerateRandomEnitity(string pk)
         {
             DynamicReplicatedTableEntity ent = new DynamicReplicatedTableEntity();
-            ent.Properties.Add("test", new EntityProperty("test"));
-            ent.Properties.Add("a", new EntityProperty("a"));
-            ent.Properties.Add("b", new EntityProperty("b"));
-            ent.Properties.Add("c", new EntityProperty("c"));
+            ent.Properties.Add("test", "test");
+            ent.Properties.Add("a", "a");
+            ent.Properties.Add("b", "b");
+            ent.Properties.Add("c", "c");
 
             ent.PartitionKey = pk;
             ent.RowKey = Guid.NewGuid().ToString();

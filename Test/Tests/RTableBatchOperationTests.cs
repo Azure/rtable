@@ -23,13 +23,13 @@
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage.Table;
-    using Microsoft.WindowsAzure.Storage;
     using NUnit.Framework;
     using System;
     using System.Linq;
     using System.Net;
     using System.Collections.Generic;
+    using global::Azure;
+    using global::Azure.Data.Tables;
 
     [TestFixture]
     public class RTableBatchOperationTests : RTableLibraryTestBase
@@ -59,12 +59,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             string pk = Guid.NewGuid().ToString();
             string rk = Guid.NewGuid().ToString();
-            Dictionary<string, EntityProperty> properties = new Dictionary<string, EntityProperty>();
-            properties.Add("foo", new EntityProperty("bar"));
-            properties.Add("foo1", new EntityProperty("bar1"));
+            Dictionary<string, object> properties = new Dictionary<string, object>();
+            properties.Add("foo", "bar");
+            properties.Add("foo1", "bar1");
 
             DynamicReplicatedTableEntity ent = new DynamicReplicatedTableEntity(pk, rk, "*", properties);
-            this.repTable.Execute(TableOperation.Insert(ent));
+            this.repTable.Insert(ent);
         }
 
         [Test(Description="A test to check the DynamicReplicatedTableEntity setter")]
@@ -72,17 +72,17 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             string pk = Guid.NewGuid().ToString();
             string rk = Guid.NewGuid().ToString();
-            Dictionary<string, EntityProperty> properties = new Dictionary<string, EntityProperty>();
-            properties.Add("foo", new EntityProperty("bar"));
-            properties.Add("foo1", new EntityProperty("bar1"));
+            Dictionary<string, object> properties = new Dictionary<string, object>();
+            properties.Add("foo", "bar");
+            properties.Add("foo1", "bar1");
 
             DynamicReplicatedTableEntity ent = new DynamicReplicatedTableEntity();
             ent.PartitionKey = pk;
             ent.RowKey = rk;
             ent.Properties = properties;
-            ent.ETag = "*";
+            ent.ETag = ETag.All;
             ent.Timestamp = DateTimeOffset.MinValue;
-            this.repTable.Execute(TableOperation.Insert(ent));
+            this.repTable.Insert(ent);
         }
 
         [Test(Description="A test to check EntityProperty")]
@@ -90,68 +90,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             string pk = Guid.NewGuid().ToString();
             string rk = Guid.NewGuid().ToString();
-            Dictionary<string, EntityProperty> properties = new Dictionary<string, EntityProperty>();
-            EntityProperty boolEntity = EntityProperty.GeneratePropertyForBool(true);
-            properties.Add("boolEntity", boolEntity);
-            EntityProperty timeEntity = EntityProperty.GeneratePropertyForDateTimeOffset(DateTimeOffset.UtcNow);
-            properties.Add("timeEntity", timeEntity);
-            EntityProperty doubleEntity = EntityProperty.GeneratePropertyForDouble(0.1);
-            properties.Add("doubleEntity", doubleEntity);
-            EntityProperty guidEntity = EntityProperty.GeneratePropertyForGuid(Guid.NewGuid());
-            properties.Add("guidEntity", guidEntity);
-            EntityProperty intEntity = EntityProperty.GeneratePropertyForInt(1);
-            properties.Add("intEntity", intEntity);
-            EntityProperty longEntity = EntityProperty.GeneratePropertyForLong(1);
-            properties.Add("longEntity", longEntity);
-            EntityProperty stringEntity = EntityProperty.GeneratePropertyForString("string");
-            properties.Add("stringEntity", stringEntity);
+            Dictionary<string, object> properties = new Dictionary<string, object>();
+            properties.Add("boolEntity", true);
+            properties.Add("timeEntity", DateTimeOffset.UtcNow);
+            properties.Add("doubleEntity", 0.1);
+            properties.Add("guidEntity", Guid.NewGuid());
+            properties.Add("intEntity", 1);
+            properties.Add("longEntity", (long)1);
+            properties.Add("stringEntity", "string");
 
             DynamicReplicatedTableEntity ent = new DynamicReplicatedTableEntity(pk, rk, "*", properties);
-            this.repTable.Execute(TableOperation.Insert(ent));
-        }
-
-        [Test(Description="A test to check EntityProperty setter")]
-        public void TableEntityPropertySetter()
-        {
-            string pk = Guid.NewGuid().ToString();
-            string rk = Guid.NewGuid().ToString();
-            Dictionary<string, EntityProperty> properties = new Dictionary<string, EntityProperty>();
-            EntityProperty boolEntity = EntityProperty.GeneratePropertyForBool(null);
-            boolEntity.BooleanValue = true;
-            properties.Add("boolEntity", boolEntity);
-
-            EntityProperty timeEntity = EntityProperty.GeneratePropertyForDateTimeOffset(null);
-            timeEntity.DateTimeOffsetValue = DateTimeOffset.UtcNow;
-            properties.Add("timeEntity", timeEntity);
-
-            EntityProperty doubleEntity = EntityProperty.GeneratePropertyForDouble(null);
-            doubleEntity.DoubleValue = 0.1;
-            properties.Add("doubleEntity", doubleEntity);
-
-            EntityProperty guidEntity = EntityProperty.GeneratePropertyForGuid(null);
-            guidEntity.GuidValue = Guid.NewGuid();
-            properties.Add("guidEntity", guidEntity);
-
-            EntityProperty intEntity = EntityProperty.GeneratePropertyForInt(null);
-            intEntity.Int32Value = 1;
-            properties.Add("intEntity", intEntity);
-
-            EntityProperty longEntity = EntityProperty.GeneratePropertyForLong(null);
-            longEntity.Int64Value = 1;
-            properties.Add("longEntity", longEntity);
-
-            EntityProperty stringEntity = EntityProperty.GeneratePropertyForString(null);
-            stringEntity.StringValue = "string";
-            properties.Add("stringEntity", stringEntity);
-
-            DynamicReplicatedTableEntity ent = new DynamicReplicatedTableEntity(pk, rk, "*", properties);
-            this.repTable.Execute(TableOperation.Insert(ent));
+            this.repTable.Insert(ent);
         }
        
         [Test(Description="A test to check batch insert functionality")]
         public void TableBatchInsertSync()
         {
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
             string pk = Guid.NewGuid().ToString();
 
             for (int m = 0; m < 3; m++)
@@ -162,10 +117,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Add insert
             DynamicReplicatedTableEntity ent = GenerateRandomEnitity(pk);
 
-            this.repTable.Execute(TableOperation.Insert(ent));
+            this.repTable.Insert(ent);
 
             // Add delete
-            batch.Delete(ent);
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, ent, ent.ETag));
 
             IList<TableResult> results = this.repTable.ExecuteBatch(batch);
 
@@ -189,20 +144,21 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             IReplicatedTableEntity ent = GenerateRandomEnitity("foo");
 
             // add entity
-            this.repTable.Execute(TableOperation.Insert(ent));
+            this.repTable.Insert(ent);
 
-            TableBatchOperation batch = new TableBatchOperation();
-            batch.Insert(ent);
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag)
+            };
 
-            OperationContext opContext = new OperationContext();
             try
             {
-                this.repTable.ExecuteBatch(batch, null, opContext);
+                this.repTable.ExecuteBatch(batch);
                 Assert.Fail("We should be reach here. Calling Insert() again should throw an exception.");
             }
-            catch (StorageException)
+            catch (RequestFailedException e)
             {
-                TestHelper.ValidateResponse(opContext, 1, (int)HttpStatusCode.Conflict, new string[] { "EntityAlreadyExists" }, "The specified entity already exists");
+                TestHelper.ValidateResponse(e, 1, (int)HttpStatusCode.Conflict, new string[] { "EntityAlreadyExists" }, "The specified entity already exists");
             }
         }
         #endregion Insert Test Methods
@@ -218,14 +174,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             // Insert Or Merge with no pre-existing entity
             DynamicReplicatedTableEntity insertOrMergeEntity = new DynamicReplicatedTableEntity("batchInsertOrMerge entity", "foo");
-            insertOrMergeEntity.Properties.Add("prop1", new EntityProperty("value1"));
+            insertOrMergeEntity.Properties.Add("prop1", "value1");
 
-            TableBatchOperation batch = new TableBatchOperation();
-            batch.InsertOrMerge(insertOrMergeEntity);
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.UpsertMerge, insertOrMergeEntity, insertOrMergeEntity.ETag)
+            };
             IList<TableResult> batchResultList = this.repTable.ExecuteBatch(batch);            
 
             // Retrieve Entity & Verify Contents
-            TableResult result = this.repTable.Execute(TableOperation.Retrieve<DynamicReplicatedTableEntity>(insertOrMergeEntity.PartitionKey, insertOrMergeEntity.RowKey));
+            TableResult result = this.repTable.Retrieve(insertOrMergeEntity.PartitionKey, insertOrMergeEntity.RowKey);
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
             Assert.AreEqual(insertOrMergeEntity.Properties.Count, retrievedEntity.Properties.Count);
@@ -234,14 +192,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                                                       insertOrMergeEntity.RowKey, 
                                                                       batchResultList[0].Etag,
                                                                       retrievedEntity.Properties);
-            mergeEntity.Properties.Add("prop2", new EntityProperty("value2"));
+            mergeEntity.Properties.Add("prop2", "value2");
 
-            TableBatchOperation batch2 = new TableBatchOperation();
-            batch2.InsertOrMerge(mergeEntity);
+            IList<TableTransactionAction> batch2 = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.UpsertMerge, mergeEntity, mergeEntity.ETag)
+            };
             this.repTable.ExecuteBatch(batch2);
 
             // Retrieve Entity & Verify Contents
-            result = this.repTable.Execute(TableOperation.Retrieve<DynamicReplicatedTableEntity>(insertOrMergeEntity.PartitionKey, insertOrMergeEntity.RowKey));
+            result = this.repTable.Retrieve(insertOrMergeEntity.PartitionKey, insertOrMergeEntity.RowKey);
             retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
             Assert.AreEqual(2, retrievedEntity.Properties.Count, "retrievedEntity.Properties.Count={0}. (Expecting 2)", retrievedEntity.Properties.Count);
@@ -260,21 +220,17 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Insert Entity
             Console.WriteLine("Calling Insert()...");
             DynamicReplicatedTableEntity baseEntity = new DynamicReplicatedTableEntity("replace test", "foo");
-            baseEntity.Properties.Add("prop1", new EntityProperty("value1"));
-            this.repTable.Execute(TableOperation.Insert(baseEntity));
-
-
-            TableBatchOperation batch = new TableBatchOperation();
+            baseEntity.Properties.Add("prop1", "value1");
+            this.repTable.Insert(baseEntity);
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
 
             // Retrieve existing entities using TableQuery
-            TableQuery<DynamicReplicatedTableEntity> query = new TableQuery<DynamicReplicatedTableEntity>().Where(
-                TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, baseEntity.PartitionKey));
-         
-            IEnumerable<DynamicReplicatedTableEntity> allEntities = this.repTable.ExecuteQuery<DynamicReplicatedTableEntity>(query);
+            IEnumerable<DynamicReplicatedTableEntity> allEntities = this.repTable.ExecuteQuery<DynamicReplicatedTableEntity>(e =>
+                e.PartitionKey == baseEntity.PartitionKey);
             foreach (DynamicReplicatedTableEntity entity in allEntities)
             {
                 // Add delete
-                batch.Delete(entity);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
             }
 
             Console.WriteLine("Calling ExecuteBatch() to delete...");
@@ -289,22 +245,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Insert Entity
             Console.WriteLine("Calling Insert()...");
             DynamicReplicatedTableEntity baseEntity = new DynamicReplicatedTableEntity("replace test", "foo");
-            baseEntity.Properties.Add("prop1", new EntityProperty("value1"));
-            this.repTable.Execute(TableOperation.Insert(baseEntity));
+            baseEntity.Properties.Add("prop1", "value1");
+            this.repTable.Insert(baseEntity);
 
             // Retrieve existing entities using Retrieve
             Console.WriteLine("Calling Retrieve()...");
-            TableResult result = this.repTable.Execute(TableOperation.Retrieve<DynamicReplicatedTableEntity>(baseEntity.PartitionKey, baseEntity.RowKey));
+            TableResult result = this.repTable.Retrieve(baseEntity.PartitionKey, baseEntity.RowKey);
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
             Assert.IsNotNull(retrievedEntity);
             Assert.AreEqual(baseEntity.Properties.Count, retrievedEntity.Properties.Count);
             Assert.AreEqual(baseEntity.Properties["prop1"], retrievedEntity.Properties["prop1"]);
 
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
 
             // Add delete
-            batch.Delete(retrievedEntity);
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, retrievedEntity, retrievedEntity.ETag));
+
 
             Console.WriteLine("Calling ExecuteBatch() to delete...");
             IList<TableResult> results = this.repTable.ExecuteBatch(batch);
@@ -319,12 +276,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Add insert
             DynamicReplicatedTableEntity ent = GenerateRandomEnitity(pk);
-            this.repTable.Execute(TableOperation.Insert(ent));
+            this.repTable.Insert(ent);
 
-            TableBatchOperation batch = new TableBatchOperation();
-
-            // Add delete
-            batch.Delete(ent);
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>
+            {
+                // Add delete
+                new TableTransactionAction(TableTransactionActionType.Delete, ent, ent.ETag)
+            };
 
             // success
             IList<TableResult> results = this.repTable.ExecuteBatch(batch);
@@ -332,15 +290,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(results.First().HttpStatusCode, (int)HttpStatusCode.NoContent);
 
             // fail - not found
-            OperationContext opContext = new OperationContext();
             try
             {
-                this.repTable.ExecuteBatch(batch, null, opContext);
+                this.repTable.ExecuteBatch(batch);
                 Assert.Fail();
             }
-            catch (StorageException)
+            catch (RequestFailedException e)
             {
-                TestHelper.ValidateResponse(opContext, 1, (int)HttpStatusCode.NotFound, new string[] { "ResourceNotFound" }, "The specified resource does not exist.");
+                TestHelper.ValidateResponse(e, 1, (int)HttpStatusCode.NotFound, new string[] { "ResourceNotFound" }, "The specified resource does not exist.");
             }
         }
         #endregion Delete
@@ -352,19 +309,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             // Insert Entity
             DynamicReplicatedTableEntity baseEntity = new DynamicReplicatedTableEntity("merge test", "foo");
-            baseEntity.Properties.Add("prop1", new EntityProperty("value1"));
-            this.repTable.Execute(TableOperation.Insert(baseEntity));
+            baseEntity.Properties.Add("prop1", "value1");
+            this.repTable.Insert(baseEntity);
 
             DynamicReplicatedTableEntity mergeEntity = new DynamicReplicatedTableEntity(baseEntity.PartitionKey, baseEntity.RowKey) { ETag = baseEntity.ETag };
-            mergeEntity.Properties.Add("prop2", new EntityProperty("value2"));
+            mergeEntity.Properties.Add("prop2", "value2");
 
-            TableBatchOperation batch = new TableBatchOperation();
-            batch.Merge(mergeEntity);
-
-            this.repTable.ExecuteBatch(batch);
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.UpdateMerge, mergeEntity, mergeEntity.ETag)
+            };
 
             // Retrieve Entity & Verify Contents
-            TableResult result = this.repTable.Execute(TableOperation.Retrieve<DynamicReplicatedTableEntity>(baseEntity.PartitionKey, baseEntity.RowKey));
+            //TableResult result = this.repTable.Execute(TableOperation.Retrieve<DynamicReplicatedTableEntity>(baseEntity.PartitionKey, baseEntity.RowKey));
+            TableResult result = this.repTable.Retrieve(baseEntity.PartitionKey, baseEntity.RowKey);
 
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
@@ -383,24 +341,26 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Insert Entity
             Console.WriteLine("Calling Insert()...");
             DynamicReplicatedTableEntity baseEntity = new DynamicReplicatedTableEntity("replace test", "foo");
-            baseEntity.Properties.Add("prop1", new EntityProperty("value1"));
-            this.repTable.Execute(TableOperation.Insert(baseEntity));
+            baseEntity.Properties.Add("prop1", "value1");
+            this.repTable.Insert(baseEntity);
 
             // ReplaceEntity
             DynamicReplicatedTableEntity replaceEntity = new DynamicReplicatedTableEntity(baseEntity.PartitionKey, baseEntity.RowKey) 
             { 
-                ETag = "1"
+                ETag = new ETag("1")
             };
-            replaceEntity.Properties.Add("prop2", new EntityProperty("value2"));
+            replaceEntity.Properties.Add("prop2", "value2");
 
             Console.WriteLine("Calling Replace()...");
-            TableBatchOperation batch = new TableBatchOperation();
-            batch.Replace(replaceEntity);
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.UpdateReplace, replaceEntity, replaceEntity.ETag)
+            };
             this.repTable.ExecuteBatch(batch);
 
             // Retrieve Entity & Verify Contents
             Console.WriteLine("Calling Retrieve()...");
-            TableResult result = this.repTable.Execute(TableOperation.Retrieve<DynamicReplicatedTableEntity>(baseEntity.PartitionKey, baseEntity.RowKey));
+            TableResult result = this.repTable.Retrieve(baseEntity.PartitionKey, baseEntity.RowKey);
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
             Assert.IsNotNull(retrievedEntity);
@@ -413,15 +373,17 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Console.WriteLine("Calling Replace() again, setting Etag to {0}", retrievedEntity._rtable_Version);
             replaceEntity = new DynamicReplicatedTableEntity(baseEntity.PartitionKey, baseEntity.RowKey) 
             {                 
-                ETag = retrievedEntity._rtable_Version.ToString()
+                ETag = new ETag(retrievedEntity._rtable_Version.ToString())
             };
-            replaceEntity.Properties.Add("prop3", new EntityProperty("value3"));
-            batch = new TableBatchOperation();
-            batch.Replace(replaceEntity);
+            replaceEntity.Properties.Add("prop3", "value3");
+            batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.UpdateReplace, replaceEntity, replaceEntity.ETag)
+            };
             this.repTable.ExecuteBatch(batch);
 
             Console.WriteLine("Calling Retrieve()...");
-            result = this.repTable.Execute(TableOperation.Retrieve<DynamicReplicatedTableEntity>(baseEntity.PartitionKey, baseEntity.RowKey));
+            result = this.repTable.Retrieve(baseEntity.PartitionKey, baseEntity.RowKey);
             retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
             Assert.IsNotNull(retrievedEntity);
@@ -436,45 +398,48 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="A test to check batch with all supported operations")]
         public void TableBatchAllSupportedOperationsSync()
         {
-            TableBatchOperation batch = new TableBatchOperation();
             string pk = Guid.NewGuid().ToString();
+            var ent = GenerateRandomEnitity(pk);
 
             // insert
-            batch.Insert(GenerateRandomEnitity(pk));
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag)
+            };
 
             // delete
             {
                 DynamicReplicatedTableEntity entity = GenerateRandomEnitity(pk);
-                this.repTable.Execute(TableOperation.Insert(entity));
-                batch.Delete(entity);
+                this.repTable.Insert(entity);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
             }
 
             // replace
             {
                 DynamicReplicatedTableEntity entity = GenerateRandomEnitity(pk);
-                this.repTable.Execute(TableOperation.Insert(entity));
-                batch.Replace(entity);
+                this.repTable.Insert(entity);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.UpdateReplace, entity, entity.ETag));
             }
 
             // insert or replace
             {
                 DynamicReplicatedTableEntity entity = GenerateRandomEnitity(pk);
-                this.repTable.Execute(TableOperation.Insert(entity));
-                batch.InsertOrReplace(entity);
+                this.repTable.Insert(entity);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.UpsertReplace, entity, entity.ETag));
             }
 
             // merge
             {
                 DynamicReplicatedTableEntity entity = GenerateRandomEnitity(pk);
-                this.repTable.Execute(TableOperation.Insert(entity));
-                batch.Merge(entity);
+                this.repTable.Insert(entity);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.UpdateMerge, entity, entity.ETag));
             }
 
             // insert or merge
             {
                 DynamicReplicatedTableEntity entity = GenerateRandomEnitity(pk);
-                this.repTable.Execute(TableOperation.Insert(entity));
-                batch.InsertOrMerge(entity);
+                this.repTable.Insert(entity);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.UpsertMerge, entity, entity.ETag));
             }
 
             IList<TableResult> results = this.repTable.ExecuteBatch(batch);
@@ -489,115 +454,57 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         }        
         #endregion Batch With All Supported Operations
 
-
-        #region Retrieve
-        [Test(Description="A test to check batch retrieve functionality")]
-        public void TableBatchRetrieveSync()
-        {
-            string pk = Guid.NewGuid().ToString();
-
-            // Add insert
-            DynamicReplicatedTableEntity sendEnt = GenerateRandomEnitity(pk);
-
-            // generate a set of properties for all supported Types
-            sendEnt.Properties = new ComplexIEntity().WriteEntity(null);
-
-            TableBatchOperation batch = new TableBatchOperation();
-            batch.Retrieve<DynamicReplicatedTableEntity>(sendEnt.PartitionKey, sendEnt.RowKey);
-
-            // not found
-            IList<TableResult> results = this.repTable.ExecuteBatch(batch);
-            Assert.AreEqual(results.Count, 1);
-            Assert.AreEqual(results.First().HttpStatusCode, (int)HttpStatusCode.NotFound);
-            Assert.IsNull(results.First().Result);
-            Assert.IsNull(results.First().Etag);
-
-            // insert entity
-            this.repTable.Execute(TableOperation.Insert(sendEnt));
-
-            // Success
-            results = this.repTable.ExecuteBatch(batch);
-            Assert.AreEqual(results.Count, 1);
-            Assert.AreEqual(results.First().HttpStatusCode, (int)HttpStatusCode.OK);
-            DynamicReplicatedTableEntity retrievedEntity = results.First().Result as DynamicReplicatedTableEntity;
-
-            // Validate entity
-            Assert.AreEqual(sendEnt["String"], retrievedEntity["String"]);
-            Assert.AreEqual(sendEnt["Int64"], retrievedEntity["Int64"]);
-            Assert.AreEqual(sendEnt["Int64N"], retrievedEntity["Int64N"]);
-            Assert.AreEqual(sendEnt["LongPrimitive"], retrievedEntity["LongPrimitive"]);
-            Assert.AreEqual(sendEnt["LongPrimitiveN"], retrievedEntity["LongPrimitiveN"]);
-            Assert.AreEqual(sendEnt["Int32"], retrievedEntity["Int32"]);
-            Assert.AreEqual(sendEnt["Int32N"], retrievedEntity["Int32N"]);
-            Assert.AreEqual(sendEnt["IntegerPrimitive"], retrievedEntity["IntegerPrimitive"]);
-            Assert.AreEqual(sendEnt["IntegerPrimitiveN"], retrievedEntity["IntegerPrimitiveN"]);
-            Assert.AreEqual(sendEnt["Guid"], retrievedEntity["Guid"]);
-            Assert.AreEqual(sendEnt["GuidN"], retrievedEntity["GuidN"]);
-            Assert.AreEqual(sendEnt["Double"], retrievedEntity["Double"]);
-            Assert.AreEqual(sendEnt["DoubleN"], retrievedEntity["DoubleN"]);
-            Assert.AreEqual(sendEnt["DoublePrimitive"], retrievedEntity["DoublePrimitive"]);
-            Assert.AreEqual(sendEnt["DoublePrimitiveN"], retrievedEntity["DoublePrimitiveN"]);
-            Assert.AreEqual(sendEnt["BinaryPrimitive"], retrievedEntity["BinaryPrimitive"]);
-            Assert.AreEqual(sendEnt["Binary"], retrievedEntity["Binary"]);
-            Assert.AreEqual(sendEnt["BoolPrimitive"], retrievedEntity["BoolPrimitive"]);
-            Assert.AreEqual(sendEnt["BoolPrimitiveN"], retrievedEntity["BoolPrimitiveN"]);
-            Assert.AreEqual(sendEnt["Bool"], retrievedEntity["Bool"]);
-            Assert.AreEqual(sendEnt["BoolN"], retrievedEntity["BoolN"]);
-            Assert.AreEqual(sendEnt["DateTimeOffsetN"], retrievedEntity["DateTimeOffsetN"]);
-            Assert.AreEqual(sendEnt["DateTimeOffset"], retrievedEntity["DateTimeOffset"]);
-            Assert.AreEqual(sendEnt["DateTime"], retrievedEntity["DateTime"]);
-            Assert.AreEqual(sendEnt["DateTimeN"], retrievedEntity["DateTimeN"]);
-        }
-        #endregion Retrieve
-
-
         #region Empty Keys Tests
         [Test(Description = "TableBatchOperations with Empty keys")]
         public void TableBatchOperationsWithEmptyKeys()
         {
             // Insert Entity
             DynamicReplicatedTableEntity ent = new DynamicReplicatedTableEntity() { PartitionKey = "", RowKey = "" };
-            ent.Properties.Add("foo2", new EntityProperty("bar2"));
-            ent.Properties.Add("foo", new EntityProperty("bar"));
-            TableBatchOperation batch = new TableBatchOperation();
-            batch.Insert(ent);
+            ent.Properties.Add("foo2", "bar2");
+            ent.Properties.Add("foo", "bar");
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag)
+            };
             this.repTable.ExecuteBatch(batch);
 
             // Retrieve Entity
-            TableBatchOperation retrieveBatch = new TableBatchOperation();
-            retrieveBatch.Retrieve<DynamicReplicatedTableEntity>(ent.PartitionKey, ent.RowKey);
-            TableResult result = this.repTable.ExecuteBatch(retrieveBatch).First();
+            TableResult result = this.repTable.Retrieve(ent.PartitionKey, ent.RowKey);
 
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
             Assert.AreEqual(ent.PartitionKey, retrievedEntity.PartitionKey);
             Assert.AreEqual(ent.RowKey, retrievedEntity.RowKey);
             Assert.AreEqual(ent.Properties.Count, retrievedEntity.Properties.Count);
-            Assert.AreEqual(ent.Properties["foo"].StringValue, retrievedEntity.Properties["foo"].StringValue);
             Assert.AreEqual(ent.Properties["foo"], retrievedEntity.Properties["foo"]);
-            Assert.AreEqual(ent.Properties["foo2"].StringValue, retrievedEntity.Properties["foo2"].StringValue);
+            Assert.AreEqual(ent.Properties["foo"], retrievedEntity.Properties["foo"]);
+            Assert.AreEqual(ent.Properties["foo2"], retrievedEntity.Properties["foo2"]);
             Assert.AreEqual(ent.Properties["foo2"], retrievedEntity.Properties["foo2"]);
 
             // InsertOrMerge
             DynamicReplicatedTableEntity insertOrMergeEntity = new DynamicReplicatedTableEntity(ent.PartitionKey, ent.RowKey);
-            insertOrMergeEntity.Properties.Add("foo3", new EntityProperty("value"));
-            batch = new TableBatchOperation();
-            batch.InsertOrMerge(insertOrMergeEntity);
+            insertOrMergeEntity.Properties.Add("foo3", "value");
+            batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.UpsertMerge, insertOrMergeEntity, insertOrMergeEntity.ETag)
+            };
             this.repTable.ExecuteBatch(batch);
 
-            result = this.repTable.ExecuteBatch(retrieveBatch).First();
+            result = this.repTable.Retrieve(ent.PartitionKey, ent.RowKey);
             retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
             Assert.AreEqual(insertOrMergeEntity.Properties["foo3"], retrievedEntity.Properties["foo3"]);
 
             // InsertOrReplace
             DynamicReplicatedTableEntity insertOrReplaceEntity = new DynamicReplicatedTableEntity(ent.PartitionKey, ent.RowKey);
-            insertOrReplaceEntity.Properties.Add("prop2", new EntityProperty("otherValue"));
-            batch = new TableBatchOperation();
-            batch.InsertOrReplace(insertOrReplaceEntity);
+            insertOrReplaceEntity.Properties.Add("prop2", "otherValue");
+            batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.UpsertReplace, insertOrReplaceEntity, insertOrReplaceEntity.ETag)
+            };
             this.repTable.ExecuteBatch(batch);
 
-            result = this.repTable.ExecuteBatch(retrieveBatch).First();
+            result = this.repTable.Retrieve(ent.PartitionKey, ent.RowKey);
             retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
             Assert.AreEqual(1, retrievedEntity.Properties.Count);
@@ -605,13 +512,15 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Merge
             DynamicReplicatedTableEntity mergeEntity = new DynamicReplicatedTableEntity(retrievedEntity.PartitionKey, retrievedEntity.RowKey) { ETag = retrievedEntity.ETag };
-            mergeEntity.Properties.Add("mergeProp", new EntityProperty("merged"));
-            batch = new TableBatchOperation();
-            batch.Merge(mergeEntity);
+            mergeEntity.Properties.Add("mergeProp", "merged");
+            batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.UpdateMerge, mergeEntity, mergeEntity.ETag)
+            };
             this.repTable.ExecuteBatch(batch);
 
             // Retrieve Entity & Verify Contents
-            result = this.repTable.ExecuteBatch(retrieveBatch).First();
+            result = this.repTable.Retrieve(ent.PartitionKey, ent.RowKey);
             retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
             Assert.IsNotNull(retrievedEntity);
@@ -619,25 +528,29 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Replace
             DynamicReplicatedTableEntity replaceEntity = new DynamicReplicatedTableEntity(ent.PartitionKey, ent.RowKey) { ETag = retrievedEntity.ETag };
-            replaceEntity.Properties.Add("replaceProp", new EntityProperty("replace"));
-            batch = new TableBatchOperation();
-            batch.Replace(replaceEntity);
+            replaceEntity.Properties.Add("replaceProp", "replace");
+            batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.UpdateReplace, replaceEntity, replaceEntity.ETag)
+            };
             this.repTable.ExecuteBatch(batch);
 
             // Retrieve Entity & Verify Contents
-            result = this.repTable.ExecuteBatch(retrieveBatch).First();
+            result = this.repTable.Retrieve(ent.PartitionKey, ent.RowKey);
             retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
             Assert.AreEqual(replaceEntity.Properties.Count, retrievedEntity.Properties.Count);
             Assert.AreEqual(replaceEntity.Properties["replaceProp"], retrievedEntity.Properties["replaceProp"]);
 
             // Delete Entity
-            batch = new TableBatchOperation();
-            batch.Delete(retrievedEntity);
+            batch = new List<TableTransactionAction>
+            {
+                new TableTransactionAction(TableTransactionActionType.Delete, retrievedEntity, retrievedEntity.ETag)
+            };
             this.repTable.ExecuteBatch(batch);
 
             // Retrieve Entity
-            result = this.repTable.ExecuteBatch(retrieveBatch).First();
+            result = this.repTable.Retrieve(ent.PartitionKey, ent.RowKey);
             Assert.IsNull(result.Result);
         }
         #endregion Empty Keys Tests
@@ -704,47 +617,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description = "Ensure that adding null to the batch will throw")]
         public void TableBatchAddNullShouldThrow()
         {
-            TableBatchOperation batch = new TableBatchOperation();
             try
             {
-                batch.Add(null);
+                this.repTable.ExecuteBatch(null);
                 Assert.Fail();
             }
             catch (ArgumentNullException)
-            {
-                // no op
-            }
-            catch (Exception)
-            {
-                Assert.Fail();
-            }
-
-            try
-            {
-                batch.Insert(0, null);
-                Assert.Fail();
-            }
-            catch (ArgumentNullException)
-            {
-                // no op
-            }
-            catch (Exception)
-            {
-                Assert.Fail();
-            }
-        }
-
-        [Test(Description = "Ensure that adding multiple queries to the batch will throw")]
-        public void TableBatchAddMultiQueryShouldThrow()
-        {
-            TableBatchOperation batch = new TableBatchOperation();
-            batch.Retrieve("foo", "bar");
-            try
-            {
-                batch.Retrieve("foo", "bar2");
-                Assert.Fail();
-            }
-            catch (ArgumentException)
             {
                 // no op
             }
@@ -757,82 +635,81 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description = "Ensure that a batch that contains multiple operations on the same entity fails")]
         public void TableBatchWithMultipleOperationsOnSameEntityShouldFail()
         {
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
             string pk = Guid.NewGuid().ToString();
 
             // Add entity 0
             ITableEntity first = GenerateRandomEnitity(pk);
-            batch.Insert(first);
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, first, first.ETag));
 
             // Add entities 1 - 98
             for (int m = 1; m < 99; m++)
             {
-                batch.Insert(GenerateRandomEnitity(pk));
+                var entity = GenerateRandomEnitity(pk);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
             }
 
             // Insert Duplicate of entity 0
-            batch.Insert(first);
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, first, first.ETag));
 
-            OperationContext opContext = new OperationContext();
             try
             {
-                this.repTable.ExecuteBatch(batch, null, opContext);
+                this.repTable.ExecuteBatch(batch);
                 Assert.Fail();
             }
-            catch (StorageException)
+            catch (RequestFailedException e)
             {
-                TestHelper.ValidateResponse(opContext, 1, (int)HttpStatusCode.BadRequest, new string[] { "InvalidInput" }, new string[] { "99:One of the request inputs is not valid." }, false);
+                TestHelper.ValidateResponse(e, 1, (int)HttpStatusCode.BadRequest, new string[] { "InvalidInput" }, new string[] { "99:One of the request inputs is not valid." }, false);
             }
         }
 
         [Test(Description = "Ensure that a batch with over 100 entities will throw")]
         public void TableBatchOver100EntitiesShouldThrow()
         {
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
             string pk = Guid.NewGuid().ToString();
             for (int m = 0; m < 101; m++)
             {
-                batch.Insert(GenerateRandomEnitity(pk));
+                var ent = GenerateRandomEnitity(pk);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
             }
 
-            OperationContext opContext = new OperationContext();
             try
             {
-                this.repTable.ExecuteBatch(batch, null, opContext);
+                this.repTable.ExecuteBatch(batch);
                 Assert.Fail();
             }
-            catch (StorageException)
+            catch (RequestFailedException e)
             {
-                TestHelper.ValidateResponse(opContext, 1, (int)HttpStatusCode.BadRequest, new string[] { "InvalidInput" }, "One of the request inputs is not valid.");
+                TestHelper.ValidateResponse(e, 1, (int)HttpStatusCode.BadRequest, new string[] { "InvalidInput" }, "One of the request inputs is not valid.");
             }
         }
 
         [Test(Description = "Ensure that a batch with entity over 1 MB will throw")]
         public void TableBatchEntityOver1MBShouldThrow()
         {
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
             string pk = Guid.NewGuid().ToString();
 
             DynamicReplicatedTableEntity ent = GenerateRandomEnitity(pk);
-            ent.Properties.Add("binary", EntityProperty.GeneratePropertyForByteArray(new byte[1024 * 1024]));
-            batch.Insert(ent);
+            ent.Properties.Add("binary", new byte[1024 * 1024]);
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
 
-            OperationContext opContext = new OperationContext();
             try
             {
-                this.repTable.ExecuteBatch(batch, null, opContext);
+                this.repTable.ExecuteBatch(batch);
                 Assert.Fail();
             }
-            catch (StorageException)
+            catch (RequestFailedException e)
             {
-                TestHelper.ValidateResponse(opContext, 2, (int)HttpStatusCode.BadRequest, new string[] { "EntityTooLarge" }, "The entity is larger than the maximum allowed size (1MB).");
+                TestHelper.ValidateResponse(e, 2, (int)HttpStatusCode.BadRequest, new string[] { "EntityTooLarge" }, "The entity is larger than the maximum allowed size (1MB).");
             }
         }
         
         [Test(Description = "Ensure that a batch over 4 MB will throw")]
         public void TableBatchOver4MBShouldThrow()
         {
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
             string pk = Guid.NewGuid().ToString();
 
             for (int m = 0; m < 65; m++)
@@ -840,24 +717,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 DynamicReplicatedTableEntity ent = GenerateRandomEnitity(pk);
 
                 // Maximum Entity size is 64KB
-                ent.Properties.Add("binary", EntityProperty.GeneratePropertyForByteArray(new byte[64 * 1024]));
-                batch.Insert(ent);
+                ent.Properties.Add("binary",new byte[64 * 1024]);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
             }
 
-            OperationContext opContext = new OperationContext();
             try
             {
-                this.repTable.ExecuteBatch(batch, null, opContext);
+                this.repTable.ExecuteBatch(batch);
                 Assert.Fail();
             }
-            catch (StorageException)
+            catch (RequestFailedException e)
             {
                 //
                 // ###XXX: NEW SOURCE CODES: The commented out codes were the original codes
                 //
                 //TestHelper.ValidateResponse(opContext, 1, (int)HttpStatusCode.BadRequest, new string[] { "ContentLengthExceeded" }, "The content length for the requested operation has exceeded the limit (4MB).");
                 TestHelper.ValidateResponse(
-                    opContext, 
+                    e, 
                     2, 
                     (int)HttpStatusCode.RequestEntityTooLarge, 
                     new string[] { "RequestBodyTooLarge" }, 
@@ -866,86 +742,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
         }
 
-        [Test(Description = "Ensure that a query and one more operation will throw")]
-        public void TableBatchAddQueryAndOneMoreOperationShouldThrow()
-        {
-            TableBatchOperation batch = new TableBatchOperation();
-            TableOperation operation = TableOperation.Retrieve<DynamicReplicatedTableEntity>("foo", "bar");
-
-            try
-            {
-                batch.Add(operation);
-                Assert.IsTrue(batch.Contains(operation));
-                batch.Add(TableOperation.Insert(GenerateRandomEnitity("foo")));
-                Assert.Fail();
-            }
-            catch (ArgumentException)
-            {
-                // no op
-            }
-            catch (Exception)
-            {
-                Assert.Fail();
-            }
-
-            batch.Clear();
-            Assert.IsFalse(batch.Contains(operation));
-
-            try
-            {
-                batch.Add(TableOperation.Insert(GenerateRandomEnitity("foo")));
-                batch.Add(TableOperation.Retrieve<DynamicReplicatedTableEntity>("foo", "bar"));
-                Assert.Fail();
-            }
-            catch (ArgumentException)
-            {
-                // no op
-            }
-            catch (Exception)
-            {
-                Assert.Fail();
-            }
-
-            batch.Clear();
-
-            try
-            {
-                batch.Add(TableOperation.Retrieve<DynamicReplicatedTableEntity>("foo", "bar"));
-                batch.Insert(0, TableOperation.Insert(GenerateRandomEnitity("foo")));
-
-                Assert.Fail();
-            }
-            catch (ArgumentException)
-            {
-                // no op
-            }
-            catch (Exception)
-            {
-                Assert.Fail();
-            }
-
-            try
-            {
-                batch.Insert(0, TableOperation.Insert(GenerateRandomEnitity("foo")));
-                batch.Insert(0, TableOperation.Retrieve<DynamicReplicatedTableEntity>("foo", "bar"));
-
-                Assert.Fail();
-            }
-            catch (ArgumentException)
-            {
-                // no op
-            }
-            catch (Exception)
-            {
-                Assert.Fail();
-            }
-
-        }
-
         [Test(Description = "Ensure that empty batch will throw")]
         public void TableBatchEmptyBatchShouldThrow()
         {
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
             TestHelper.ExpectedException<InvalidOperationException>(
                 () => this.repTable.ExecuteBatch(batch),
                 "Empty batch operation should fail");
@@ -954,12 +754,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description = "Ensure that a given batch only allows entities with the same partitionkey")]
         public void TableBatchLockToPartitionKey()
         {
-            TableBatchOperation batch = new TableBatchOperation();
-            batch.Add(TableOperation.Insert(GenerateRandomEnitity("foo")));
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
+            var entity = GenerateRandomEnitity("foo");
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
 
             try
             {
-                batch.Add(TableOperation.Insert(GenerateRandomEnitity("foo2")));
+                entity = GenerateRandomEnitity("foo2");
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
                 Assert.Fail();
             }
             catch (ArgumentException)
@@ -973,11 +775,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // should reset pk lock
             batch.RemoveAt(0);
-            batch.Add(TableOperation.Insert(GenerateRandomEnitity("foo2")));
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
 
             try
             {
-                batch.Add(TableOperation.Insert(GenerateRandomEnitity("foo2")));
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
             }
             catch (ArgumentException)
             {
@@ -992,24 +794,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="Ensure that a batch with an entity property over 255 chars will throw")]
         public void TableBatchWithPropertyOver255CharsShouldThrow()
         {
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
             string pk = Guid.NewGuid().ToString();
 
             string propName = new string('a', 256);  // propName has 256 chars
 
             DynamicReplicatedTableEntity ent = new DynamicReplicatedTableEntity("foo", "bar");
-            ent.Properties.Add(propName, new EntityProperty("propbar"));
-            batch.Insert(ent);
+            ent.Properties.Add(propName, "propbar");
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
 
-            OperationContext opContext = new OperationContext();
             try
             {
-                this.repTable.ExecuteBatch(batch, null, opContext);
+                this.repTable.ExecuteBatch(batch);
                 Assert.Fail();
             }
-            catch (StorageException)
+            catch (RequestFailedException e)
             {
-                TestHelper.ValidateResponse(opContext, 2, (int)HttpStatusCode.BadRequest, new string[] { "PropertyNameTooLong" }, "The property name exceeds the maximum allowed length (255).");
+                TestHelper.ValidateResponse(e, 2, (int)HttpStatusCode.BadRequest, new string[] { "PropertyNameTooLong" }, "The property name exceeds the maximum allowed length (255).");
             }
         }
         #endregion Boundary Conditions
@@ -1017,15 +818,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
 
         #region Helpers
-        private static void AddInsertToBatch(string pk, TableBatchOperation batch)
+        private static void AddInsertToBatch(string pk, IList<TableTransactionAction> batch)
         {
-            batch.Insert(GenerateRandomEnitity(pk));
+            var entity = GenerateRandomEnitity(pk);
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
         }
 
         private static DynamicReplicatedTableEntity GenerateRandomEnitity(string pk)
         {
             DynamicReplicatedTableEntity ent = new DynamicReplicatedTableEntity();
-            ent.Properties.Add("foo", new EntityProperty("bar"));
+            ent.Properties.Add("foo", "bar");
 
             ent.PartitionKey = pk;
             ent.RowKey = Guid.NewGuid().ToString();
@@ -1035,20 +837,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private void InsertAndDeleteBatchWithNEntities(int n)
         {
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
             string pk = Guid.NewGuid().ToString();
             for (int m = 0; m < n; m++)
             {
-                batch.Insert(GenerateRandomEnitity(pk));
+                var entity = GenerateRandomEnitity(pk);
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
             }
 
             IList<TableResult> results = this.repTable.ExecuteBatch(batch);
 
-            TableBatchOperation delBatch = new TableBatchOperation();
+            IList<TableTransactionAction> delBatch = new List<TableTransactionAction>();
 
             foreach (TableResult res in results)
             {
-                delBatch.Delete((ITableEntity)res.Result);
+                var entity = (ITableEntity)res.Result;
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
                 Assert.AreEqual((int)HttpStatusCode.NoContent, res.HttpStatusCode, "Mismatch in results");
             }
 
@@ -1064,13 +868,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             string pk = Guid.NewGuid().ToString();
 
-            TableBatchOperation insertBatch = new TableBatchOperation();
-            TableBatchOperation mergeBatch = new TableBatchOperation();
-            TableBatchOperation delBatch = new TableBatchOperation();
+            IList<TableTransactionAction> insertBatch = new List<TableTransactionAction>();
+            IList<TableTransactionAction> mergeBatch = new List<TableTransactionAction>();
+            IList<TableTransactionAction> delBatch = new List<TableTransactionAction>();
 
             for (int m = 0; m < n; m++)
             {
-                insertBatch.InsertOrMerge(GenerateRandomEnitity(pk));
+                var entity = GenerateRandomEnitity(pk);
+                insertBatch.Add(new TableTransactionAction(TableTransactionActionType.UpsertMerge, entity, entity.ETag));
             }
 
             IList<TableResult> results = this.repTable.ExecuteBatch(insertBatch);
@@ -1080,8 +885,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 // update entity and add to merge batch
                 DynamicReplicatedTableEntity ent = res.Result as DynamicReplicatedTableEntity;
-                ent.Properties.Add("foo2", new EntityProperty("bar2"));
-                mergeBatch.InsertOrMerge(ent);
+                ent.Properties.Add("foo2", "bar2");
+                mergeBatch.Add(new TableTransactionAction(TableTransactionActionType.UpsertMerge, ent, ent.ETag));
 
             }
 
@@ -1093,7 +898,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Assert.AreEqual(res.HttpStatusCode, (int)HttpStatusCode.NoContent);
 
                 // Add to delete batch
-                delBatch.Delete((ITableEntity)res.Result);
+                var entity = (ITableEntity)res.Result;
+                mergeBatch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
             }
 
             IList<TableResult> delResults = this.repTable.ExecuteBatch(delBatch);
@@ -1105,20 +911,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private void POCOInsertAndDeleteBatchWithNEntities(int n)
         {
-            TableBatchOperation batch = new TableBatchOperation();
+            IList<TableTransactionAction> batch = new List<TableTransactionAction>();
             string pk = Guid.NewGuid().ToString();
             for (int m = 0; m < n; m++)
             {
-                batch.Insert(new BaseEntity(pk, Guid.NewGuid().ToString()));
+                var entity = new BaseEntity(pk, Guid.NewGuid().ToString());
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
             }
 
             IList<TableResult> results = this.repTable.ExecuteBatch(batch);
 
-            TableBatchOperation delBatch = new TableBatchOperation();
+            IList<TableTransactionAction> delBatch = new List<TableTransactionAction>();
 
             foreach (TableResult res in results)
             {
-                delBatch.Delete((ITableEntity)res.Result);
+                var entity = (ITableEntity)res.Result;
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
                 Assert.AreEqual(res.HttpStatusCode, (int)HttpStatusCode.Created);
             }
 

@@ -20,12 +20,11 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure;
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
     using System.Linq;
-    using System.Net;
 
     /// <summary>
     /// This cs file only tests the ConvertXStoreTable() API.
@@ -84,10 +83,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             // BEFORE:
             // LINQ query in convert mode, using "CreateReplicatedQuery" => ETag is virtualized
-            IQueryable<InitDynamicReplicatedTableEntity> virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>();
+            IQueryable<InitDynamicReplicatedTableEntity> virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>(e => true);
             foreach (var ent in virtualizedRtableQuery)
             {
-                Assert.IsTrue(ent.ETag == "0", "ETag is virtualized when using CreateReplicatedQuery()");
+                Assert.IsTrue(ent.ETag == new ETag("0"), "ETag is virtualized when using CreateReplicatedQuery()");
             }
 
 
@@ -117,10 +116,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // AFTER:
             // LINQ query in convert mode, using "CreateReplicatedQuery" => ETag is virtualized
-            virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>();
+            virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>(e => true);
             foreach (var ent in virtualizedRtableQuery.ToList())
             {
-                Assert.IsTrue(ent.ETag == ent._rtable_Version.ToString(), "ETag is virtualized when using CreateReplicatedQuery()");
+                Assert.IsTrue(ent.ETag == new ETag(ent._rtable_Version.ToString()), "ETag is virtualized when using CreateReplicatedQuery()");
             }
         }
     }

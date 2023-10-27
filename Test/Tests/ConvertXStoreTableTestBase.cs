@@ -21,8 +21,7 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.WindowsAzure.Storage;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure.Data.Tables;
     using NUnit.Framework;
     using System.Collections.Generic;
     using System.Linq;
@@ -44,9 +43,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         
         private string xstoreConnectionString;
 
-        private CloudTableClient xstoreCloudTableClient;
+        private TableServiceClient xstoreCloudTableClient;
 
-        protected CloudTable xstoreCloudTable;
+        protected TableClient xstoreCloudTable;
 
         #region Helper functions
         protected void SetupXStoreTableEnv()
@@ -66,9 +65,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                                    this.rtableTestConfiguration.StorageInformation.AccountKeys[xstoreAccountIndex],
                                    this.rtableTestConfiguration.StorageInformation.DomainName);
 
-            CloudStorageAccount storageAccount = CloudStorageAccount.Parse(this.xstoreConnectionString);
-            this.xstoreCloudTableClient = storageAccount.CreateCloudTableClient();
-            this.xstoreCloudTable = this.xstoreCloudTableClient.GetTableReference(this.xstoreTableName);
+            this.xstoreCloudTableClient = new TableServiceClient(this.xstoreConnectionString);
+            this.xstoreCloudTable = this.xstoreCloudTableClient.GetTableClient(this.xstoreTableName);
             this.xstoreCloudTable.CreateIfNotExists();
         }
 
@@ -98,8 +96,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     //
                     // Insert
                     //
-                    TableOperation insertOperation = TableOperation.Insert(sampleXStoreEntity);
-                    TableResult insertResult = this.xstoreCloudTable.Execute(insertOperation);
+                    var addResp = this.xstoreCloudTable.AddEntity(sampleXStoreEntity);
+                    var insertResult = TableResult.ConvertResponseToTableResult(addResp, sampleXStoreEntity);
 
                     Assert.IsNotNull(insertResult, "insertResult = null");
                     Assert.AreEqual((int)HttpStatusCode.NoContent, insertResult.HttpStatusCode, "entry #{0} row {1}: insertResult.HttpStatusCode mismatch", i, j);
@@ -109,8 +107,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     //
                     // Retrieve
                     //
-                    TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(row.PartitionKey, row.RowKey);
-                    TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+                    var getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(row.PartitionKey, row.RowKey);
+                    var retrieveResult = new TableResult
+                    {
+                        Result = getResp.Value,
+                        Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                        HttpStatusCode = (int)getResp?.GetRawResponse().Status
+                    };
 
                     Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                     Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "partition #{0} row {1}: retrieveResult.HttpStatusCode mismatch", i, j);
@@ -145,8 +148,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                         this.GenerateJobId(jobId, i, j),
                         out partitionKey,
                         out rowKey);
-                    TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
-                    TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+                    var getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+                    var retrieveResult = new TableResult
+                    {
+                        Result = getResp.Value,
+                        Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                        HttpStatusCode = (int)getResp?.GetRawResponse().Status
+                    };
 
                     Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                     SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
@@ -154,16 +162,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     //
                     // Replace
                     //
-                    TableOperation replaceOperation = TableOperation.Replace(retrievedEntity);
-                    TableResult replaceResult = this.xstoreCloudTable.Execute(replaceOperation);
+                    var updateResp = this.xstoreCloudTable.UpdateEntity(retrievedEntity, retrievedEntity.ETag, TableUpdateMode.Replace);
+                    var replaceResult = TableResult.ConvertResponseToTableResult(updateResp, retrievedEntity);
+
                     Assert.IsNotNull(replaceResult, "replaceResult = null");
                     Assert.AreEqual((int)HttpStatusCode.NoContent, replaceResult.HttpStatusCode, "entry #{0} row {1}: insertResult.HttpStatusCode mismatch", i, j);
 
                     //
                     // Retrieve again
                     //
-                    retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
-                    retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+                    getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+                    retrieveResult = new TableResult
+                    {
+                        Result = getResp.Value,
+                        Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                        HttpStatusCode = (int)getResp?.GetRawResponse().Status
+                    };
                     Assert.IsNotNull(retrieveResult, "After Replace(): retrieveResult = null");
                     SampleXStoreEntity replacedEntity = (SampleXStoreEntity)retrieveResult.Result;
 
@@ -208,8 +222,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                         this.GenerateJobId(jobId, i, j),
                         out partitionKey,
                         out rowKey);
-                    TableOperation retrieveOperation = TableOperation.Retrieve(partitionKey, rowKey);
-                    TableResult retrieveResult = this.repTable.Execute(retrieveOperation);
+                    var retrieveResult = this.repTable.Retrieve(partitionKey, rowKey);
 
                     Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                     DynamicReplicatedTableEntity dynamicReplicatedTableEntity = retrieveResult.Result as DynamicReplicatedTableEntity;

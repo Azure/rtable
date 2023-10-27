@@ -21,7 +21,6 @@
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage;
     using NUnit.Framework;
     using System;
 
@@ -38,8 +37,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             : base(pk, rk)
         {
         }
-
-        public CloudStorageAccount UnSupportedProperty { get; set; }
 
         private DateTimeOffset? dateTimeOffsetNull = null;
         public DateTimeOffset? DateTimeOffsetNull

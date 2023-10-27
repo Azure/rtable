@@ -21,8 +21,6 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.WindowsAzure.Storage.Table;
-    using Microsoft.WindowsAzure.Storage.RTableTest;
     using Microsoft.WindowsAzure.Test.Network;
     using Microsoft.WindowsAzure.Test.Network.Behaviors;
     using NUnit.Framework;
@@ -31,6 +29,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Net;
     using System.Threading;
     using Fiddler;
+    using global::Azure.Data.Tables;
+    using Azure;
+    using global::Azure;
 
     /// <summary>
     /// Base class for RTable tests that use HttpMangler.
@@ -75,7 +76,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             for (int i = 0; i < this.cloudTables.Count; i++)
             {
-                Assert.IsTrue(this.cloudTables[i].Exists(), "RTable does not exist in storage account #{0}", i);
+                Assert.IsTrue(this.cloudTables[i].Exists(cloudTableClients[i]), "RTable does not exist in storage account #{0}", i);
             }
         }
 
@@ -101,8 +102,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             string accountNameToTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[index];
             Console.WriteLine("accountNameToTamper={0}", accountNameToTamper);
 
-            CloudTableClient tableClient = this.cloudTableClients[targetStorageAccount];
-            CloudTable table = tableClient.GetTableReference(this.repTable.TableName);
+            TableServiceClient tableClient = this.cloudTableClients[targetStorageAccount];
+            TableClient table = tableClient.GetTableClient(this.repTable.TableName);
 
             //
             // Insert
@@ -113,28 +114,24 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             SampleRTableEntity originalEntity = new SampleRTableEntity(jobType, jobId, referenceMessage);
 
             Console.WriteLine("\nCalling XStore Insert...");
-            TableOperation insertOperation = TableOperation.Insert(originalEntity);
-            TableResult insertResult = table.Execute(insertOperation);
+            var insertResult = table.AddEntity(originalEntity);
 
             Assert.IsNotNull(insertResult, "insertResult = null");
-            Console.WriteLine("insertResult.HttpStatusCode = {0}", insertResult.HttpStatusCode);
-            Console.WriteLine("insertResult.ETag = {0}", insertResult.Etag);
-            Assert.AreEqual((int)HttpStatusCode.NoContent, insertResult.HttpStatusCode, "insertResult.HttpStatusCode mismatch");
-            Assert.IsFalse(string.IsNullOrEmpty(insertResult.Etag), "insertResult.ETag = null or empty");
-
-            ITableEntity row = (ITableEntity)insertResult.Result;
+            Console.WriteLine("insertResult.HttpStatusCode = {0}", insertResult.Status);
+            Console.WriteLine("insertResult.ETag = {0}", insertResult.Headers.ETag);
+            Assert.AreEqual((int)HttpStatusCode.NoContent, insertResult.Status, "insertResult.HttpStatusCode mismatch");
+            Assert.IsFalse(string.IsNullOrEmpty(insertResult.Headers.ETag.ToString()), "insertResult.ETag = null or empty");
 
             //
             // Retrieve
             //
             Console.WriteLine("Calling XStore Retrieve...");
-            TableOperation retrieveOperation = TableOperation.Retrieve<SampleRTableEntity>(row.PartitionKey, row.RowKey);
-            TableResult retrieveResult = table.Execute(retrieveOperation);
+            var retrieveResult = table.GetEntity<SampleRTableEntity>(originalEntity.PartitionKey, originalEntity.RowKey);
 
             Assert.IsNotNull(retrieveResult, "retrieveResult = null");
-            Console.WriteLine("retrieveResult.HttpStatusCode = {0}", retrieveResult.HttpStatusCode);
-            Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
-            SampleRTableEntity retrievedEntity = (SampleRTableEntity)retrieveResult.Result;
+            Console.WriteLine("retrieveResult.HttpStatusCode = {0}", retrieveResult?.GetRawResponse().Status);
+            Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult?.GetRawResponse().Status, "retrieveResult.HttpStatusCode mismatch");
+            SampleRTableEntity retrievedEntity = retrieveResult.Value;
 
             Console.WriteLine("retrieveEntity:\n{0}", retrievedEntity);
             Assert.IsTrue(originalEntity.Equals(retrievedEntity), "originalEntity != retrievedEntity");
@@ -146,14 +143,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             referenceMessage = SampleRTableEntity.GenerateRandomMessage();
             retrievedEntity.Message = referenceMessage;
 
-            TableOperation updateOperation = TableOperation.Replace(retrievedEntity);
             bool abortTest = false;
             try
             {
                 using (HttpMangler proxy = new HttpMangler(false, behaviors))
                 {
                     Console.WriteLine("Calling table.Execute(updateOperation)");
-                    TableResult updateResult = table.Execute(updateOperation);
+                    var updateResult = table.UpdateEntity(retrievedEntity, retrievedEntity.ETag);
                     if (targetApiExpectedToFail)
                     {
                         // if targetApi is expected to fail, and we are here, that means something is wrong.
@@ -178,13 +174,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Retrieve again
             //
             Console.WriteLine("After HttpMangler is disabled, calling XStore Retrieve again...");
-            retrieveOperation = TableOperation.Retrieve<SampleRTableEntity>(row.PartitionKey, row.RowKey);
-            retrieveResult = table.Execute(retrieveOperation);
+            retrieveResult = table.GetEntity<SampleRTableEntity>(retrievedEntity.PartitionKey, retrievedEntity.RowKey);
 
             Assert.IsNotNull(retrieveResult, "retrieveResult = null");
-            Console.WriteLine("retrieveResult.HttpStatusCode = {0}", retrieveResult.HttpStatusCode);
-            Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
-            SampleRTableEntity retrievedEntity2 = (SampleRTableEntity)retrieveResult.Result;
+            Console.WriteLine("retrieveResult.HttpStatusCode = {0}", retrieveResult?.GetRawResponse().Status);
+            Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult?.GetRawResponse().Status, "retrieveResult.HttpStatusCode mismatch");
+            SampleRTableEntity retrievedEntity2 = retrieveResult.Value;
 
             Console.WriteLine("retrieveEntity2:\n{0}", retrievedEntity2);
             Assert.IsTrue(originalEntity.Equals(retrievedEntity2), "originalEntity != retrievedEntity2");
@@ -341,7 +336,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     string.Format(jobIdTemplate, i),
                     string.Format(messageTemplate, i));
 
-                this.repTable.Execute(TableOperation.Insert(originalEntity));
+                this.repTable.Insert(originalEntity);
                 partitionKey = originalEntity.PartitionKey;
             }
 
@@ -349,7 +344,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Retrieve entities and use them to create batchOperation to Replace or Delete
             //
             IEnumerable<SampleRTableEntity> allEntities = this.rtableWrapper.GetAllRows(partitionKey);
-            TableBatchOperation batchOperation = new TableBatchOperation();
+            IList<TableTransactionAction> batchOperation = new List<TableTransactionAction>();
             int m = 0;
             foreach (SampleRTableEntity entity in allEntities)
             {
@@ -364,11 +359,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     {
                         ETag = entity.ETag
                     };
-                    batchOperation.Replace(replaceEntity);
+                    batchOperation.Add(new TableTransactionAction(TableTransactionActionType.UpdateReplace, replaceEntity, replaceEntity.ETag));
                 }
                 else if (opTypes[m] == TableOperationType.Delete)
                 {
-                    batchOperation.Delete(entity);
+                    batchOperation.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
                 }
                 else
                 {
@@ -393,7 +388,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 Console.WriteLine("Validate originalEntity remain unchanged.");
                 allEntities = this.rtableWrapper.GetAllRows(partitionKey);
-                batchOperation = new TableBatchOperation();
+                batchOperation = new List<TableTransactionAction>();
                 m = 0;
                 foreach (SampleRTableEntity entity in allEntities)
                 {
@@ -700,14 +695,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             SampleRTableEntity.GenerateKeys(entityPartitionKey, entityRowKey, out partitionKey, out rowKey);
 
-            TableOperation retrieveOperation = TableOperation.Retrieve(partitionKey, rowKey);
             for (int i = 0; i < this.cloudTables.Count; i++)
             {
-                TableResult result = this.cloudTables[i].Execute(retrieveOperation);
-                if (result != null && result.HttpStatusCode == (int)HttpStatusCode.OK)
+                var result = this.cloudTables[i].GetEntity<ITableEntity>(partitionKey, rowKey);
+
+                if (result != null && result?.GetRawResponse().Status == (int)HttpStatusCode.OK)
                 {
-                    TableOperation deleteOperation = TableOperation.Delete((ITableEntity)result.Result);
-                    this.cloudTables[i].Execute(deleteOperation);
+                    this.cloudTables[i].DeleteEntity(partitionKey, rowKey);
                 }
             }
         }
@@ -1035,7 +1029,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             string replaceMessageTemplate = "updated-after-httpMangler-{0}";
 
             IEnumerable<SampleRTableEntity> allEntities = null;
-            TableBatchOperation batchOperation = null;
+            IList<TableTransactionAction> batchOperation = new List<TableTransactionAction>();
             int m = 0;
             bool gotExceptionInLastAttempt = true;
             int retries = 0;
@@ -1051,7 +1045,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     //
                     // Create a batchOperation to perform the specified opTypes
                     //
-                    batchOperation = new TableBatchOperation();
                     m = 0;
                     foreach (SampleRTableEntity entity in allEntities)
                     {
@@ -1067,11 +1060,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                             };
                             // add the operation to the batch operation
 
-                            batchOperation.Replace(replaceEntity);
+                            batchOperation.Add(new TableTransactionAction(TableTransactionActionType.UpdateReplace, replaceEntity, replaceEntity.ETag));
                         }
                         else if (opTypes[m] == TableOperationType.Delete)
                         {
-                            batchOperation.Delete(entity);
+                            batchOperation.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
                         }
                         else
                         {
@@ -1447,7 +1440,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="targetApiExpectedToFail"></param>
         /// <param name="httpManglerStartTime"></param>
         protected void RunHttpManglerBehaviorHelper(
-            TableBatchOperation batchOperation,
+            IList<TableTransactionAction> batchOperation,
             ProxyBehavior[] behaviors,
             bool targetApiExpectedToFail,
             out DateTime httpManglerStartTime)
