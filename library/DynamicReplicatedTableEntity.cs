@@ -173,7 +173,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.Properties = properties;
         }
 
-        internal DynamicReplicatedTableEntity(TableEntity entity)
+        public DynamicReplicatedTableEntity(TableEntity entity)
             : this()
         {
             if (entity == null)
@@ -194,7 +194,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 this.Properties[key] = entity[key];
             }
-            
+
+            ReadEntity(Properties);
         }
 
 #if !WINDOWS_RT
@@ -227,6 +228,10 @@ namespace Microsoft.Azure.Toolkit.Replication
             _rtable_Operation = (string)prop["_rtable_Operation"]; prop.Remove("_rtable_Operation");
             _rtable_BatchId = (Guid)prop["_rtable_BatchId"]; prop.Remove("_rtable_BatchId");
             _rtable_LockAcquisition = (DateTimeOffset)prop["_rtable_LockAcquisition"]; prop.Remove("_rtable_LockAcquisition");
+            prop.Remove("PartitionKey");
+            prop.Remove("RowKey");
+            prop.Remove("Timestamp");
+            prop.Remove("odata.etag");
             Properties = prop;
         }
 

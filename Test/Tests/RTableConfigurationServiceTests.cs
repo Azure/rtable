@@ -27,7 +27,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Net;
     using System.Threading;
     using Microsoft.Azure.Toolkit.Replication;
-    
+    using global::Azure.Data.Tables;
+
     [TestFixture]
     public class RTableConfigurationServiceTests : RTableLibraryTestBase
     {
@@ -175,7 +176,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             TableResult result = repTable.Insert(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
-            ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
+            ReplicatedTableEntity row = new ReplicatedTableEntity((TableEntity)result.Result);
 
             Assert.AreEqual((int) HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, result.Result, "result.Result = null");
@@ -229,7 +230,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             TableResult result = repTable.Insert(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
-            ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
+            ReplicatedTableEntity row = new ReplicatedTableEntity((TableEntity)result.Result);
 
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, result.Result, "result.Result = null");
@@ -299,7 +300,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             result = repTable.Insert(customer2);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
-            customer2 = (SampleRTableEntity) result.Result;
 
             SampleRTableEntity customer3 = new SampleRTableEntity("firstName3", "lastName3", "email3@company.com");
 
@@ -329,6 +329,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // replace a row
             customer2.Message = "updated after view update";
+            var customer2Result = repTable.Retrieve(customer2.PartitionKey, customer2.RowKey);
+            customer2 = new SampleRTableEntity((ReplicatedTableEntity)customer2Result.Result);
             result = repTable.Replace(customer2);
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");

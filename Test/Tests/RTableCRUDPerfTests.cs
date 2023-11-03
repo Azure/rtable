@@ -417,7 +417,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                 Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
 
-                var customer = (CustomerEntity)retrieveResult.Result;
+                var customer = new CustomerEntity((ReplicatedTableEntity)retrieveResult.Result);
                 Assert.IsNotNull(customer, "Retrieve: customer = null");
 
                 Assert.IsTrue(customer._rtable_Version == 1, "new entry should have version 1");
@@ -436,10 +436,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                 Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
-                Assert.IsNotNull((CustomerEntity)retrieveResult.Result, "Retrieve: customer = null");
+                Assert.IsNotNull(new CustomerEntity((ReplicatedTableEntity)retrieveResult.Result), "Retrieve: customer = null");
 
                 // Update entity
-                var customer = (CustomerEntity)retrieveResult.Result;
+                var customer = new CustomerEntity((ReplicatedTableEntity)retrieveResult.Result);
                 customer.Email = string.Format("{0}.{1}@email.com", entry.PartitionKey, entry.RowKey);
 
                 TableResult updateResult;
@@ -467,10 +467,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                 Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
-                Assert.IsNotNull((CustomerEntity)retrieveResult.Result, "Retrieve: customer = null");
+                Assert.IsNotNull(new CustomerEntity((ReplicatedTableEntity)retrieveResult.Result), "Retrieve: customer = null");
 
                 // Delete entity
-                var customer = (CustomerEntity)retrieveResult.Result;
+                var customer = new CustomerEntity((ReplicatedTableEntity)retrieveResult.Result);
                 Assert.IsTrue(customer._rtable_Version == 2, "entry was updated once, version should be 2");
 
                 TableResult deleteResult;

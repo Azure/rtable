@@ -68,7 +68,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 foreach (var retrievedEntity in allRows)
                 {
                     Assert.AreEqual(
-                            retrievedEntity.ETag,
+                            retrievedEntity.ETag.ToString(),
                             retrievedEntity._rtable_Version.ToString(),
                             "Etag mismatch");
 

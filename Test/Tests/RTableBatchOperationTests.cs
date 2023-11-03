@@ -144,11 +144,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             IReplicatedTableEntity ent = GenerateRandomEnitity("foo");
 
             // add entity
-            this.repTable.Insert(ent);
+            var result = this.repTable.Insert(ent);
 
             IList<TableTransactionAction> batch = new List<TableTransactionAction>
             {
-                new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag)
+                new TableTransactionAction(TableTransactionActionType.Add, ent, new ETag(result.Etag))
             };
 
             try
@@ -297,7 +297,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
             catch (RequestFailedException e)
             {
-                TestHelper.ValidateResponse(e, 1, (int)HttpStatusCode.NotFound, new string[] { "ResourceNotFound" }, "The specified resource does not exist.");
+                // ExecuteBatch throw ReplicatedTableConflictException since TransformUpdateBatchOp returns null.
+                Assert.IsNull(e.InnerException);
+                Assert.AreEqual("Please retry again after random timeout", e.Message);
             }
         }
         #endregion Delete
@@ -320,8 +322,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 new TableTransactionAction(TableTransactionActionType.UpdateMerge, mergeEntity, mergeEntity.ETag)
             };
 
+            this.repTable.ExecuteBatch(batch);
+
             // Retrieve Entity & Verify Contents
-            //TableResult result = this.repTable.Execute(TableOperation.Retrieve<DynamicReplicatedTableEntity>(baseEntity.PartitionKey, baseEntity.RowKey));
             TableResult result = this.repTable.Retrieve(baseEntity.PartitionKey, baseEntity.RowKey);
 
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
@@ -614,15 +617,33 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         #region Boundary Conditions
 
-        [Test(Description = "Ensure that adding null to the batch will throw")]
-        public void TableBatchAddNullShouldThrow()
+        //[Test(Description = "Ensure that adding null to the batch will throw")]
+        //public void TableBatchAddNullShouldThrow()
+        //{
+        //    try
+        //    {
+        //        this.repTable.ExecuteBatch(null);
+        //        Assert.Fail();
+        //    }
+        //    catch (ArgumentNullException)
+        //    {
+        //        // no op
+        //    }
+        //    catch (Exception)
+        //    {
+        //        Assert.Fail();
+        //    }
+        //}
+
+        [Test(Description = "Ensure that adding empty list to the batch will throw")]
+        public void TableBatchAddEmptyListShouldThrow()
         {
             try
             {
-                this.repTable.ExecuteBatch(null);
+                this.repTable.ExecuteBatch(new List<TableTransactionAction>());
                 Assert.Fail();
             }
-            catch (ArgumentNullException)
+            catch (InvalidOperationException)
             {
                 // no op
             }
@@ -639,18 +660,18 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             string pk = Guid.NewGuid().ToString();
 
             // Add entity 0
-            ITableEntity first = GenerateRandomEnitity(pk);
-            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, first, first.ETag));
+            var first = GenerateRandomEnitity(pk);
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, first));
 
             // Add entities 1 - 98
             for (int m = 1; m < 99; m++)
             {
                 var entity = GenerateRandomEnitity(pk);
-                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity));
             }
 
             // Insert Duplicate of entity 0
-            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, first, first.ETag));
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, first));
 
             try
             {
@@ -659,7 +680,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
             catch (RequestFailedException e)
             {
-                TestHelper.ValidateResponse(e, 1, (int)HttpStatusCode.BadRequest, new string[] { "InvalidInput" }, new string[] { "99:One of the request inputs is not valid." }, false);
+                TestHelper.ValidateResponse(
+                    e,
+                    1,
+                    (int)HttpStatusCode.BadRequest,
+                    new string[] { "InvalidDuplicateRow" },
+                    new string[] { "99:The batch request contains multiple changes with same row key. An entity can appear only once in a batch request." },
+                    false);
             }
         }
 
@@ -671,7 +698,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             for (int m = 0; m < 101; m++)
             {
                 var ent = GenerateRandomEnitity(pk);
-                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent, ent.ETag));
+                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, ent));
             }
 
             try
@@ -681,7 +708,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             }
             catch (RequestFailedException e)
             {
-                TestHelper.ValidateResponse(e, 1, (int)HttpStatusCode.BadRequest, new string[] { "InvalidInput" }, "One of the request inputs is not valid.");
+                TestHelper.ValidateResponse(
+                    e,
+                    1,
+                    (int)HttpStatusCode.BadRequest,
+                    new string[] { "InvalidInput" },
+                    "The batch request operation exceeds the maximum 100 changes per change set.");
             }
         }
 
@@ -762,10 +794,17 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 entity = GenerateRandomEnitity("foo2");
                 batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
+                var resp = this.repTable.ExecuteBatch(batch);
                 Assert.Fail();
             }
-            catch (ArgumentException)
+            catch (RequestFailedException e)
             {
+                TestHelper.ValidateResponse(
+                    e,
+                    1,
+                    (int)HttpStatusCode.BadRequest,
+                    new string[] { "CommandsInBatchActOnDifferentPartitions" },
+                    "All commands in a batch must operate on same entity group.");
                 // no op
             }
             catch (Exception)
@@ -780,10 +819,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             try
             {
                 batch.Add(new TableTransactionAction(TableTransactionActionType.Add, entity, entity.ETag));
-            }
-            catch (ArgumentException)
-            {
-                Assert.Fail();
             }
             catch (Exception)
             {
@@ -852,7 +887,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (TableResult res in results)
             {
                 var entity = (ITableEntity)res.Result;
-                batch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
+                delBatch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
                 Assert.AreEqual((int)HttpStatusCode.NoContent, res.HttpStatusCode, "Mismatch in results");
             }
 
@@ -899,7 +934,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                 // Add to delete batch
                 var entity = (ITableEntity)res.Result;
-                mergeBatch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
+                delBatch.Add(new TableTransactionAction(TableTransactionActionType.Delete, entity, entity.ETag));
             }
 
             IList<TableResult> delResults = this.repTable.ExecuteBatch(delBatch);

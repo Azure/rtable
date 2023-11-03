@@ -42,21 +42,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         public static void ValidateResponse(RequestFailedException ex, int expectedAttempts, int expectedStatusCode, string[] allowedErrorCodes, string[] errorMessageBeginsWith, bool stripIndex)
         {
-            Assert.AreEqual(expectedStatusCode, ex.Status, "expectedStatusCode is wrong.");
-            Assert.IsTrue(allowedErrorCodes.Contains(ex.ErrorCode), "Unexpected Error Code, received: " + ex.ErrorCode);
+            var status = (RequestFailedException)ex.InnerException != null ? ((RequestFailedException)ex.InnerException).Status : ex.Status;
+            var errorCode = (RequestFailedException)ex.InnerException != null ? ((RequestFailedException)ex.InnerException).ErrorCode : ex.ErrorCode;
+            Assert.AreEqual(expectedStatusCode, status, "expectedStatusCode is wrong.");
+            Assert.IsTrue(allowedErrorCodes.Contains(errorCode), "Unexpected Error Code, received: " + errorCode);
 
             if (errorMessageBeginsWith != null)
             {
-                Assert.IsNotNull(ex.Message);
+                var message = (RequestFailedException)ex.InnerException != null ? ((RequestFailedException)ex.InnerException).Message : ex.Message;
+                Assert.IsNotNull(message);
 
-                string message = ex.Message;
                 if (stripIndex)
                 {
-                    int semDex = ex.Message.IndexOf(":");
+                    int semDex = message.IndexOf(":");
                     semDex = semDex > 2 ? -1 : semDex;
                     message = message.Substring(semDex + 1);
                 }
-                Assert.IsTrue(errorMessageBeginsWith.Where((s) => message.StartsWith(s)).Any(), "Got this opContext.LastResult.ExtendedErrorInformation = {0}", ex.Message);            
+                Assert.IsTrue(errorMessageBeginsWith.Where((s) => message.StartsWith(s)).Any(), "Got this opContext.LastResult.ExtendedErrorInformation = {0}", message);
             }
         }
 

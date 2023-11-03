@@ -58,7 +58,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// Gets or sets the entity's current ETag. Set this value to '*' to blindly overwrite an entity as part of an update operation.
         /// </summary>
         /// <value>The entity ETag.</value>
-        public ETag ETag { get; set; }
+        public ETag ETag { get; set; } = default;
 
         // lock bit: used to detect that replication is in progress
         public bool _rtable_RowLock { get; set; }
@@ -99,6 +99,39 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             this.PartitionKey = partitionKey;
             this.RowKey = rowKey;
+        }
+
+        public ReplicatedTableEntity(ReplicatedTableEntity entity)
+            : this(entity.PartitionKey, entity.RowKey)
+        {
+            this.CopyFrom(entity);
+        }
+
+        public ReplicatedTableEntity(TableEntity entity)
+            : this(entity.PartitionKey, entity.RowKey)
+        {
+            if (entity == null)
+            {
+                throw new ArgumentNullException(nameof(entity));
+            }
+
+            this._rtable_RowLock = bool.Parse(entity["_rtable_RowLock"].ToString());
+            this._rtable_Version = long.Parse(entity["_rtable_Version"].ToString());
+            this._rtable_Tombstone = bool.Parse(entity["_rtable_Tombstone"].ToString());
+            this._rtable_ViewId = long.Parse(entity["_rtable_ViewId"].ToString());
+            this._rtable_Operation = entity["_rtable_Operation"].ToString();
+            this._rtable_BatchId = Guid.Parse(entity["_rtable_BatchId"].ToString());
+            this._rtable_LockAcquisition = DateTimeOffset.Parse(entity["_rtable_LockAcquisition"].ToString());
+
+            this.Properties = new Dictionary<string, object>();
+            foreach (var key in entity.Keys)
+            {
+                if (key.Equals("Properties", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    continue;
+                }
+                this.Properties.Add(key, entity[key]);
+            }
         }
 
         /// <summary>
@@ -146,8 +179,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             return dictionary;
         }
 
-        internal static bool ShouldSkipProperty(PropertyInfo property)
+        public static bool ShouldSkipProperty(PropertyInfo property)
         {
+
             switch (property.Name)
             {
                 case "PartitionKey":
@@ -196,6 +230,28 @@ namespace Microsoft.Azure.Toolkit.Replication
         public override int GetHashCode()
         {
             return base.GetHashCode();
+        }
+
+        public void CopyFrom(ReplicatedTableEntity entity)
+        {
+            if (entity == null)
+            {
+                throw new ArgumentNullException("entity");
+            }
+
+            this.PartitionKey = entity.PartitionKey;
+            this.RowKey = entity.RowKey;
+            this.Timestamp = entity.Timestamp;
+            this.ETag = entity.ETag;
+            this._rtable_RowLock = entity._rtable_RowLock;
+            this._rtable_Version = entity._rtable_Version;
+            this._rtable_Tombstone = entity._rtable_Tombstone;
+            this._rtable_ViewId = entity._rtable_ViewId;
+            this._rtable_Operation = entity._rtable_Operation;
+            this._rtable_BatchId = entity._rtable_BatchId;
+            this._rtable_LockAcquisition = entity._rtable_LockAcquisition;
+
+            this.ReadEntity(entity.Properties);
         }
     }
 }

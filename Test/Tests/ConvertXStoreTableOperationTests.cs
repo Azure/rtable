@@ -20,7 +20,7 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using global::Azure.Data.Tables;
+    using global::Azure;
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
@@ -246,13 +246,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             InitDynamicReplicatedTableEntity replaceTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
 
-            var updateResp = this.xstoreCloudTable.UpdateEntity(replaceTableEntity, replaceTableEntity.ETag, TableUpdateMode.Replace);
-            var replaceResult = new TableResult
-            {
-                Result = replaceTableEntity,
-                Etag = updateResp.Headers.ETag.ToString(),
-                HttpStatusCode = updateResp.Status
-            };
+            TableResult replaceResult = this.repTable.Replace(replaceTableEntity);
 
             Assert.IsNotNull(replaceResult, "replaceResult = null");
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.updatedMessage, true); // check _rtable_ViewId
@@ -312,13 +306,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             InitDynamicReplicatedTableEntity mergeTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
 
-            var updateResp = this.xstoreCloudTable.UpdateEntity(mergeTableEntity, mergeTableEntity.ETag, TableUpdateMode.Merge);
-            var mergeResult = new TableResult
-            {
-                Result = mergeTableEntity,
-                Etag = updateResp.Headers.ETag.ToString(),
-                HttpStatusCode = updateResp.Status
-            };
+            TableResult mergeResult = this.repTable.Merge(mergeTableEntity);
 
             Assert.IsNotNull(mergeResult, "mergeResult = null");
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.updatedMessage, true); // check _rtable_ViewId
@@ -384,15 +372,19 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             };
             Assert.IsNotNull(deleteResult, "deleteResult = null");
 
-            getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
-            retrieveResult = new TableResult
+            try
             {
-                Result = getResp.Value,
-                Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
-                HttpStatusCode = (int)getResp?.GetRawResponse().Status
-            };
-            Assert.IsNotNull(retrieveResult, "retrieveResult = null");
-            Assert.AreEqual(retrieveResult.HttpStatusCode, (int)HttpStatusCode.NotFound, "entry should not exist!");
+                getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+                Assert.Fail("GetEntity should throw when entity does not exist.");
+            }
+            catch (RequestFailedException ex)
+            {
+                Assert.AreEqual(ex.Status, (int)HttpStatusCode.NotFound);
+            }
+            catch (Exception)
+            {
+                Assert.Fail("GetEntity should throw RequestFailedException when entity does not exist.");
+            }
 
             this.PerformInsertOperationAndValidate(jobType, jobId, this.message);
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.message, true); // check _rtable_ViewId

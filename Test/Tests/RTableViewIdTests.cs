@@ -27,6 +27,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
+    using System.Linq;
     using System.Net;
 
     /// <summary>
@@ -80,7 +81,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             TableResult result = this.repTable.Insert(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
-            ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
+            ReplicatedTableEntity row = new ReplicatedTableEntity((TableEntity)result.Result);
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, result.Result, "result.Result = null");
             Assert.AreEqual("1", result.Etag, "result.Etag mismatch");
@@ -93,7 +94,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Retrieve entity
             TableResult retrievedResult = this.repTable.Retrieve(firstName, lastName);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
-            CustomerEntity customer = (CustomerEntity)retrievedResult.Result;
+            CustomerEntity customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
 
             Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
@@ -236,7 +237,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
             Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
-            CustomerEntity customer = (CustomerEntity)retrievedResult.Result;
+            CustomerEntity customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
             Assert.AreEqual(higherViewId, customer._rtable_ViewId, "customer._rtable_ViewId mismatch");
             Assert.AreEqual(newCustomer.PhoneNumber, customer.PhoneNumber, "customer.PhoneNumber mismatch");
             Assert.AreEqual(newCustomer.Email, customer.Email, "customer.Email mismatch");
@@ -375,7 +376,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             TableResult result = this.repTable.Insert(newCustomer);
             Assert.AreNotEqual(null, result, "result = null");
-            ReplicatedTableEntity row = (ReplicatedTableEntity)result.Result;
+            ReplicatedTableEntity row = new ReplicatedTableEntity((TableEntity)result.Result);
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, result.Result, "result.Result = null");
             Assert.AreEqual("1", result.Etag, "result.Etag mismatch");
@@ -388,7 +389,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Retrieve entity
             TableResult retrievedResult = this.repTable.Retrieve(firstName, lastName);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
-            CustomerEntity customer = (CustomerEntity)retrievedResult.Result;
+            CustomerEntity customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
 
             Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
@@ -425,7 +426,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Console.WriteLine("\nCalling Retrieve() with larger viewId...");
             retrievedResult = repTable.Retrieve(firstName, lastName);
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
-            CustomerEntity customer2 = (CustomerEntity)retrievedResult.Result;
+            CustomerEntity customer2 = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
 
             Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
@@ -507,7 +508,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
             Assert.IsNotNull(retrievedEntity, "retrievedEntity = null");
-            Assert.AreEqual(3, retrievedEntity.Properties.Count, "Properties.Count mismatch");
+            Assert.AreEqual(3, retrievedEntity.Properties.Where(prop => prop.Key.Contains("prop")).Count(), "Properties.Count mismatch");
             Assert.AreEqual(baseEntity.Properties["prop1"], retrievedEntity.Properties["prop1"], "Properties[prop1] mismatch");
             Assert.AreEqual(mergeEntity.Properties["prop2"], retrievedEntity.Properties["prop2"], "Properties[prop2] mismatch");
             Assert.AreEqual(mergeEntity2.Properties["prop3"], retrievedEntity.Properties["prop3"], "Properties[prop3] mismatch");

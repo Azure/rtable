@@ -182,9 +182,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             foreach (BaseEntity ent in currentTable.Query<BaseEntity>(select: new List<string>() { "A", "C" }))
             {
-                Assert.IsNotNull(ent.PartitionKey);
-                Assert.IsNotNull(ent.RowKey);
-                Assert.IsNotNull(ent.Timestamp);
+                Assert.IsNull(ent.PartitionKey);
+                Assert.IsNull(ent.RowKey);
+                Assert.IsNull(ent.Timestamp);
                 Assert.AreEqual("a", ent.A);
                 Assert.IsNull(ent.B);
                 Assert.AreEqual("c", ent.C);
@@ -306,7 +306,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description="A test to ensure that a generic query must have a type with a default constructor ")]
         public void TableGenericQueryOnTypeWithNoCtor()
         {
-            TestHelper.ExpectedException<NotSupportedException>(() => currentTable.Query<NoCtorEntity>(), "Query should not be able to be instantiated with a generic type that has no default constructor");
+            TestHelper.ExpectedException<MissingMethodException>(() => currentTable.Query<NoCtorEntity>().ToList(), "Query should not be able to be instantiated with a generic type that has no default constructor");
         }
 
         [Test(Description = "IQueryable - A test to validate basic CreateQuery")]

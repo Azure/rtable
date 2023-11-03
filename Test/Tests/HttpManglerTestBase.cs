@@ -697,7 +697,19 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             for (int i = 0; i < this.cloudTables.Count; i++)
             {
-                var result = this.cloudTables[i].GetEntity<ITableEntity>(partitionKey, rowKey);
+                Response<TableEntity> result = null;
+                try
+                {
+                    result = this.cloudTables[i].GetEntity<TableEntity>(partitionKey, rowKey);
+                }
+                catch (RequestFailedException ex)
+                {
+                    // No need to delete entity that doesn't exist.
+                    if (ex.Status == (int)HttpStatusCode.NotFound)
+                    {
+                        continue;
+                    }
+                }
 
                 if (result != null && result?.GetRawResponse().Status == (int)HttpStatusCode.OK)
                 {

@@ -482,9 +482,9 @@ namespace Microsoft.Azure.Toolkit.Replication
         //}
 
         private IEnumerable<TableTransactionAction> TransformUpdateBatchOp(View txnView, IEnumerable<TableTransactionAction> batch, int phase, int index,
-            IList<TableResult> results = null)
+            out RequestFailedException rfe, IList<TableResult> results = null)
         {
-
+            rfe = null;
             IEnumerator<TableTransactionAction> enumerator = batch.GetEnumerator();
             IList<TableTransactionAction> batchOp = new List<TableTransactionAction>();
             IEnumerator<TableResult> iter = (results != null) ? results.GetEnumerator() : null;
@@ -537,7 +537,9 @@ namespace Microsoft.Azure.Toolkit.Replication
                     if (index != tailIndex)
                     {
                         iter.MoveNext();
-                        row.ETag = new ETag(iter.Current.Etag);
+                        // Update ETag in batch operation entity
+                        prepOp.Entity.ETag = new ETag(iter.Current.Etag);
+                        prepOp = new TableTransactionAction(prepOp.ActionType, prepOp.Entity, prepOp.Entity.ETag);
                     }
                 }
 
@@ -555,12 +557,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     try
                     {
-                        var resp = table.SubmitTransaction(insertTombstone);
+                        var resp = table.SubmitTransaction(TransformTableTransactionEntityToTableEntity(insertTombstone));
                         results = TransactionResponseToTableResultList(resp, insertTombstone);
                     } 
                     catch (RequestFailedException e)
                     {
-                        ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones. " + e.Message);
+                        rfe = e;
+                        ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones. Status: {0}. ErrorCode: {1}", e.Status, e.ErrorCode);
                         return null;
                     }
 
@@ -573,12 +576,13 @@ namespace Microsoft.Azure.Toolkit.Replication
                         table = tableClient.GetTableClient(this.TableName);
                         try
                         {
-                            var resp = table.SubmitTransaction(insertTombstone);
+                            var resp = table.SubmitTransaction(TransformTableTransactionEntityToTableEntity(insertTombstone));
                             results = TransactionResponseToTableResultList(resp, insertTombstone);
                         }
                         catch (RequestFailedException e)
                         {
-                            ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones. " + e.Message);
+                            rfe = e;
+                            ReplicatedTableLogger.LogError("Batch: Failed to insert tombstones. Status: {0}. ErrorCode: {1}", e.Status, e.ErrorCode);
                             return null;
                         }
                     }
@@ -789,12 +793,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             TableClient table = tableClient.GetTableClient(this.TableName);
 
             // insert tombstone when transform
-            IEnumerable<TableTransactionAction> batchOp = TransformUpdateBatchOp(txnView, batch, phase, txnView.WriteHeadIndex, null);
+            IEnumerable<TableTransactionAction> batchOp = TransformUpdateBatchOp(txnView, batch, phase, txnView.WriteHeadIndex, out var rfe, null);
             if (batchOp == null)
             {
-                throw new ReplicatedTableConflictException("Please retry again after random timeout");
+                throw new ReplicatedTableConflictException("Please retry again after random timeout", rfe);
             }
-            var resp = table.SubmitTransaction(batchOp);
+            var resp = table.SubmitTransaction(TransformTableTransactionEntityToTableEntity(batchOp));
             results = TransactionResponseToTableResultList(resp, batchOp);
             if (PostProcessBatchExec(batch, results, phase) == false)
             {
@@ -827,12 +831,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 TableServiceClient tableClient = txnView[index];
                 TableClient table = tableClient.GetTableClient(this.TableName);
-                IEnumerable<TableTransactionAction> batchOp = TransformUpdateBatchOp(txnView, batch, phase, index, null);
+                IEnumerable<TableTransactionAction> batchOp = TransformUpdateBatchOp(txnView, batch, phase, index, out var rfe, null);
                 if (batchOp == null)
                 {
-                    throw new ReplicatedTableConflictException("Please retry again after a random delay");
+                    throw new ReplicatedTableConflictException("Please retry again after a random delay", rfe);
                 }
-                var resp = table.SubmitTransaction(batchOp);
+                var resp = table.SubmitTransaction(TransformTableTransactionEntityToTableEntity(batchOp));
                 results[index] = TransactionResponseToTableResultList(resp, batchOp);
                 if (PostProcessBatchExec(batch, results[index], phase) == false)
                 {
@@ -852,11 +856,11 @@ namespace Microsoft.Azure.Toolkit.Replication
                 if (tailIndex == 0)
                 {
                     phase = PREPARE_PHASE;
-                    batchOp = TransformUpdateBatchOp(txnView, batch, phase, index, null);
+                    batchOp = TransformUpdateBatchOp(txnView, batch, phase, index, out _, null);
                 }
                 phase = COMMIT_PHASE;
-                batchOp = TransformUpdateBatchOp(txnView, batch, phase, index, results[index]);
-                var resp = table.SubmitTransaction(batchOp);
+                batchOp = TransformUpdateBatchOp(txnView, batch, phase, index, out _, results[index]);
+                var resp = table.SubmitTransaction(TransformTableTransactionEntityToTableEntity(batchOp));
                 results[index] = TransactionResponseToTableResultList(resp, batchOp);
                 if (PostProcessBatchExec(batch, results[index], phase) == false)
                 {
@@ -957,13 +961,13 @@ namespace Microsoft.Azure.Toolkit.Replication
         //
         public TableResult Delete(ITableEntity entity)
         {
-            IReplicatedTableEntity row = new ReplicatedTableEntity(entity.PartitionKey, entity.RowKey);
+            var row = (IReplicatedTableEntity)entity;
             row._rtable_Operation = GetTableOperation(TableOperationType.Delete);
 
             // Delete() = Replace() with "_rtable_Tombstone = true", rows are deleted in the commit phase 
             // after they are replaced with tombstones in the prepare phase.
             row._rtable_Tombstone = true;
-            return Replace(row, null);
+            return Replace(row);
         }
 
         //
@@ -1726,6 +1730,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 ReplicatedTableLogger.LogError("Storage exception from replicaIndex:{0},\nPK:{1},\nRK:{2},\n{3}", index, partitionKey, rowKey, re);
 
                 var innerException = re.InnerException as WebException;
+                var statusCode = (HttpStatusCode)re.Status;
                 if (innerException != null)
                 {
                     HttpWebResponse httpWebResponse = (HttpWebResponse)innerException.Response;
@@ -1735,23 +1740,28 @@ namespace Microsoft.Azure.Toolkit.Replication
                         return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable };
                     }
 
-                    var statusCode = httpWebResponse.StatusCode;
-                    switch (statusCode)
-                    {
-                        case HttpStatusCode.BadRequest:
+                    statusCode = httpWebResponse.StatusCode;
+                }
+
+                switch (statusCode)
+                {
+                    case HttpStatusCode.BadRequest:
                         {
                             throw;
                         }
-                        case HttpStatusCode.ServiceUnavailable:
+                    case HttpStatusCode.ServiceUnavailable:
                         {
                             return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.ServiceUnavailable };
                         }
 
-                        default:
-                            return null;
-                    }
+                    case HttpStatusCode.NotFound:
+                        {
+                            return new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)HttpStatusCode.NotFound };
+                        }
+
+                    default:
+                        return null;
                 }
-                return null;
             }
             catch (Exception e)
             {
@@ -1940,7 +1950,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             // If the Etag is supplied, this is an update or delete based on existing eTag
             // no need to retrieve
-            if (Etag != null)
+            if (!string.IsNullOrEmpty(Etag))
             {
                 row.ETag = new ETag(Etag);
                 result = UpdateOrDeleteRow(tableClient, row);
@@ -2015,12 +2025,13 @@ namespace Microsoft.Azure.Toolkit.Replication
             try
             {
                 TableClient table = tableClient.GetTableClient(TableName);
-                var resp = table.AddEntity(row);
-                result = TableResult.ConvertResponseToTableResult(resp, row);
+                var entity = ToTableEntity(row);
+                var resp = table.AddEntity(entity);
+                result = TableResult.ConvertResponseToTableResult(resp, entity);
             }
             catch (RequestFailedException ex)
             {
-                ReplicatedTableLogger.LogError(ex.ToString());
+                ReplicatedTableLogger.LogError("TryInsertRow:Error: RequestFailedException {0}", ex);
                 result = new TableResult() { Result = null, Etag = null, HttpStatusCode = (int)ex.Status };
                 return result;
             }
@@ -2036,6 +2047,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         private TableResult UpdateOrDeleteRow(TableServiceClient tableClient, IReplicatedTableEntity row)
         {
             Response resp;
+            var entity = ToTableEntity(row);
 
             try
             {
@@ -2048,29 +2060,23 @@ namespace Microsoft.Azure.Toolkit.Replication
                 else if (row._rtable_Operation == GetTableOperation(TableOperationType.Merge))
                 {
                     // For Merge operations, call merge row for both phases
-                    resp = table.UpdateEntity(row, row.ETag, TableUpdateMode.Merge);
+                    resp = table.UpdateEntity(entity, entity.ETag, TableUpdateMode.Merge);
                 }
                 else
                 {
-                    resp = table.UpdateEntity(row, row.ETag, TableUpdateMode.Replace);
+                    resp = table.UpdateEntity(entity, entity.ETag, TableUpdateMode.Replace);
                 }
             }
             catch (RequestFailedException e)
             {
                 ReplicatedTableLogger.LogError("UpdateOrDeleteRow(): {0}", e);
 
-                var webException = e.InnerException as WebException;
-                if (webException != null && webException.Response != null)
+                return new TableResult()
                 {
-                    return new TableResult()
-                    {
-                        Result = null,
-                        Etag = null,
-                        HttpStatusCode = e.Status
-                    };
-                }
-
-                return null;
+                    Result = null,
+                    Etag = null,
+                    HttpStatusCode = e.Status
+                };
             }
             catch (Exception e)
             {
@@ -2078,7 +2084,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return null;
             }
 
-            return TableResult.ConvertResponseToTableResult(resp, row);
+            return TableResult.ConvertResponseToTableResult(resp, entity);
         }
 
         public TableServiceClient GetReplicaTableClient(int index)
@@ -2134,7 +2140,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             try
             {
                 TableClient table = tableClient.GetTableClient(this.TableName);
-                var resp = table.SubmitTransaction(batch);
+                var resp = table.SubmitTransaction(TransformTableTransactionEntityToTableEntity(batch));
                 var results = TransactionResponseToTableResultList(resp, batch);
                 if (results == null ||
                     !this.ValidateAndUnlock(batch, results, unlock))
@@ -2704,7 +2710,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 return null;
             }
 
-            var readHeadEtag = readHeadEntity.ETag;
+            string readHeadEtag = result.Etag;
 
             // now copy the row to the write head
             if (writeViewEntity != null)
@@ -2734,7 +2740,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             if (!readHeadLocked)
             {
                 readHeadEntity._rtable_RowLock = false;
-                readHeadEntity.ETag = readHeadEtag;
+                readHeadEntity.ETag = new ETag(readHeadEtag);
                 result = UpdateOrDeleteRow(txnView[txnView.ReadHeadIndex], readHeadEntity);
                 ValidateTxnView(txnView);
                 if (result == null)
@@ -2840,7 +2846,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     entity._rtable_Version = 1;
                     try
                     {
-                        tailTable.UpdateEntity(entity, entity.ETag, TableUpdateMode.Replace);
+                        tailTable.UpdateEntity(ToTableEntity(entity), entity.ETag, TableUpdateMode.Replace);
                         successCount++;
                         ReplicatedTableLogger.LogInformational("Converted XStore entity with Partition={0} Row={1}", entity.PartitionKey, entity.RowKey);
                     }
@@ -2896,5 +2902,34 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             return results;
         }
+
+        private static TableEntity ToTableEntity(IReplicatedTableEntity replicatedTableEntity)
+        {
+            if (replicatedTableEntity == null)
+            {
+                throw new ArgumentNullException("replicatedTableEntity");
+            }
+
+            var properties = replicatedTableEntity.WriteEntity();
+
+            return new TableEntity(properties)
+            {
+                PartitionKey = replicatedTableEntity.PartitionKey,
+                RowKey = replicatedTableEntity.RowKey,
+                ETag = string.IsNullOrEmpty(replicatedTableEntity.ETag.ToString()) ? ETag.All : replicatedTableEntity.ETag
+            };
+        }
+
+        public static IEnumerable<TableTransactionAction> TransformTableTransactionEntityToTableEntity(IEnumerable<TableTransactionAction> actions)
+        {
+            var batch = new List<TableTransactionAction>();
+            foreach (var action in actions)
+            {
+                batch.Add(new TableTransactionAction(action.ActionType, ToTableEntity((IReplicatedTableEntity)action.Entity), action.ETag));
+            }
+
+            return batch;
+        }
+
     }
 }

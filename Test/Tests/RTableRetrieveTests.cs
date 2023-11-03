@@ -59,14 +59,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     {
                         this.rtableWrapper.ReadEntity(jobType, jobId);
                     }
-                    catch (RequestFailedException se)
+                    catch (RequestFailedException rfe)
                     {
-                        Assert.IsNotNull(se.InnerException);
-                        var webException = se.InnerException as WebException;
-                        Assert.IsNotNull(webException);
-                        var response = (HttpWebResponse)webException.Response;
-                        Assert.IsNotNull(response);
-                        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+                        Assert.AreEqual((int)HttpStatusCode.BadRequest, rfe.Status);
                         throw;
                     }
                 });
@@ -145,7 +140,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
                 Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
 
-                customer = (CustomerEntity)retrievedResult.Result;
+                customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
                 Assert.AreEqual(customer.Email, (0).ToString(), "we should have read the row from Head");
             }
         }

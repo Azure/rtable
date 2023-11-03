@@ -638,11 +638,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
                     Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                     Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
-                    Assert.IsNotNull((SampleRTableEntity)retrieveResult.Result, "Retrieve: customer = null");
+                    Assert.IsNotNull((DynamicReplicatedTableEntity)retrieveResult.Result, "Retrieve: customer = null");
 
 
                     // Delete entity
-                    TableResult deleteResult = table.Delete((SampleRTableEntity)retrieveResult.Result);
+                    TableResult deleteResult = table.Delete((DynamicReplicatedTableEntity)retrieveResult.Result);
 
                     Assert.IsNotNull(deleteResult, "deleteResult = null");
                     Assert.AreEqual((int)HttpStatusCode.NoContent, deleteResult.HttpStatusCode, "deleteResult.HttpStatusCode mismatch");

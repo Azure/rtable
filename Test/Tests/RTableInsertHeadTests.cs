@@ -638,9 +638,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
-                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && new CustomerEntity((ReplicatedTableEntity)result.Result) != null, "Retrieve customer failed");
 
-                customer = (CustomerEntity)result.Result;
+                customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
                 customer.Email = "new_view@email.com";
 
                 result = rtable.Replace(customer);
@@ -765,7 +765,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.configurationService.UpdateConfiguration(config);
 
             // => Update the row
-            customer = (CustomerEntity)result.Result;
+            customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
             customer.Email = "new_view@email.com";
             result = rtable.Replace(customer);
             Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NotFound, "Update customer should failed");
@@ -834,7 +834,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.configurationService.UpdateConfiguration(config);
 
             // => Update the row
-            customer = (CustomerEntity)result.Result;
+            customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
             customer.Email = "new_view@email.com";
             result = rtable.Replace(customer);
             Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent, "Update customer failed");
@@ -903,7 +903,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
 
-            return (CustomerEntity)retrievedResult.Result;
+            return new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
         }
 
         private void UpdateCustomer(CustomerEntity customer, ReplicatedTable repTable)

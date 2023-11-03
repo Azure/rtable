@@ -113,7 +113,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             TableResult result = rTable.Retrieve(partitionKey, rowKey);
             HandleResult(result);
-            return (T)result.Result;
+            return ConvertEntity((ReplicatedTableEntity)result.Result);
         }
 
         /// <summary>
@@ -276,6 +276,22 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         public IEnumerable<T> GetAllRows(string partitionKey)
         {
             return rTable.ExecuteQuery<T>(e => e.PartitionKey == partitionKey);
+        }
+
+        protected T ConvertEntity(ReplicatedTableEntity entity)
+        {
+            T retval;
+            if (entity == null)
+            {
+                retval = null;
+            }
+            else
+            {
+                retval = new T();
+                retval.CopyFrom(entity);
+            }
+
+            return retval;
         }
 
         /// <summary>

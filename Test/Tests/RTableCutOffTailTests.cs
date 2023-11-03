@@ -378,7 +378,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
 
-            return (CustomerEntity)retrievedResult.Result;
+            return new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
         }
 
         private void UpdateCustomer(CustomerEntity customer, ReplicatedTable repTable)

@@ -69,7 +69,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 TableResult retrievedResult = rtable.Retrieve(firstName + i, lastName + i);
 
-                var customer = (CustomerEntity)retrievedResult.Result;
+                var customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
 
                 TableResult deleteResult = rtable.Delete(customer);
 
@@ -156,7 +156,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 {
                     TableResult retrievedResult = rtable.Retrieve(firstName + i, lastName + i);
 
-                    var customer = (CustomerEntity)retrievedResult.Result;
+                    var customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
 
                     TableResult deleteResult = rtable.Delete(customer);
 
@@ -242,9 +242,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
-            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && new CustomerEntity((ReplicatedTableEntity)result.Result) != null, "Retrieve customer failed");
 
-            customer = (CustomerEntity)result.Result;
+            customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
             customer.Email = "new_view@email.com";
 
             result = rtable.Replace(customer);
@@ -350,9 +350,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
-            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && new CustomerEntity((ReplicatedTableEntity)result.Result) != null, "Retrieve customer failed");
 
-            customer = (CustomerEntity)result.Result;
+            customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
             customer.Email = "new_view@email.com";
 
             result = rtable.Replace(customer);
@@ -464,9 +464,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
-                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && new CustomerEntity((ReplicatedTableEntity)result.Result) != null, "Retrieve customer failed");
 
-                customer = (CustomerEntity)result.Result;
+                customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
                 customer.Email = "new_view@email.com";
 
                 result = rtable.Replace(customer);
@@ -587,7 +587,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 {
                     TableResult retrievedResult = rtable.Retrieve(firstName + i, lastName + i);
 
-                    var customer = (CustomerEntity)retrievedResult.Result;
+                    var customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
                     customer.Email = "updated";
 
                     TableResult replaceResult = rtable.Replace(customer);
@@ -678,7 +678,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 {
                     TableResult retrievedResult = rtable.Retrieve(firstName + i, lastName + i);
 
-                    var customer = (CustomerEntity)retrievedResult.Result;
+                    var customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
                     customer.Email = "updated";
 
                     TableResult replaceResult = rtable.Replace(customer);
