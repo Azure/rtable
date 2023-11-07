@@ -32,8 +32,6 @@ namespace Microsoft.Azure.Toolkit.Replication
         bool CreateIfNotExists();
         bool Exists();
         bool DeleteIfExists();
-        //TableResult Execute(TableOperation operation);
-        //IList<TableResult> CheckRetrieveInBatch(IEnumerable<TableTransactionAction> batch);
         IList<TableResult> ExecuteBatch(IEnumerable<TableTransactionAction> batch);
         TableResult Retrieve(string partitionKey, string rowKey);
         TableResult Delete(ITableEntity entity);
