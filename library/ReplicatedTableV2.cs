@@ -121,6 +121,12 @@ namespace Microsoft.Azure.Toolkit.Replication
             throw new NotImplementedException();
         }
 
+        public IEnumerable<TElement> ExecuteQuery<TElement>(string filter, IEnumerable<string> select = null)
+            where TElement : ReplicatedTableEntity, new()
+        {
+            throw new NotImplementedException();
+        }
+
         public Pageable<TElement> CreateQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
                 where TElement : ReplicatedTableEntity, new()
         {

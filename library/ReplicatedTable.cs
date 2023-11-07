@@ -1377,6 +1377,35 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
+        public IEnumerable<TElement> ExecuteQuery<TElement>(string filter, IEnumerable<string> select = null)
+            where TElement : ReplicatedTableEntity, new()
+        {
+            using (new StopWatchInternal(this.TableName, "ExecuteQuery", this._configurationWrapper))
+            {
+                IEnumerable<TElement> rows = Enumerable.Empty<TElement>();
+                View txnView = CurrentView;
+
+                try
+                {
+                    int tailIndex = txnView.ReadTailIndex; // [Head] -> ... -> [ReadTailIndex] -> ... -> [Tail]
+                                                           //                       ^
+                                                           // query this replica :  |
+                    TableClient tail = txnView[tailIndex].GetTableClient(TableName);
+                    rows = tail.Query<TElement>(filter, select: select);
+                }
+                catch (Exception e)
+                {
+                    ReplicatedTableLogger.LogError("Error in ExecuteQuery: caught exception {0}", e);
+                }
+
+                return new ReplicatedTableEnumerable<TElement>(
+                                        rows,
+                                        this._configurationWrapper.IsConvertToRTableMode(),
+                                        txnView.ViewId,
+                                        GetBehaviorOnStaleView());
+            }
+        }
+
         public Pageable<TElement> CreateQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
                 where TElement : ReplicatedTableEntity, new()
         {

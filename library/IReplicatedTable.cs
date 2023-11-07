@@ -44,6 +44,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         TableResult InsertOrReplace(ITableEntity entity);
         TableResult FlushAndRetrieve(IReplicatedTableEntity row, bool virtualizeEtag = true);
         IEnumerable<TElement> ExecuteQuery<TElement>(Expression<Func<TElement, bool>> filter) where TElement : ReplicatedTableEntity, new();
+        IEnumerable<TElement> ExecuteQuery<TElement>(string filter, IEnumerable<string> select = null) where TElement : ReplicatedTableEntity, new();
         Pageable<TElement> CreateQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
             where TElement : ReplicatedTableEntity, new();
         ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
