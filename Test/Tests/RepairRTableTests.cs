@@ -215,6 +215,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 string jobTypeInsert = "jobType-RemoveAndReAddHeadReplicaTest-Insert"; // will call Insert() in Phase One, Two (expect to fail), Three (expect to fail)
                 string jobIdInsert = "jobId-RemoveAndReAddHeadReplicaTest-Insert";
 
+                string jobTypeInsert2 = "jobType-RemoveAndReAddHeadReplicaTest-Insert2"; // will call Insert() in Phase Two
+                string jobIdInsert2 = "jobId-RemoveAndReAddHeadReplicaTest-Insert2";
+
                 string jobTypeStale = "jobType-RemoveAndReAddHeadReplicaTest-Stale"; // will call Replace() in Phase One, Two, Three
                 string jobIdStale = "jobId-RemoveAndReAddHeadReplicaTest-Stale";
                 string jobTypeStatic = "jobType-RemoveAndReAddHeadReplicaTest-Static"; // will NOT call Replace() in Phase One. Let RepairTable() fix this row.
@@ -278,6 +281,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 this.PerformOperationAndValidate(TableOperationType.Replace, jobTypeReplaceDelete, jobIdReplaceDelete, updatedMessage);
                 // Delete() API
                 this.PerformOperationAndValidate(TableOperationType.Delete, jobTypeDelete, jobIdDelete);
+                // Insert() API
+                this.PerformInsertOperationAndValidate(jobTypeInsert2, jobIdInsert2, originalMessage);
 
                 Console.WriteLine("\n\nAdding the Head Replica back to the chain. readViewHeadIndex = 1. Will sleep some time...");
                 readViewHeadIndex = 1;
@@ -296,6 +301,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Console.WriteLine("Verifying that Insert() an existing row will fail...");
                 this.PerformInsertOperationAndExpectToFail(jobTypeInsert, jobIdInsert, updatedMessage);
 
+                for (int i = 0; i < retrieveAttemtps; i++)
+                {
+                    this.PerformRetrieveOperationAndValidate(jobTypeInsert2, jobIdInsert2, originalMessage, false);
+                }
                 for (int i = 0; i < retrieveAttemtps; i++)
                 {
                     this.PerformRetrieveOperationAndValidate(jobTypeStale, jobIdStale, updatedMessage, false);
@@ -347,7 +356,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 // Insert() existing row will fail
                 Console.WriteLine("Verifying that Insert() an existing row will fail...");
                 this.PerformInsertOperationAndExpectToFail(jobTypeInsert, jobIdInsert, updatedMessage);
-                
+
+                for (int i = 0; i < retrieveAttemtps; i++)
+                {
+                    this.PerformRetrieveOperationAndValidate(jobTypeInsert2, jobIdInsert2, originalMessage, false);
+                }
                 for (int i = 0; i < retrieveAttemtps; i++)
                 {
                     this.PerformRetrieveOperationAndValidate(jobTypeStale, jobIdStale, updatedMessage2, false);
