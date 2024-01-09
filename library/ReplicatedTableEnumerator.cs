@@ -168,8 +168,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                     return;
                 }
 
-                if (typeof(T) == typeof(TableEntity) ||
-                    typeof(T).IsSubclassOf(typeof(TableEntity)))
+                if (typeof(T) == typeof(ITableEntity) ||
+                    typeof(ITableEntity).IsAssignableFrom(typeof(T)))
                 {
                     this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForTableEntityInConvertMode;
                     this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForTableEntityInConvertMode;
@@ -190,8 +190,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                     return;
                 }
 
-                if (typeof(T) == typeof(TableEntity) ||
-                    typeof(T).IsSubclassOf(typeof(TableEntity)))
+                if (typeof(T) == typeof(ITableEntity) ||
+                    typeof(ITableEntity).IsAssignableFrom(typeof(T)))
                 {
                     this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForTableEntity;
                     this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForTableEntity;

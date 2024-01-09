@@ -25,13 +25,13 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Collections.Generic;
     using System.Data.Services.Client;
     using System.Linq;
+    using System.Linq.Expressions;
     using System.Net;
     using System.Threading.Tasks;
     using System.Threading;
     using System.Runtime.Remoting.Messaging;
     using global::Azure;
     using global::Azure.Data.Tables;
-    using System.Linq.Expressions;
 
     public class ReplicatedTable : IReplicatedTable
     {
@@ -276,7 +276,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                     else
                     {
                         // Initialize Etag if the row is not present
-                        row.ETag = ETag.All;
+                        row.ETag = default;
                     }
                 }
             }
@@ -1348,37 +1348,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             return result;
         }
 
-        public IEnumerable<TElement> ExecuteQuery<TElement>(Expression<Func<TElement, bool>> filter)
-            where TElement : ReplicatedTableEntity, new()
-        {
-            using (new StopWatchInternal(this.TableName, "ExecuteQuery", this._configurationWrapper))
-            {
-                IEnumerable<TElement> rows = Enumerable.Empty<TElement>();
-                View txnView = CurrentView;
-
-                try
-                {
-                    int tailIndex = txnView.ReadTailIndex; // [Head] -> ... -> [ReadTailIndex] -> ... -> [Tail]
-                                                           //                       ^
-                                                           // query this replica :  |
-                    TableClient tail = txnView[tailIndex].GetTableClient(TableName);
-                    rows = tail.Query(filter);
-                }
-                catch (Exception e)
-                {
-                    ReplicatedTableLogger.LogError("Error in ExecuteQuery: caught exception {0}", e);
-                }
-
-                return new ReplicatedTableEnumerable<TElement>(
-                                        rows,
-                                        this._configurationWrapper.IsConvertToRTableMode(),
-                                        txnView.ViewId,
-                                        GetBehaviorOnStaleView());
-            }
-        }
-
         public IEnumerable<TElement> ExecuteQuery<TElement>(string filter, IEnumerable<string> select = null)
-            where TElement : ReplicatedTableEntity, new()
+            where TElement : class, ITableEntity
         {
             using (new StopWatchInternal(this.TableName, "ExecuteQuery", this._configurationWrapper))
             {
@@ -1387,6 +1358,11 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 try
                 {
+                    if (select != null)
+                    {
+                        select = select.AddRTableProperties()
+                            .AddITableEntityProperties();
+                    }
                     int tailIndex = txnView.ReadTailIndex; // [Head] -> ... -> [ReadTailIndex] -> ... -> [Tail]
                                                            //                       ^
                                                            // query this replica :  |
@@ -1407,7 +1383,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         }
 
         public Pageable<TElement> CreateQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
-                where TElement : ReplicatedTableEntity, new()
+                where TElement : class, ITableEntity
         {
             using (new StopWatchInternal(this.TableName, "CreateQuery", this._configurationWrapper))
             {
@@ -1421,7 +1397,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                                                            // query this replica :  |
 
                     TableClient tail = txnView[tailIndex].GetTableClient(TableName);
-                    query = tail.Query(filter);
+                    query = tail.Query(filter, maxPerPage, select);
                 }
                 catch (Exception e)
                 {
@@ -1432,13 +1408,8 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        /// <summary>
-        /// Same as CreateQuery but the ETag of each entry will be virtualized.
-        /// </summary>
-        /// <typeparam name="TElement"></typeparam>
-        /// <returns></returns>
-        public ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
-                where TElement : ReplicatedTableEntity, new()
+        public ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>(string filter)
+                where TElement : class, ITableEntity
         {
             using (new StopWatchInternal(this.TableName, "CreateReplicatedQuery", this._configurationWrapper))
             {
@@ -1452,7 +1423,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                                                            // query this replica :  |
 
                     TableClient tail = txnView[tailIndex].GetTableClient(TableName);
-                    query = tail.Query(filter);
+                    query = tail.Query<TElement>(filter);
                 }
                 catch (Exception e)
                 {
@@ -1725,7 +1696,6 @@ namespace Microsoft.Azure.Toolkit.Replication
                                                     ? new InitDynamicReplicatedTableEntity(tableEntity)
                                                     : new DynamicReplicatedTableEntity(tableEntity);
                 
-
                 IDictionary<string, object> props = new Dictionary<string, object>();
                 foreach (var key in tableEntity.Keys)
                 {
@@ -2225,10 +2195,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 TableClient readHeadTable = readHeadTableClient.GetTableClient(this.TableName);
 
                 DateTime startTime = DateTime.UtcNow;
-                var query =
-                    (from ent in readHeadTable.Query<DynamicReplicatedTableEntity>()
-                     where ent._rtable_ViewId >= viewIdToRecoverFrom
-                     select ent);
+                var query = readHeadTable.Query<DynamicReplicatedTableEntity>(ent =>
+                    ent._rtable_ViewId >= viewIdToRecoverFrom);
 
                 ReplicatedTableLogger.LogInformational("RepairReplica: Parallelization Degree : {0}",
                         parallelizationDegree);
@@ -2258,9 +2226,8 @@ namespace Microsoft.Azure.Toolkit.Replication
                 }
 
                 // now find any entries that are in the write view but not in the read view
-                query = (from ent in writeHeadTable.Query<DynamicReplicatedTableEntity>()
-                    where ent._rtable_ViewId < txnView.ViewId
-                    select ent);
+                query = writeHeadTable.Query<DynamicReplicatedTableEntity>(ent =>
+                    ent._rtable_ViewId < txnView.ViewId);
 
                 foreach (DynamicReplicatedTableEntity extraEntity in query)
                 {
@@ -2451,9 +2418,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 TableServiceClient readHeadTableClient = txnView[txnView.ReadHeadIndex];
                 TableClient readHeadTable = readHeadTableClient.GetTableClient(this.TableName);
-                DynamicReplicatedTableEntity entity = (from ent in readHeadTable.Query<DynamicReplicatedTableEntity>()
-                                                       where ent.PartitionKey == partitionKey && ent.RowKey == rowKey
-                                                       select ent).FirstOrDefault();
+                DynamicReplicatedTableEntity entity = readHeadTable.Query<DynamicReplicatedTableEntity>(ent =>
+                    ent.PartitionKey == partitionKey && ent.RowKey == rowKey).FirstOrDefault();
                 if (entity == null)
                 {
                     ReplicatedTableLogger.LogError("RepairRowWithFilter: Entity with PartitionKey {0} and RowKey {1} does not exist", partitionKey, rowKey);
@@ -2817,5 +2783,43 @@ namespace Microsoft.Azure.Toolkit.Replication
             return batch;
         }
 
+    }
+
+    public static class IEnumerableExtensions
+    {
+        /// <summary>
+        /// Add RTable properties to select list.
+        /// </summary>
+        /// <param name="source">List of columsn to append to.</param>
+        /// <returns></returns>
+        public static IEnumerable<string> AddRTableProperties(this IEnumerable<string> source)
+        {
+            ReplicatedTableEntity entity;
+            return source.Concat(new List<string>
+            {
+                nameof(entity._rtable_RowLock),
+                nameof(entity._rtable_Version),
+                nameof(entity._rtable_Tombstone),
+                nameof(entity._rtable_ViewId),
+                nameof(entity._rtable_Operation),
+                nameof(entity._rtable_BatchId),
+                nameof(entity._rtable_LockAcquisition)
+            }).ToHashSet();
+        }
+
+        /// <summary>
+        /// Add ITableEntity properties to list. No need to add ETag as property will always be returned in latest SDK.
+        /// </summary>
+        /// <param name="source">List of columsn to append to.</param>
+        /// <returns></returns>
+        public static IEnumerable<string> AddITableEntityProperties(this IEnumerable<string> source)
+        {
+            return source.Concat(new HashSet<string>
+            {
+                nameof(ITableEntity.PartitionKey),
+                nameof(ITableEntity.RowKey),
+                nameof(ITableEntity.Timestamp)
+            }).ToHashSet();
+        }
     }
 }

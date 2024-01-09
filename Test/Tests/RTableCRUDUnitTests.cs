@@ -221,7 +221,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(readRow.ETag == new ETag("1"), "Returned etag is not zero");
             Assert.IsTrue(readRow.Properties.ContainsKey("Email"), "DynamicRTableEntity returned didnt contain Email");
             Assert.IsTrue(readRow.Properties.ContainsKey("PhoneNumber"), "DynamicRTableEntity returned didnt contain PhoneNumber");
-            Assert.IsTrue(readRow.Properties.Count == 2, "DynamicRTableEntity returned contained diff number of properties");
+            Assert.IsTrue(readRow.Properties.Count == 6, "DynamicRTableEntity returned contained diff number of properties");
                        
             ////Dynamic insert entity
             DynamicReplicatedTableEntity newDynamicCustomer = new DynamicReplicatedTableEntity(dynamicFirstName, dynamicLastName);
@@ -247,7 +247,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsTrue(readRow.ETag == new ETag("1"), "Returned etag is not zero");
             Assert.IsTrue(readRow.Properties.ContainsKey("Email"), "DynamicRTableEntity returned didnt contain Email");
             Assert.IsTrue(readRow.Properties.ContainsKey("PhoneNumber"), "DynamicRTableEntity returned didnt contain PhoneNumber");
-            Assert.IsTrue(readRow.Properties.Count == 2, "DynamicRTableEntity returned contained diff number of properties");
+            Assert.IsTrue(readRow.Properties.Count == 6, "DynamicRTableEntity returned contained diff number of properties");
           
             // Retrieve entity
             retrievedResult = this.repTable.Retrieve(firstName, lastName);
@@ -799,7 +799,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.AreEqual(2, row._rtable_Version, "row._rtable_Version mismatch");
             Assert.AreEqual(false, row._rtable_Tombstone, "row._rtable_Tombstone mismatch");
             Assert.AreEqual(this.rtableTestConfiguration.RTableInformation.ViewId, row._rtable_ViewId, "row._rtable_ViewId mismatch");
-            Assert.AreEqual(2, retrievedEntity.Properties.Count, "retrievedEntity.Properties.Count mismatch");
+            Assert.AreEqual(6, retrievedEntity.Properties.Count, "retrievedEntity.Properties.Count mismatch");
             Assert.AreEqual(baseEntity.Properties["prop1"], retrievedEntity.Properties["prop1"], "Properties[prop1] mismatch");
             Assert.AreEqual(mergeEntity.Properties["prop2"], retrievedEntity.Properties["prop2"], "Properties[prop2] mismatch");
 
@@ -838,7 +838,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
             Assert.IsNotNull(retrievedEntity, "retrievedEntity = null");
-            Assert.AreEqual(3, retrievedEntity.Properties.Count, "Properties.Count mismatch");
+            Assert.AreEqual(7, retrievedEntity.Properties.Count, "Properties.Count mismatch");
             Assert.AreEqual(baseEntity.Properties["prop1"], retrievedEntity.Properties["prop1"], "Properties[prop1] mismatch");
             Assert.AreEqual(mergeEntity.Properties["prop2"], retrievedEntity.Properties["prop2"], "Properties[prop2] mismatch");
             Assert.AreEqual(mergeEntity2.Properties["prop3"], retrievedEntity.Properties["prop3"], "Properties[prop3] mismatch");

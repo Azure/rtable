@@ -24,6 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Collections.Generic;
     using System.Net;
     using System.Threading;
+    using global::Azure.Data.Tables;
     using Microsoft.Azure.Toolkit.Replication;
 
     public abstract class RTableWrapperBase<T> where T : ReplicatedTableEntity, new()
@@ -275,7 +276,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         public IEnumerable<T> GetAllRows(string partitionKey)
         {
-            return rTable.ExecuteQuery<T>(e => e.PartitionKey == partitionKey);
+            return rTable.ExecuteQuery<T>(TableClient.CreateQueryFilter<T>(e => e.PartitionKey == partitionKey));
         }
 
         protected T ConvertEntity(ReplicatedTableEntity entity)

@@ -80,7 +80,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 3 - CreateQuery doesn't return entries #2 and #4
              */
-            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(e => true).AsEnumerable())
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 int id = int.Parse(customer.PartitionKey.Replace(firstName, ""));
 
@@ -91,7 +91,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 4 - ExecuteQuery doesn't return entries #2 and #4
              */
-            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(e => true))
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 int id = int.Parse(customer.PartitionKey.Replace(firstName, ""));
 
@@ -181,7 +181,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 3 - CreateQuery doesn't return entries #2 and #4
              */
-            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(e => true).AsEnumerable())
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 int id = int.Parse(customer.PartitionKey.Replace(firstName, ""));
                 Assert.AreNotEqual(id, 2, "entry #2 should have been deleted");
@@ -192,7 +192,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 4 - ExecuteQuery doesn't return entries #2 and #4
              */
-            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(e => true))
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 int id = int.Parse(customer.PartitionKey.Replace(firstName, ""));
                 Assert.AreNotEqual(id, 2, "entry #2 should have been deleted");
@@ -278,7 +278,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * stale client using LINQ: CreateReplicatedQuery
              */
-            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>(e => true).AsEnumerable())
+            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
                 if (id == entryId)
@@ -294,7 +294,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * stale client using LINQ: ExecuteQuery
              */
-            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(e => true))
+            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
                 if (id == entryId)
@@ -388,7 +388,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              */
             try
             {
-                foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>(e => true).AsEnumerable())
+                foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
                 {
                     int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
                     Assert.IsTrue(id != entryId, "we should throw on entry #5");
@@ -407,7 +407,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              */
             try
             {
-                foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(e => true))
+                foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(null))
                 {
                     int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
                     Assert.IsTrue(id != entryId, "we should throw on entry #5");
@@ -501,7 +501,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * stale client using LINQ: CreateReplicatedQuery
              */
-            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>(e => true).AsEnumerable())
+            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
 
@@ -514,7 +514,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * stale client using LINQ: ExecuteQuery
              */
-            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(e => true))
+            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
 
@@ -601,7 +601,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 3 - CreateQuery is served from [Tail], data should be old
              */
-            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(e => true).AsEnumerable())
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 Assert.AreEqual(customer.Email, "***", "expected old data");
             }
@@ -610,7 +610,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 4 - ExecuteQuery is served from [Tail], data should be old
              */
-            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(e => true))
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 Assert.AreEqual(customer.Email, "***", "expected old data");
             }
@@ -696,7 +696,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 3 - CreateQuery is served from [Head], data should be new
              */
-            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(e => true).AsEnumerable())
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 Assert.AreEqual(customer.Email, "updated", "expected new data");
             }
@@ -705,7 +705,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 4 - ExecuteQuery is served from [Head], data should be new
              */
-            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(e => true))
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 Assert.AreEqual(customer.Email, "updated", "expected new data");
             }

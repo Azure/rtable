@@ -58,7 +58,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// Gets or sets the entity's current ETag. Set this value to '*' to blindly overwrite an entity as part of an update operation.
         /// </summary>
         /// <value>The entity ETag.</value>
-        public ETag ETag { get; set; } = default;
+        public ETag ETag { get; set; }
 
         // lock bit: used to detect that replication is in progress
         public bool _rtable_RowLock { get; set; }

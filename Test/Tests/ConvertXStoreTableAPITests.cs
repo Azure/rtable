@@ -83,7 +83,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             // BEFORE:
             // LINQ query in convert mode, using "CreateReplicatedQuery" => ETag is virtualized
-            IQueryable<InitDynamicReplicatedTableEntity> virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>(e => true);
+            IQueryable<InitDynamicReplicatedTableEntity> virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>(null);
             foreach (var ent in virtualizedRtableQuery)
             {
                 Assert.IsTrue(ent.ETag == new ETag("0"), "ETag is virtualized when using CreateReplicatedQuery()");
@@ -116,7 +116,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // AFTER:
             // LINQ query in convert mode, using "CreateReplicatedQuery" => ETag is virtualized
-            virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>(e => true);
+            virtualizedRtableQuery = this.repTable.CreateReplicatedQuery<InitDynamicReplicatedTableEntity>(null);
             foreach (var ent in virtualizedRtableQuery.ToList())
             {
                 Assert.IsTrue(ent.ETag == new ETag(ent._rtable_Version.ToString()), "ETag is virtualized when using CreateReplicatedQuery()");

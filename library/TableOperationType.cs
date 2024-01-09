@@ -14,7 +14,6 @@ namespace Microsoft.Azure.Toolkit.Replication
         Merge,
         InsertOrReplace,
         InsertOrMerge,
-        Retrieve,
-        RotateEncryptionKey
+        Retrieve
     }
 }

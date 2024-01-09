@@ -41,12 +41,11 @@ namespace Microsoft.Azure.Toolkit.Replication
         TableResult Insert(ITableEntity entity, TableResult retrievedResult = null);
         TableResult InsertOrReplace(ITableEntity entity);
         TableResult FlushAndRetrieve(IReplicatedTableEntity row, bool virtualizeEtag = true);
-        IEnumerable<TElement> ExecuteQuery<TElement>(Expression<Func<TElement, bool>> filter) where TElement : ReplicatedTableEntity, new();
-        IEnumerable<TElement> ExecuteQuery<TElement>(string filter, IEnumerable<string> select = null) where TElement : ReplicatedTableEntity, new();
+        IEnumerable<TElement> ExecuteQuery<TElement>(string filter, IEnumerable<string> select = null) where TElement : class, ITableEntity;
         Pageable<TElement> CreateQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
-            where TElement : ReplicatedTableEntity, new();
-        ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
-            where TElement : ReplicatedTableEntity, new();
+            where TElement : class, ITableEntity;
+        ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>(string filter)
+            where TElement : class, ITableEntity;
         TableResult RepairRow(string partitionKey, string rowKey, IReplicatedTableEntity existingRow);
     }
 }

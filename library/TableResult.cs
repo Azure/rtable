@@ -20,7 +20,6 @@
 
 
 using Azure;
-using Azure.Data.Tables;
 
 namespace Microsoft.Azure.Toolkit.Replication
 {

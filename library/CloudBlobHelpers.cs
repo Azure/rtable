@@ -33,16 +33,20 @@ namespace Microsoft.Azure.Toolkit.Replication
     using global::Azure.Storage.Blobs.Models;
     using global::Azure;
     using global::Azure.Data.Tables;
+    using global::Azure.Storage;
 
     public class CloudBlobHelpers
     {
         public static BlobClient GetBlockBlob(string configurationStorageConnectionString, string configurationLocation)
         {
-            var blobClient = new BlobServiceClient(configurationStorageConnectionString);
-            var container = blobClient.GetBlobContainerClient(GetContainerName(configurationLocation));
+            BlobServiceClient blobClient = new BlobServiceClient(configurationStorageConnectionString);
+            BlobContainerClient container = blobClient.GetBlobContainerClient(GetContainerName(configurationLocation));
             if (container.CreateIfNotExists() != null)
             {
-                container.SetAccessPolicy(PublicAccessType.None);
+                using (StorageExtensions.CreateServiceTimeoutScope(TimeSpan.FromMinutes(10)))
+                {
+                    container.SetAccessPolicy(PublicAccessType.None);
+                }
             }
 
             return container.GetBlobClient(GetBlobName(configurationLocation));
@@ -94,7 +98,15 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             try
             {
-                string content = blob.DownloadContent().Value.Content.ToString();
+                string content;
+                using (StorageExtensions.CreateServiceTimeoutScope(TimeSpan.FromSeconds(5)))
+                {
+                    var cancellationTokenSource = new CancellationTokenSource();
+                    // Limiting Maximum execution time for all the requests to 30 seconds
+                    cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(30));
+                    content = blob.DownloadContent(cancellationTokenSource.Token).Value.Content.ToString();
+                }
+
                 if (content == Constants.ConfigurationStoreUpdatingText)
                 {
                     return new ReplicatedTableReadBlobResult(ReadBlobCode.UpdateInProgress, "Blob update in progress ...");
@@ -131,7 +143,12 @@ namespace Microsoft.Azure.Toolkit.Replication
         {
             try
             {
-                string content = (await blob.DownloadContentAsync(ct)).Value.Content.ToString();
+                string content;
+                using (StorageExtensions.CreateServiceTimeoutScope(TimeSpan.FromSeconds(5)))
+                {
+                    content = (await blob.DownloadContentAsync(ct)).Value.Content.ToString();
+                }
+
                 if (content == Constants.ConfigurationStoreUpdatingText)
                 {
                     return new ReplicatedTableReadBlobResult(ReadBlobCode.UpdateInProgress, "Blob update in progress ...");
@@ -240,7 +257,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             var eTagsArray = new List<string>(new string[numberOfBlobs]);
             var resultArray = new List<ReplicatedTableReadBlobResult>(new ReplicatedTableReadBlobResult[numberOfBlobs]);
 
+            // Limiting Maximum execution time for all the requests to 30 seconds
             var cancel = new CancellationTokenSource();
+            cancel.CancelAfter(TimeSpan.FromSeconds(30));
 
 
             /*

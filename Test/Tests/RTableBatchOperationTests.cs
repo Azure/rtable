@@ -186,7 +186,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             TableResult result = this.repTable.Retrieve(insertOrMergeEntity.PartitionKey, insertOrMergeEntity.RowKey);
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
-            Assert.AreEqual(insertOrMergeEntity.Properties.Count, retrievedEntity.Properties.Count);
+            Assert.AreEqual(insertOrMergeEntity.Properties.Count + 4, retrievedEntity.Properties.Count);
 
             DynamicReplicatedTableEntity mergeEntity = new DynamicReplicatedTableEntity(insertOrMergeEntity.PartitionKey, 
                                                                       insertOrMergeEntity.RowKey, 
@@ -204,7 +204,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             result = this.repTable.Retrieve(insertOrMergeEntity.PartitionKey, insertOrMergeEntity.RowKey);
             retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
-            Assert.AreEqual(2, retrievedEntity.Properties.Count, "retrievedEntity.Properties.Count={0}. (Expecting 2)", retrievedEntity.Properties.Count);
+            Assert.AreEqual(6, retrievedEntity.Properties.Count, "retrievedEntity.Properties.Count={0}. (Expecting 6)", retrievedEntity.Properties.Count);
 
             Assert.IsNotNull(retrievedEntity);
             Assert.AreEqual(insertOrMergeEntity.Properties["prop1"], retrievedEntity.Properties["prop1"]);
@@ -225,8 +225,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             IList<TableTransactionAction> batch = new List<TableTransactionAction>();
 
             // Retrieve existing entities using TableQuery
-            IEnumerable<DynamicReplicatedTableEntity> allEntities = this.repTable.ExecuteQuery<DynamicReplicatedTableEntity>(e =>
-                e.PartitionKey == baseEntity.PartitionKey);
+            IEnumerable<DynamicReplicatedTableEntity> allEntities = this.repTable.ExecuteQuery<DynamicReplicatedTableEntity>(
+                TableClient.CreateQueryFilter<DynamicReplicatedTableEntity>(e =>
+                    e.PartitionKey == baseEntity.PartitionKey));
             foreach (DynamicReplicatedTableEntity entity in allEntities)
             {
                 // Add delete
@@ -254,7 +255,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
             Assert.IsNotNull(retrievedEntity);
-            Assert.AreEqual(baseEntity.Properties.Count, retrievedEntity.Properties.Count);
+            Assert.AreEqual(baseEntity.Properties.Count + 4, retrievedEntity.Properties.Count);
             Assert.AreEqual(baseEntity.Properties["prop1"], retrievedEntity.Properties["prop1"]);
 
             IList<TableTransactionAction> batch = new List<TableTransactionAction>();
@@ -330,7 +331,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
             Assert.IsNotNull(retrievedEntity);
-            Assert.AreEqual(2, retrievedEntity.Properties.Count);
+            Assert.AreEqual(6, retrievedEntity.Properties.Count);
             Assert.AreEqual(baseEntity.Properties["prop1"], retrievedEntity.Properties["prop1"]);
             Assert.AreEqual(mergeEntity.Properties["prop2"], retrievedEntity.Properties["prop2"]);
         }
@@ -367,7 +368,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             DynamicReplicatedTableEntity retrievedEntity = result.Result as DynamicReplicatedTableEntity;
 
             Assert.IsNotNull(retrievedEntity);
-            Assert.AreEqual(replaceEntity.Properties.Count, retrievedEntity.Properties.Count);
+            Assert.AreEqual(replaceEntity.Properties.Count + 4, retrievedEntity.Properties.Count);
             Assert.AreEqual(replaceEntity.Properties["prop2"], retrievedEntity.Properties["prop2"]);
 
             //
@@ -392,7 +393,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsNotNull(retrievedEntity);
 
             Console.WriteLine("{0}", retrievedEntity.ToString());
-            Assert.AreEqual(replaceEntity.Properties.Count, retrievedEntity.Properties.Count);
+            Assert.AreEqual(replaceEntity.Properties.Count + 4, retrievedEntity.Properties.Count);
             Assert.AreEqual(replaceEntity.Properties["prop3"], retrievedEntity.Properties["prop3"]);
         }
         #endregion Replace
@@ -478,7 +479,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             Assert.IsNotNull(retrievedEntity);
             Assert.AreEqual(ent.PartitionKey, retrievedEntity.PartitionKey);
             Assert.AreEqual(ent.RowKey, retrievedEntity.RowKey);
-            Assert.AreEqual(ent.Properties.Count, retrievedEntity.Properties.Count);
+            Assert.AreEqual(ent.Properties.Count + 4, retrievedEntity.Properties.Count);
             Assert.AreEqual(ent.Properties["foo"], retrievedEntity.Properties["foo"]);
             Assert.AreEqual(ent.Properties["foo"], retrievedEntity.Properties["foo"]);
             Assert.AreEqual(ent.Properties["foo2"], retrievedEntity.Properties["foo2"]);
@@ -510,7 +511,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             result = this.repTable.Retrieve(ent.PartitionKey, ent.RowKey);
             retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
-            Assert.AreEqual(1, retrievedEntity.Properties.Count);
+            Assert.AreEqual(5, retrievedEntity.Properties.Count);
             Assert.AreEqual(insertOrReplaceEntity.Properties["prop2"], retrievedEntity.Properties["prop2"]);
 
             // Merge
@@ -542,7 +543,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             result = this.repTable.Retrieve(ent.PartitionKey, ent.RowKey);
             retrievedEntity = result.Result as DynamicReplicatedTableEntity;
             Assert.IsNotNull(retrievedEntity);
-            Assert.AreEqual(replaceEntity.Properties.Count, retrievedEntity.Properties.Count);
+            Assert.AreEqual(replaceEntity.Properties.Count + 4, retrievedEntity.Properties.Count);
             Assert.AreEqual(replaceEntity.Properties["replaceProp"], retrievedEntity.Properties["replaceProp"]);
 
             // Delete Entity

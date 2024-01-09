@@ -30,7 +30,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Net;
     using global::Azure;
     using global::Azure.Data.Tables;
-    using Newtonsoft.Json.Linq;
 
     [TestFixture]
     public class RTableQueryGenericTests : RTableLibraryTestBase
@@ -364,7 +363,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Assert.IsTrue(tableCount == 10, "Query counts are different");
 
                 // But, with "CreateReplicatedQuery" ETag is virtualized
-                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(x => x.PartitionKey == pk);
+                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(
+                    TableClient.CreateQueryFilter<BaseEntity>(x => x.PartitionKey == pk));
 
                 foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
                 {
@@ -378,7 +378,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent);
                 }
 
-                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(x => x.PartitionKey == pk);
+                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(
+                    TableClient.CreateQueryFilter<BaseEntity>(x => x.PartitionKey == pk));
 
                 foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
                 {
@@ -474,7 +475,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 Assert.IsTrue(tableCount == 20, "Query counts are different");
 
                 // But, with "CreateReplicatedQuery" ETag is virtualized
-                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(e => true);
+                IQueryable<BaseEntity> virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(null);
 
                 foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
                 {
@@ -488,7 +489,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent);
                 }
 
-                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(e => true);
+                virtualizedRtableQuery = localRTable.CreateReplicatedQuery<BaseEntity>(null);
 
                 foreach (BaseEntity ent in virtualizedRtableQuery.ToList())
                 {

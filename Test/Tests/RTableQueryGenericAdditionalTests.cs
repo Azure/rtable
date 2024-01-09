@@ -202,7 +202,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         //private void ExecuteQueryAndAssertResults(TableClient table, string filter, int expectedResults)
         private void ExecuteQueryAndAssertResults(TableClient table, Expression<Func<ComplexEntity, bool>> filter, int expectedResults)
         {
-            var resultSet = this.repTable.ExecuteQuery(filter);
+            var resultSet = this.repTable.ExecuteQuery<ComplexEntity>(TableClient.CreateQueryFilter(filter));
             foreach (var row in resultSet)
             {
                 Assert.AreEqual(row.ETag.ToString(), row._rtable_Version.ToString());

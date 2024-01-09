@@ -36,6 +36,12 @@ namespace Microsoft.Azure.Toolkit.Replication
     {
         public new ReplicatedTableViewErrorCodes ErrorCode { get; private set; }
 
+        public ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes error)
+            : base(error.ToString())
+        {
+            ErrorCode = error;
+        }
+
         public ReplicatedTableStaleViewException(ReplicatedTableViewErrorCodes error, string message)
             : base(message)
         {

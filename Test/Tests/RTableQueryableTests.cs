@@ -181,7 +181,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in segList)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
-                Assert.AreEqual(ent.Properties.Count, 4);
+                Assert.AreEqual(ent.Properties.Count, 8);
                 itemCount++;
             }
             Assert.IsTrue(itemCount > 0, "itemCount = 0");
@@ -224,7 +224,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in seg)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
-                Assert.AreEqual(ent.Properties.Count, 4);
+                Assert.AreEqual(ent.Properties.Count, 8);
                 itemCount++;
             }
             Assert.IsTrue(itemCount > 0, "itemCount == 0");
@@ -237,7 +237,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in segList)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
-                Assert.AreEqual(ent.Properties.Count, 4);
+                Assert.AreEqual(ent.Properties.Count, 8);
                 itemCount++;
             }
             Assert.IsTrue(itemCount > 0, "itemCount = 0");
@@ -282,7 +282,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in seg)
             {
                 Assert.AreEqual("tables_batch_1", ent.PartitionKey, "ent.PartitionKey={0} != tables_batch_1", ent.PartitionKey);
-                Assert.AreEqual(4, ent.Properties.Count, "ent.Properties.Count={0} != 4", ent.Properties.Count);
+                Assert.AreEqual(8, ent.Properties.Count, "ent.Properties.Count={0} != 8", ent.Properties.Count);
                 count++;
             }
             Assert.AreEqual(100, count, "count != 100");
@@ -294,7 +294,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in seg2)
             {
                 Assert.AreEqual("tables_batch_1", ent.PartitionKey, "ent.PartitionKey={0} != tables_batch_1", ent.PartitionKey);
-                Assert.AreEqual(4, ent.Properties.Count, "ent.Properties.Count={0} != 4", ent.Properties.Count);
+                Assert.AreEqual(8, ent.Properties.Count, "ent.Properties.Count={0} != 8", ent.Properties.Count);
                 Assert.AreNotEqual("0050", ent.RowKey, "ent.RowKey={0} != 0050", ent.RowKey);
                 count++;
             }
@@ -307,7 +307,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in seg3)
             {
                 Assert.AreEqual("tables_batch_1", ent.PartitionKey);
-                Assert.AreEqual(4, ent.Properties.Count);
+                Assert.AreEqual(8, ent.Properties.Count);
                 Assert.AreNotEqual("0050", ent.RowKey);
                 count++;
             }
@@ -320,7 +320,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in seg4)
             {
                 Assert.AreEqual("tables_batch_1", ent.PartitionKey);
-                Assert.AreEqual(4, ent.Properties.Count);
+                Assert.AreEqual(8, ent.Properties.Count);
                 Assert.AreNotEqual("0050", ent.RowKey);
                 count++;
             }
@@ -334,7 +334,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in seg5)
             {
                 Assert.AreEqual("tables_batch_1", ent.PartitionKey);
-                Assert.AreEqual(4, ent.Properties.Count);
+                Assert.AreEqual(8, ent.Properties.Count);
                 count++;
                 if (ent.RowKey == "0050")
                 {
@@ -352,7 +352,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in seg6)
             {
                 Assert.AreEqual("tables_batch_1", ent.PartitionKey);
-                Assert.AreEqual(4, ent.Properties.Count);
+                Assert.AreEqual(8, ent.Properties.Count);
                 count++;
                 if (ent.RowKey == "0050")
                 {
@@ -700,7 +700,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
-                Assert.AreEqual(ent.Properties.Count, 4);
+                Assert.AreEqual(ent.Properties.Count, 8);
                 count++;
             }
 
@@ -711,7 +711,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
-                Assert.AreEqual(ent.Properties.Count, 4);
+                Assert.AreEqual(ent.Properties.Count, 8);
                 count++;
             }
 
@@ -732,7 +732,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in values)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
-                Assert.AreEqual(ent.Properties.Count, 4);
+                Assert.AreEqual(ent.Properties.Count, 8);
             }
 
             // Try running the query on the Table object.
@@ -742,7 +742,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in segList)
             {
                 Assert.AreEqual(ent.PartitionKey, "tables_batch_1");
-                Assert.AreEqual(ent.Properties.Count, 4);
+                Assert.AreEqual(ent.Properties.Count, 8);
             }
         }
 
@@ -790,7 +790,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (var ent in seg.Values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
-                Assert.AreEqual(new DynamicReplicatedTableEntity(ent).Properties.Count, 4);
+                Assert.AreEqual(new DynamicReplicatedTableEntity(ent).Properties.Count, 8);
                 count++;
             }
 
@@ -801,7 +801,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (var ent in seg.Values)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
-                Assert.AreEqual(new DynamicReplicatedTableEntity(ent).Properties.Count, 4);
+                Assert.AreEqual(new DynamicReplicatedTableEntity(ent).Properties.Count, 8);
                 count++;
             }
 
@@ -860,14 +860,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             foreach (DynamicReplicatedTableEntity ent in res)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
-                Assert.AreEqual(ent.Properties.Count, 4);
+                Assert.AreEqual(ent.Properties.Count, 8);
                 firstIteration.Add(ent);
             }
 
             foreach (DynamicReplicatedTableEntity ent in res)
             {
                 Assert.IsTrue(ent.PartitionKey.StartsWith("tables_batch"));
-                Assert.AreEqual(ent.Properties.Count, 4);
+                Assert.AreEqual(ent.Properties.Count, 8);
                 secondIteration.Add(ent);
             }
 

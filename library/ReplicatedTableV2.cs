@@ -60,16 +60,6 @@ namespace Microsoft.Azure.Toolkit.Replication
             throw new NotImplementedException();
         }
 
-        //public TableResult Execute(TableOperation operation)
-        //{
-        //    throw new NotImplementedException();
-        //}
-
-        //public IList<TableResult> CheckRetrieveInBatch(IEnumerable<TableTransactionAction> batch)
-        //{
-        //    throw new NotImplementedException();
-        //}
-
         public IList<TableResult> ExecuteBatch(IEnumerable<TableTransactionAction> batch)
         {
             throw new NotImplementedException();
@@ -115,26 +105,20 @@ namespace Microsoft.Azure.Toolkit.Replication
             throw new NotImplementedException();
         }
 
-        public IEnumerable<TElement> ExecuteQuery<TElement>(Expression<Func<TElement, bool>> filter)
-            where TElement : ReplicatedTableEntity, new()
-        {
-            throw new NotImplementedException();
-        }
-
         public IEnumerable<TElement> ExecuteQuery<TElement>(string filter, IEnumerable<string> select = null)
-            where TElement : ReplicatedTableEntity, new()
+            where TElement : class, ITableEntity
         {
             throw new NotImplementedException();
         }
 
         public Pageable<TElement> CreateQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
-                where TElement : ReplicatedTableEntity, new()
+                where TElement : class, ITableEntity
         {
             throw new NotImplementedException();
         }
 
-        public ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>(Expression<Func<TElement, bool>> filter, int? maxPerPage = default, IEnumerable<string> select = null)
-            where TElement : ReplicatedTableEntity, new()
+        public ReplicatedTableQuery<TElement> CreateReplicatedQuery<TElement>(string filter)
+            where TElement : class, ITableEntity
         {
             throw new NotImplementedException();
         }

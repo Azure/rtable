@@ -490,7 +490,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private IEnumerable<CustomerEntity> GetCustomerEntities(ReplicatedTable rtable)
         {
-            ReplicatedTableQuery<CustomerEntity> query = rtable.CreateReplicatedQuery<CustomerEntity>(e => true);
+            ReplicatedTableQuery<CustomerEntity> query = rtable.CreateReplicatedQuery<CustomerEntity>(null);
             return query.AsEnumerable();
         }
 

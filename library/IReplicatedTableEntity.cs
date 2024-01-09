@@ -21,9 +21,9 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
-    using global::Azure.Data.Tables;
     using System;
     using System.Collections.Generic;
+    using global::Azure.Data.Tables;
 
     //this is the class that users extend to store their own data in a row
     public interface IReplicatedTableEntity : ITableEntity
