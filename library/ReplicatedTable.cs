@@ -185,7 +185,7 @@ namespace Microsoft.Azure.Toolkit.Replication
                 {
                     TableClient ctable = entry.Item2.GetTableClient(this.TableName);
                     var resp = ctable.Delete();
-                    if (resp.Status != (int)HttpStatusCode.NotFound)
+                    if (resp.Status == (int)HttpStatusCode.NoContent)
                     {
                         replicasDeleted++;
                     }
@@ -2358,7 +2358,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             batchNewReplica.Clear();
         }
 
-        public static string GetTableOperation(TableOperationType tableOperationType)
+        internal static string GetTableOperation(TableOperationType tableOperationType)
         {
             switch (tableOperationType)
             {
@@ -2381,7 +2381,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return "null";
         }
 
-        public static string GetTableOperation(TableTransactionActionType tableTransactionActionType)
+        private static string GetTableOperation(TableTransactionActionType tableTransactionActionType)
         {
             switch (tableTransactionActionType)
             {

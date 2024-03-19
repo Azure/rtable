@@ -26,6 +26,8 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System;
     using System.Collections.Generic;
     using System.Reflection;
+    using System.Runtime.Serialization;
+    using System.ServiceModel;
 
     //this is the class that users extend to store their own data in a row
     public class ReplicatedTableEntity : IReplicatedTableEntity
@@ -101,12 +103,20 @@ namespace Microsoft.Azure.Toolkit.Replication
             this.RowKey = rowKey;
         }
 
+        /// <summary>
+        /// Constructor added for unit testing
+        /// </summary>
+        /// <param name="entity"></param>
         public ReplicatedTableEntity(ReplicatedTableEntity entity)
             : this(entity.PartitionKey, entity.RowKey)
         {
             this.CopyFrom(entity);
         }
 
+        /// <summary>
+        /// Constructor added for unit testing
+        /// </summary>
+        /// <param name="entity"></param>
         public ReplicatedTableEntity(TableEntity entity)
             : this(entity.PartitionKey, entity.RowKey)
         {
@@ -201,6 +211,12 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                         if (methodInfo.IsStatic)
                         {
+                            return true;
+                        }
+
+                        if (Attribute.IsDefined(property, typeof(IgnoreDataMemberAttribute)))
+                        {
+                            ReplicatedTableLogger.LogInformational("Omitting property '{0}' from serialization/de-serialization because IgnoreAttribute has been set on that property.", property.Name);
                             return true;
                         }
 
