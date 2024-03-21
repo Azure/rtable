@@ -22,14 +22,10 @@
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
-    using Microsoft.WindowsAzure.Storage;
+    using global::Azure;
 
-    public class ReplicatedTableConflictException : StorageException
+    public class ReplicatedTableConflictException : RequestFailedException
     {
-        public ReplicatedTableConflictException()
-        {
-        }
-
         public ReplicatedTableConflictException(string message)
             : base(message)
         {

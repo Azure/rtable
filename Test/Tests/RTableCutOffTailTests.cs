@@ -24,13 +24,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
-    using System.Linq;
     using System.Net;
-    using Microsoft.WindowsAzure.Storage.Table;
-    using System.Threading;
     using Microsoft.WindowsAzure.Test.Network;
     using Microsoft.WindowsAzure.Test.Network.Behaviors;
-    using System.Threading.Tasks;
 
     [TestFixture]
     [Parallelizable(ParallelScope.None)]
@@ -266,8 +262,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 customer = RetrieveCustomer(firstName, lastName, workerOne);
                 customer.Email = "workerOne";
 
-                TableOperation operation = TableOperation.Replace(customer);
-                oldUpdateResult = workerOne.Execute(operation);
+                oldUpdateResult = workerOne.Replace(customer, oldUpdateResult);
             }
 
 
@@ -368,8 +363,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private void InsertCustormer(CustomerEntity customer, ReplicatedTable repTable)
         {
-            TableOperation operation = TableOperation.Insert(customer);
-            TableResult result = repTable.Execute(operation);
+            TableResult result = repTable.Insert(customer);
 
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
@@ -378,20 +372,18 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private CustomerEntity RetrieveCustomer(string firstName, string lastName, ReplicatedTable repTable)
         {
-            TableOperation operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-            TableResult retrievedResult = repTable.Execute(operation);
+            TableResult retrievedResult = repTable.Retrieve(firstName, lastName);
 
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
             Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
 
-            return (CustomerEntity)retrievedResult.Result;
+            return new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
         }
 
         private void UpdateCustomer(CustomerEntity customer, ReplicatedTable repTable)
         {
-            TableOperation operation = TableOperation.Replace(customer);
-            TableResult updateResult = repTable.Execute(operation);
+            TableResult updateResult = repTable.Replace(customer);
 
             Assert.IsNotNull(updateResult, "updateResult = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, updateResult.HttpStatusCode, "updateResult.HttpStatusCode mismatch");

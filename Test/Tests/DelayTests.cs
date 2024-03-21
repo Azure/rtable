@@ -21,17 +21,13 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
+    using global::Azure.Data.Tables;
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage.RTableTest;
-    using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.Test.Network;
     using Microsoft.WindowsAzure.Test.Network.Behaviors;
     using NUnit.Framework;
     using System;
-    using System.Collections.Generic;
-    using System.IO;
     using System.Net;
-    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
 
@@ -530,8 +526,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     {
                         var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
 
-                        TableOperation operation = TableOperation.InsertOrReplace(entry);
-                        results[index] = table.Execute(operation);
+                        results[index] = table.InsertOrReplace(entry);
                     }
                     catch (AggregateException ex)
                     {
@@ -588,10 +583,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     entry = new SampleRTableEntity(entityPartitionKey, entityRowKey, "upsert message");
                     var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
 
-                    TableOperation upserOperation = TableOperation.InsertOrReplace(entry);
-
                     Console.WriteLine("Upsert started ...");
-                    upsertResult = table.Execute(upserOperation);
+                    upsertResult = table.InsertOrReplace(entry);
                     Console.WriteLine("Upsert completed with HttpStatus={0}", upsertResult == null ? "NULL" : upsertResult.HttpStatusCode.ToString());
                 }
                 catch (AggregateException ex)
@@ -641,17 +634,15 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
 
                     // Retrieve entity
-                    TableOperation retrieveOperation = TableOperation.Retrieve<SampleRTableEntity>(entry.PartitionKey, entry.RowKey);
-                    TableResult retrieveResult = table.Execute(retrieveOperation);
+                    TableResult retrieveResult = table.Retrieve(entry.PartitionKey, entry.RowKey);
 
                     Assert.IsNotNull(retrieveResult, "retrieveResult = null");
                     Assert.AreEqual((int)HttpStatusCode.OK, retrieveResult.HttpStatusCode, "retrieveResult.HttpStatusCode mismatch");
-                    Assert.IsNotNull((SampleRTableEntity)retrieveResult.Result, "Retrieve: customer = null");
+                    Assert.IsNotNull((DynamicReplicatedTableEntity)retrieveResult.Result, "Retrieve: customer = null");
 
 
                     // Delete entity
-                    TableOperation deleteOperation = TableOperation.Delete((SampleRTableEntity)retrieveResult.Result);
-                    TableResult deleteResult = table.Execute(deleteOperation);
+                    TableResult deleteResult = table.Delete((DynamicReplicatedTableEntity)retrieveResult.Result);
 
                     Assert.IsNotNull(deleteResult, "deleteResult = null");
                     Assert.AreEqual((int)HttpStatusCode.NoContent, deleteResult.HttpStatusCode, "deleteResult.HttpStatusCode mismatch");
@@ -798,19 +789,17 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private bool HeadIsLocked(SampleRTableEntity entry)
         {
-            CloudTable table = this.cloudTableClients[0].GetTableReference(this.repTable.TableName);
-
-            TableOperation retrieveOperation = TableOperation.Retrieve<SampleRTableEntity>(entry.PartitionKey, entry.RowKey);
-            TableResult retrieveResult = table.Execute(retrieveOperation);
+            TableClient table = this.cloudTableClients[0].GetTableClient(this.repTable.TableName);
+            var retrieveResult = table.GetEntity<SampleRTableEntity>(entry.PartitionKey, entry.RowKey);
 
             if (retrieveResult == null ||
-                retrieveResult.HttpStatusCode != (int)HttpStatusCode.OK ||
-                retrieveResult.Result == null)
+                retrieveResult?.GetRawResponse().Status != (int)HttpStatusCode.OK ||
+                retrieveResult.Value == null)
             {
                 return false;
             }
 
-            SampleRTableEntity head = (SampleRTableEntity)retrieveResult.Result;
+            SampleRTableEntity head = retrieveResult.Value;
             return head._rtable_RowLock == true;
         }
 
@@ -888,13 +877,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     entry.Message = "update message";
 
                     var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
-                    TableOperation replaceOperation = TableOperation.Replace(entry);
 
                     // Get a snapshot of txView before transaction starts ...
                     View viewBeforeTx = this.configurationService.GetTableView(this.repTable.TableName);
 
                     // Transaction will get delayed 2*LeaseDuration sec.
-                    TableResult replaceResult = table.Execute(replaceOperation);
+                    TableResult replaceResult = table.Replace(entry);
 
                     Assert.IsTrue(viewBeforeTx.IsExpired(), "txView expected to expire!");
 
@@ -977,13 +965,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     entry.Message = "update message";
 
                     var table = new ReplicatedTable(this.repTable.TableName, this.configurationService);
-                    TableOperation replaceOperation = TableOperation.Replace(entry);
 
                     // Get a snapshot of txView before transaction starts ...
                     View viewBeforeTx = this.configurationService.GetTableView(this.repTable.TableName);
 
                     // Transaction will get delayed 2*LeaseDuration sec. and Config/ViewId will be changed
-                    TableResult replaceResult = table.Execute(replaceOperation);
+                    TableResult replaceResult = table.Replace(entry);
 
                     Assert.IsTrue(viewBeforeTx.IsExpired(), "txView expected to expire!");
                     Assert.AreNotEqual(this.configurationService.GetTableView(this.repTable.TableName).ViewId, viewBeforeTx.ViewId, "ViewId should have changed!");

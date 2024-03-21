@@ -28,26 +28,28 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Threading;
     using System.Threading.Tasks;
     using System.Security;
-    using Microsoft.WindowsAzure.Storage;
-    using Microsoft.WindowsAzure.Storage.Table;
-    using Microsoft.WindowsAzure.Storage.Blob;
     using System.Collections.ObjectModel;
+    using global::Azure.Storage.Blobs;
+    using global::Azure.Storage.Blobs.Models;
+    using global::Azure;
+    using global::Azure.Data.Tables;
+    using global::Azure.Storage;
 
     public class CloudBlobHelpers
     {
-        public static CloudBlockBlob GetBlockBlob(string configurationStorageConnectionString, string configurationLocation)
+        public static BlobClient GetBlockBlob(string configurationStorageConnectionString, string configurationLocation)
         {
-            CloudStorageAccount blobStorageAccount = CloudStorageAccount.Parse(configurationStorageConnectionString);
-            CloudBlobClient blobClient = blobStorageAccount.CreateCloudBlobClient();
-
-            CloudBlobContainer container = blobClient.GetContainerReference(GetContainerName(configurationLocation));
-            if (container.CreateIfNotExists())
+            BlobServiceClient blobClient = new BlobServiceClient(configurationStorageConnectionString);
+            BlobContainerClient container = blobClient.GetBlobContainerClient(GetContainerName(configurationLocation));
+            if (container.CreateIfNotExists() != null)
             {
-                container.SetPermissions(new BlobContainerPermissions() { PublicAccess = BlobContainerPublicAccessType.Off });
-                container.FetchAttributes(null, new BlobRequestOptions() { ServerTimeout = new TimeSpan(0, 10, 0) });
+                using (StorageExtensions.CreateServiceTimeoutScope(TimeSpan.FromMinutes(10)))
+                {
+                    container.SetAccessPolicy(PublicAccessType.None);
+                }
             }
 
-            return container.GetBlockBlobReference(GetBlobName(configurationLocation));
+            return container.GetBlobClient(GetBlobName(configurationLocation));
         }
 
         /// E.g. in https://accountname.blob.core.windows.net/container/blob.txt
@@ -88,7 +90,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return containerName;
         }
 
-        public static ReplicatedTableReadBlobResult TryReadBlob<T>(CloudBlockBlob blob, out T configuration, out string eTag, Func<string, T> ParseBlobFunc)
+        public static ReplicatedTableReadBlobResult TryReadBlob<T>(BlobClient blob, out T configuration, out string eTag, Func<string, T> ParseBlobFunc)
             where T : class
         {
             configuration = default(T);
@@ -96,29 +98,31 @@ namespace Microsoft.Azure.Toolkit.Replication
 
             try
             {
-                BlobRequestOptions options = new BlobRequestOptions()
+                string content;
+                using (StorageExtensions.CreateServiceTimeoutScope(TimeSpan.FromSeconds(5)))
                 {
-                    ServerTimeout = TimeSpan.FromSeconds(5),
-                    MaximumExecutionTime = TimeSpan.FromSeconds(30)
-                };
-                string content = blob.DownloadText(null, null, options, null);
+                    var cancellationTokenSource = new CancellationTokenSource();
+                    // Limiting Maximum execution time for all the requests to 30 seconds
+                    cancellationTokenSource.CancelAfter(TimeSpan.FromSeconds(30));
+                    content = blob.DownloadContent(cancellationTokenSource.Token).Value.Content.ToString();
+                }
+
                 if (content == Constants.ConfigurationStoreUpdatingText)
                 {
                     return new ReplicatedTableReadBlobResult(ReadBlobCode.UpdateInProgress, "Blob update in progress ...");
                 }
 
                 configuration = ParseBlobFunc(content);
-                eTag = blob.Properties.ETag;
+                eTag = blob.GetProperties().Value.ETag.ToString();
 
                 return new ReplicatedTableReadBlobResult(ReadBlobCode.Success, "");
             }
-            catch (StorageException e)
+            catch (RequestFailedException e)
             {
                 var msg = string.Format("Error reading blob: {0}. StorageException: {1}", blob.Uri, e.Message);
                 ReplicatedTableLogger.LogError(msg);
 
-                if (e.RequestInformation != null &&
-                    e.RequestInformation.HttpStatusCode == (int)HttpStatusCode.NotFound)
+                if (e.Status == (int)HttpStatusCode.NotFound)
                 {
                     return new ReplicatedTableReadBlobResult(ReadBlobCode.NotFound, msg);
                 }
@@ -134,17 +138,17 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        public static async Task<ReplicatedTableReadBlobResult> TryReadBlobAsync<T>(CloudBlockBlob blob, Action<T, string> callback, Func<string, T> ParseBlobFunc, CancellationToken ct)
+        public static async Task<ReplicatedTableReadBlobResult> TryReadBlobAsync<T>(BlobClient blob, Action<T, string> callback, Func<string, T> ParseBlobFunc, CancellationToken ct)
             where T : class
         {
             try
             {
-                BlobRequestOptions options = new BlobRequestOptions()
+                string content;
+                using (StorageExtensions.CreateServiceTimeoutScope(TimeSpan.FromSeconds(5)))
                 {
-                    ServerTimeout = TimeSpan.FromSeconds(5),
-                    MaximumExecutionTime = TimeSpan.FromSeconds(30)
-                };
-                string content = await blob.DownloadTextAsync(null, null, options, null, ct);
+                    content = (await blob.DownloadContentAsync(ct)).Value.Content.ToString();
+                }
+
                 if (content == Constants.ConfigurationStoreUpdatingText)
                 {
                     return new ReplicatedTableReadBlobResult(ReadBlobCode.UpdateInProgress, "Blob update in progress ...");
@@ -152,20 +156,19 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 // ParseBlobFunc != null
                 T configuration = ParseBlobFunc(content);
-                string eTag = blob.Properties.ETag;
+                string eTag = blob.GetProperties().Value.ETag.ToString();
 
                 // callback != null
                 callback(configuration, eTag);
 
                 return new ReplicatedTableReadBlobResult(ReadBlobCode.Success, "");
             }
-            catch (StorageException e)
+            catch (RequestFailedException e)
             {
                 var msg = string.Format("Error reading blob: {0}. StorageException: {1}", blob.Uri, e.Message);
                 ReplicatedTableLogger.LogError(msg);
 
-                if (e.RequestInformation != null &&
-                    e.RequestInformation.HttpStatusCode == (int)HttpStatusCode.NotFound)
+                if (e.Status == (int)HttpStatusCode.NotFound)
                 {
                     return new ReplicatedTableReadBlobResult(ReadBlobCode.NotFound, msg);
                 }
@@ -188,7 +191,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        public static List<ReplicatedTableReadBlobResult> TryReadAllBlobs<T>(List<CloudBlockBlob> blobs, out List<T> values, out List<string> eTags, Func<string, T> ParseBlobFunc)
+        public static List<ReplicatedTableReadBlobResult> TryReadAllBlobs<T>(List<BlobClient> blobs, out List<T> values, out List<string> eTags, Func<string, T> ParseBlobFunc)
                     where T : class
         {
             int numberOfBlobs = blobs.Count;
@@ -218,7 +221,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return resultArray.ToList();
         }
 
-        public static ReplicatedTableQuorumReadResult TryReadBlobQuorum<T>(List<CloudBlockBlob> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
+        public static ReplicatedTableQuorumReadResult TryReadBlobQuorum<T>(List<BlobClient> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
             where T : class
         {
             value = default(T);
@@ -242,7 +245,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return majority;
         }
 
-        public static ReplicatedTableQuorumReadResult TryReadBlobQuorumFast<T>(List<CloudBlockBlob> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
+        public static ReplicatedTableQuorumReadResult TryReadBlobQuorumFast<T>(List<BlobClient> blobs, out T value, out List<string> eTags, Func<string, T> ParseBlobFunc)
             where T : class
         {
             value = default(T);
@@ -254,7 +257,9 @@ namespace Microsoft.Azure.Toolkit.Replication
             var eTagsArray = new List<string>(new string[numberOfBlobs]);
             var resultArray = new List<ReplicatedTableReadBlobResult>(new ReplicatedTableReadBlobResult[numberOfBlobs]);
 
+            // Limiting Maximum execution time for all the requests to 30 seconds
             var cancel = new CancellationTokenSource();
+            cancel.CancelAfter(TimeSpan.FromSeconds(30));
 
 
             /*
@@ -433,7 +438,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return new ReplicatedTableQuorumReadResult(ReplicatedTableQuorumReadCode.BlobsNotInSyncOrTransitioning, resultArray);
         }
 
-        public static ReplicatedTableQuorumWriteResult TryWriteBlobQuorum<T>(List<CloudBlockBlob> blobs, T configuration, Func<string, T> ParseBlobFunc, Func<T, T, bool> ConfigIdComparer, Func<T, T> GenerateConfigId)
+        public static ReplicatedTableQuorumWriteResult TryWriteBlobQuorum<T>(List<BlobClient> blobs, T configuration, Func<string, T> ParseBlobFunc, Func<T, T, bool> ConfigIdComparer, Func<T, T> GenerateConfigId)
             where T : ReplicatedTableConfigurationBase, new()
         {
             // Fetch all blobs ...
@@ -520,7 +525,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             return new ReplicatedTableQuorumWriteResult(ReplicatedTableQuorumWriteCode.QuorumWriteFailure, writeResultArray.ToList());
         }
 
-        public static ReplicatedTableQuorumWriteResult TryUploadBlobs<T>(List<CloudBlockBlob> blobs, T configuration)
+        public static ReplicatedTableQuorumWriteResult TryUploadBlobs<T>(List<BlobClient> blobs, T configuration)
             where T : class
         {
             string content = configuration.ToString();
@@ -543,19 +548,19 @@ namespace Microsoft.Azure.Toolkit.Replication
             return new ReplicatedTableQuorumWriteResult(ReplicatedTableQuorumWriteCode.QuorumWriteFailure, writeResultArray.ToList());
         }
 
-        public static ReplicatedTableWriteBlobResult TryWriteBlob(CloudBlockBlob blob, string content, string eTag)
+        public static ReplicatedTableWriteBlobResult TryWriteBlob(BlobClient blob, string content, string eTag)
         {
             try
             {
-                AccessCondition condition = string.IsNullOrEmpty(eTag)
-                                                ? AccessCondition.GenerateEmptyCondition()
-                                                : AccessCondition.GenerateIfMatchCondition(eTag);
+                BlobUploadOptions options = string.IsNullOrEmpty(eTag)
+                                                ? new BlobUploadOptions() { Conditions = new BlobRequestConditions() }
+                                                : new BlobUploadOptions() { Conditions = new BlobRequestConditions() { IfMatch = new ETag(eTag) } };
 
-                blob.UploadText(content, accessCondition: condition);
+                blob.Upload(BinaryData.FromString(content), options);
 
                 return new ReplicatedTableWriteBlobResult(true, "");
             }
-            catch (StorageException e)
+            catch (RequestFailedException e)
             {
                 var msg = string.Format("Updating the blob: {0} failed. Exception: {1}", blob, e.Message);
 
@@ -564,33 +569,33 @@ namespace Microsoft.Azure.Toolkit.Replication
             }
         }
 
-        public static void TryWriteBlob(CloudBlockBlob blob, string content)
+        public static void TryWriteBlob(BlobClient blob, string content)
         {
             try
             {
                 //Step 1: Delete the current configuration
-                blob.UploadText(Constants.ConfigurationStoreUpdatingText);
+                blob.Upload(BinaryData.FromString(Constants.ConfigurationStoreUpdatingText), overwrite: true);
 
                 //Step 2: Wait for L + CF to make sure no pending transaction working on old views
                 Thread.Sleep(TimeSpan.FromSeconds(Constants.LeaseDurationInSec + Constants.ClockFactorInSec));
 
                 //Step 3: Update new config
-                blob.UploadText(content);
+                blob.Upload(BinaryData.FromString(content), overwrite: true);
             }
-            catch (StorageException e)
+            catch (RequestFailedException e)
             {
                 ReplicatedTableLogger.LogError("Updating the blob: {0} failed. Exception: {1}", blob, e.Message);
             }
         }
 
-        public static bool TryCreateCloudTableClient(SecureString connectionString, out CloudTableClient cloudTableClient)
+        public static bool TryCreateCloudTableClient(SecureString connectionString, out TableServiceClient tableServiceClient)
         {
-            cloudTableClient = null;
+            tableServiceClient = null;
 
             try
             {
                 string decryptConnectionString = SecureStringHelper.ToString(connectionString);
-                cloudTableClient = CloudStorageAccount.Parse(decryptConnectionString).CreateCloudTableClient();
+                tableServiceClient = new TableServiceClient(decryptConnectionString);
 
                 return true;
             }

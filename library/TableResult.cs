@@ -18,25 +18,27 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-namespace Microsoft.Azure.Toolkit.Replication.Test
+
+using Azure;
+
+namespace Microsoft.Azure.Toolkit.Replication
 {
-    using Microsoft.Azure.Toolkit.Replication;
-
-    internal class CustomerEntity : ReplicatedTableEntity
+    public class TableResult
     {
-        public CustomerEntity(string lastName, string firstName)
-            : base(lastName, firstName)
-        {
-        }
+        public object Result { get; set; }
 
-        public CustomerEntity(ReplicatedTableEntity entity)
-            : base(entity)
-        {
-        }
+        public int HttpStatusCode { get; set; }
 
-        public CustomerEntity() { }
-        public string Email { get; set; }
-        public string PhoneNumber { get; set; }
+        public string Etag { get; set; }
+
+        public static TableResult ConvertResponseToTableResult(Response resp, object obj)
+        {
+            return new TableResult()
+            {
+                Result = obj,
+                Etag = resp.Headers.ETag.ToString(),
+                HttpStatusCode = resp.Status
+            };
+        }
     }
-
 }

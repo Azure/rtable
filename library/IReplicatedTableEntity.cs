@@ -22,7 +22,8 @@
 namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using System.Collections.Generic;
+    using global::Azure.Data.Tables;
 
     //this is the class that users extend to store their own data in a row
     public interface IReplicatedTableEntity : ITableEntity
@@ -50,6 +51,10 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// New clients can use their own timeout (LockTimeout) value to determine whether to initiate replication or not.
         /// </summary>
         DateTimeOffset _rtable_LockAcquisition { get; set; }
+
+        void ReadEntity(IDictionary<string, object> properties);
+
+        IDictionary<string, object> WriteEntity();
     }
 }
 

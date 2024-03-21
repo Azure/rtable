@@ -20,8 +20,8 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
+    using global::Azure.Data.Tables;
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage;
     using NUnit.Framework;
     using System;
 
@@ -39,7 +39,29 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
         }
 
-        public CloudStorageAccount UnSupportedProperty { get; set; }
+        public ComplexEntity(TableEntity entity)
+            : this()
+        {
+            if (entity == null)
+            {
+                throw new ArgumentNullException(nameof(entity));
+            }
+
+            // Store the information about this entity.  Make a copy of
+            // the properties list, in case the caller decides to reuse
+            // the list.
+            this.PartitionKey = entity.PartitionKey;
+            this.RowKey = entity.RowKey;
+            this.Timestamp = entity.Timestamp;
+            this.ETag = entity.ETag;
+
+            foreach (var key in entity.Keys)
+            {
+                this.Properties[key] = entity[key];
+            }
+
+            ReadEntity(Properties);
+        }
 
         private DateTimeOffset? dateTimeOffsetNull = null;
         public DateTimeOffset? DateTimeOffsetNull

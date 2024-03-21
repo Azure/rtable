@@ -6,7 +6,7 @@
     using System.Linq;
     using System.IO;
     using System.Threading;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure.Data.Tables;
 
     // Needed to access protected members ...
     class ReplicatedTableConfigurationStoreAccessor : ReplicatedTableConfigurationStore
@@ -164,7 +164,7 @@
             // - conf view is 0, and we pass a view not empty
             // => conf view is set to the view.viewId + 1
             conf.ViewId = 0;
-            view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(new ReplicaInfo(), null));
+            view.Chain.Add(new Tuple<ReplicaInfo, TableServiceClient>(new ReplicaInfo(), null));
 
             old = conf.Timestamp;
             Thread.Sleep(100);
@@ -177,7 +177,7 @@
             // - conf view != 0, and we pass a view not empty
             // => conf view keeps its value
             conf.ViewId = 6;
-            view.Chain.Add(new Tuple<ReplicaInfo, CloudTableClient>(new ReplicaInfo(), null));
+            view.Chain.Add(new Tuple<ReplicaInfo, TableServiceClient>(new ReplicaInfo(), null));
 
             old = conf.Timestamp;
             Thread.Sleep(100);

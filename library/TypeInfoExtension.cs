@@ -18,25 +18,30 @@
 // FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-namespace Microsoft.Azure.Toolkit.Replication.Test
+
+namespace Microsoft.Azure.Toolkit.Replication
 {
-    using Microsoft.Azure.Toolkit.Replication;
+    using System.Collections.Generic;
+    using System.Linq;
+    using System.Reflection;
 
-    internal class CustomerEntity : ReplicatedTableEntity
+    //this is the class that users extend to store their own data in a row
+    public static class TypeInfoExtension
     {
-        public CustomerEntity(string lastName, string firstName)
-            : base(lastName, firstName)
+        public static IEnumerable<PropertyInfo> GetAllProperties(this TypeInfo typeInfo)
         {
-        }
+            IList<PropertyInfo> propertyList = new List<PropertyInfo>();
+            while ((object)typeInfo != null)
+            {
+                foreach (PropertyInfo item in typeInfo.DeclaredProperties.Where((PropertyInfo declaredProperty) => propertyList.All((PropertyInfo x) => x.Name != declaredProperty.Name)))
+                {
+                    propertyList.Add(item);
+                }
 
-        public CustomerEntity(ReplicatedTableEntity entity)
-            : base(entity)
-        {
-        }
+                typeInfo = typeInfo.BaseType?.GetTypeInfo();
+            }
 
-        public CustomerEntity() { }
-        public string Email { get; set; }
-        public string PhoneNumber { get; set; }
+            return propertyList;
+        }
     }
-
 }

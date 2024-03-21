@@ -23,14 +23,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using NUnit.Framework;
     using System;
-    using System.Collections.Generic;
     using System.Linq;
     using System.Net;
-    using Microsoft.WindowsAzure.Storage.Table;
-    using System.Threading;
     using Microsoft.WindowsAzure.Test.Network;
     using Microsoft.WindowsAzure.Test.Network.Behaviors;
-    using System.Threading.Tasks;
 
     [TestFixture]
     [Parallelizable(ParallelScope.None)]
@@ -63,8 +59,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 var customer = new CustomerEntity(firstName + i, lastName + i);
 
-                TableOperation operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
             /*
@@ -72,13 +67,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              */
             foreach (var i in new int[] {2,4})
             {
-                TableOperation operation = TableOperation.Retrieve<CustomerEntity>(firstName + i, lastName + i);
-                TableResult retrievedResult = rtable.Execute(operation);
+                TableResult retrievedResult = rtable.Retrieve(firstName + i, lastName + i);
 
-                var customer = (CustomerEntity)retrievedResult.Result;
+                var customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
 
-                TableOperation deleteOperation = TableOperation.Delete(customer);
-                TableResult deleteResult = rtable.Execute(deleteOperation);
+                TableResult deleteResult = rtable.Delete(customer);
 
                 Assert.IsNotNull(deleteResult, "deleteResult = null");
                 Assert.AreEqual((int)HttpStatusCode.NoContent, deleteResult.HttpStatusCode, "deleteResult.HttpStatusCode mismatch");
@@ -87,7 +80,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 3 - CreateQuery doesn't return entries #2 and #4
              */
-            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 int id = int.Parse(customer.PartitionKey.Replace(firstName, ""));
 
@@ -98,7 +91,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 4 - ExecuteQuery doesn't return entries #2 and #4
              */
-            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 int id = int.Parse(customer.PartitionKey.Replace(firstName, ""));
 
@@ -122,8 +115,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 var customer = new CustomerEntity(firstName + i, lastName + i);
 
-                TableOperation operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
@@ -162,13 +154,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 */
                 foreach (var i in new int[] { 2, 4 })
                 {
-                    TableOperation operation = TableOperation.Retrieve<CustomerEntity>(firstName + i, lastName + i);
-                    TableResult retrievedResult = rtable.Execute(operation);
+                    TableResult retrievedResult = rtable.Retrieve(firstName + i, lastName + i);
 
-                    var customer = (CustomerEntity)retrievedResult.Result;
+                    var customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
 
-                    TableOperation deleteOperation = TableOperation.Delete(customer);
-                    TableResult deleteResult = rtable.Execute(deleteOperation);
+                    TableResult deleteResult = rtable.Delete(customer);
 
                     Assert.IsNotNull(deleteResult, "deleteResult = null");
                     Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, deleteResult.HttpStatusCode, "deleteResult.HttpStatusCode mismatch");
@@ -178,12 +168,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             // Verify, Retrieve doesn't return entries #2 and #4
             int deleteId = 2;
-            var result = rtable.Execute(TableOperation.Retrieve<CustomerEntity>(firstName + deleteId, lastName + deleteId));
+            var result = rtable.Retrieve(firstName + deleteId, lastName + deleteId);
             Assert.IsNotNull(result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NotFound, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
             deleteId = 4;
-            result = rtable.Execute(TableOperation.Retrieve<CustomerEntity>(firstName + deleteId, lastName + deleteId));
+            result = rtable.Retrieve(firstName + deleteId, lastName + deleteId);
             Assert.IsNotNull(result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NotFound, result.HttpStatusCode, "result.HttpStatusCode mismatch");
 
@@ -191,7 +181,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 3 - CreateQuery doesn't return entries #2 and #4
              */
-            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 int id = int.Parse(customer.PartitionKey.Replace(firstName, ""));
                 Assert.AreNotEqual(id, 2, "entry #2 should have been deleted");
@@ -202,7 +192,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 4 - ExecuteQuery doesn't return entries #2 and #4
              */
-            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 int id = int.Parse(customer.PartitionKey.Replace(firstName, ""));
                 Assert.AreNotEqual(id, 2, "entry #2 should have been deleted");
@@ -213,7 +203,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description = "LINQ queries don't throw on stale view by default")]
         public void LinqQueriesDontThrowOnStaleViewByDefault()
         {
-            TableOperation operation;
             TableResult result;
             CustomerEntity customer;
 
@@ -236,8 +225,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 customer = new CustomerEntity(firstName + i, lastName + i);
 
-                operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
@@ -252,16 +240,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Update entry #5 in new viewId 6
             int entryId = 5;
 
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-            result = rtable.Execute(operation);
+            result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
-            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && new CustomerEntity((ReplicatedTableEntity)result.Result) != null, "Retrieve customer failed");
 
-            customer = (CustomerEntity)result.Result;
+            customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
             customer.Email = "new_view@email.com";
 
-            operation = TableOperation.Replace(customer);
-            result = rtable.Execute(operation);
+            result = rtable.Replace(customer);
 
             Assert.IsTrue(result != null && result.HttpStatusCode == (int) HttpStatusCode.NoContent, "Update customer failed");
 
@@ -275,8 +261,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             try
             {
                 // Check Retrieve of row #5 throws stale view as expected
-                operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-                rtable.Execute(operation);
+                rtable.Retrieve(firstName + entryId, lastName + entryId);
 
                 Assert.Fail("Retrieve() is expected to get an RTableStaleViewException but did not get it.");
             }
@@ -293,7 +278,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * stale client using LINQ: CreateReplicatedQuery
              */
-            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
                 if (id == entryId)
@@ -309,7 +294,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * stale client using LINQ: ExecuteQuery
              */
-            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
                 if (id == entryId)
@@ -326,7 +311,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description = "LINQ queries throw after detecting a stale view when ThrowOnStaleViewInLinqQueryFlag is set")]
         public void LinqQueriesThrowAfterDetectingStaleViewWhenThrowOnStaleViewInLinqQueryFlagIsSet()
         {
-            TableOperation operation;
             TableResult result;
             CustomerEntity customer;
 
@@ -349,8 +333,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 customer = new CustomerEntity(firstName + i, lastName + i);
 
-                operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
@@ -365,16 +348,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Update entry #5 in new viewId 6
             int entryId = 5;
 
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-            result = rtable.Execute(operation);
+            result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
-            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+            Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && new CustomerEntity((ReplicatedTableEntity)result.Result) != null, "Retrieve customer failed");
 
-            customer = (CustomerEntity)result.Result;
+            customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
             customer.Email = "new_view@email.com";
 
-            operation = TableOperation.Replace(customer);
-            result = rtable.Execute(operation);
+            result = rtable.Replace(customer);
 
             Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent, "Update customer failed");
 
@@ -388,8 +369,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             try
             {
                 // Check Retrieve of row #5 throws stale view as expected
-                operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-                rtable.Execute(operation);
+                rtable.Retrieve(firstName + entryId, lastName + entryId);
 
                 Assert.Fail("Retrieve() is expected to get an RTableStaleViewException but did not get it.");
             }
@@ -408,7 +388,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              */
             try
             {
-                foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+                foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
                 {
                     int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
                     Assert.IsTrue(id != entryId, "we should throw on entry #5");
@@ -427,7 +407,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
              */
             try
             {
-                foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+                foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(null))
                 {
                     int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
                     Assert.IsTrue(id != entryId, "we should throw on entry #5");
@@ -445,7 +425,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description = "LINQ queries don't return rows with higher viewIds when flag IgnoreHigherViewIdRows is set")]
         public void LinqQueriesDontReturnRowsWithHighViewIdWhenFlagIgnoreHigherViewIdRowsIsSet()
         {
-            TableOperation operation;
             TableResult result;
             CustomerEntity customer;
 
@@ -468,8 +447,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 customer = new CustomerEntity(firstName + i, lastName + i);
 
-                operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
@@ -484,16 +462,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             // Update entry #5 and #8 in new viewId 6
             foreach (int entryId in new int[]{5, 8})
             {
-                operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-                result = rtable.Execute(operation);
+                result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
-                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && new CustomerEntity((ReplicatedTableEntity)result.Result) != null, "Retrieve customer failed");
 
-                customer = (CustomerEntity)result.Result;
+                customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
                 customer.Email = "new_view@email.com";
 
-                operation = TableOperation.Replace(customer);
-                result = rtable.Execute(operation);
+                result = rtable.Replace(customer);
 
                 Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent, "Update customer failed");
             }
@@ -511,8 +487,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 // Check Retrieve of row #5 and #8 returns NotFound
                 foreach (int entryId in new int[] {5, 8})
                 {
-                    operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-                    var retrievedResult = rtable.Execute(operation);
+                    var retrievedResult = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
                     Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                     Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
@@ -526,7 +501,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * stale client using LINQ: CreateReplicatedQuery
              */
-            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            foreach (var entry in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
 
@@ -539,7 +514,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * stale client using LINQ: ExecuteQuery
              */
-            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            foreach (var entry in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 int id = int.Parse(entry.PartitionKey.Replace(firstName, ""));
 
@@ -568,8 +543,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 var customer = new CustomerEntity(firstName + i, lastName + i);
                 customer.Email = "***";
 
-                TableOperation operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
@@ -611,14 +585,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 */
                 for (int i = 0; i < dataSize; i++)
                 {
-                    TableOperation operation = TableOperation.Retrieve<CustomerEntity>(firstName + i, lastName + i);
-                    TableResult retrievedResult = rtable.Execute(operation);
+                    TableResult retrievedResult = rtable.Retrieve(firstName + i, lastName + i);
 
-                    var customer = (CustomerEntity)retrievedResult.Result;
+                    var customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
                     customer.Email = "updated";
 
-                    TableOperation replaceOperation = TableOperation.Replace(customer);
-                    TableResult replaceResult = rtable.Execute(replaceOperation);
+                    TableResult replaceResult = rtable.Replace(customer);
 
                     Assert.IsNotNull(replaceResult, "replaceResult = null");
                     Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, replaceResult.HttpStatusCode, "replaceResult.HttpStatusCode mismatch");
@@ -629,7 +601,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 3 - CreateQuery is served from [Tail], data should be old
              */
-            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 Assert.AreEqual(customer.Email, "***", "expected old data");
             }
@@ -638,7 +610,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 4 - ExecuteQuery is served from [Tail], data should be old
              */
-            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 Assert.AreEqual(customer.Email, "***", "expected old data");
             }
@@ -662,8 +634,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 var customer = new CustomerEntity(firstName + i, lastName + i);
                 customer.Email = "***";
 
-                TableOperation operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
@@ -705,14 +676,12 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 */
                 for (int i = 0; i < dataSize; i++)
                 {
-                    TableOperation operation = TableOperation.Retrieve<CustomerEntity>(firstName + i, lastName + i);
-                    TableResult retrievedResult = rtable.Execute(operation);
+                    TableResult retrievedResult = rtable.Retrieve(firstName + i, lastName + i);
 
-                    var customer = (CustomerEntity)retrievedResult.Result;
+                    var customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
                     customer.Email = "updated";
 
-                    TableOperation replaceOperation = TableOperation.Replace(customer);
-                    TableResult replaceResult = rtable.Execute(replaceOperation);
+                    TableResult replaceResult = rtable.Replace(customer);
 
                     Assert.IsNotNull(replaceResult, "replaceResult = null");
                     Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, replaceResult.HttpStatusCode, "replaceResult.HttpStatusCode mismatch");
@@ -727,7 +696,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 3 - CreateQuery is served from [Head], data should be new
              */
-            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>().AsEnumerable())
+            foreach (var customer in rtable.CreateReplicatedQuery<CustomerEntity>(null).AsEnumerable())
             {
                 Assert.AreEqual(customer.Email, "updated", "expected new data");
             }
@@ -736,7 +705,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             /*
              * 4 - ExecuteQuery is served from [Head], data should be new
              */
-            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(new TableQuery<CustomerEntity>()))
+            foreach (var customer in rtable.ExecuteQuery<CustomerEntity>(null))
             {
                 Assert.AreEqual(customer.Email, "updated", "expected new data");
             }

@@ -21,13 +21,42 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.WindowsAzure.Storage;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure;
+    using global::Azure.Data.Tables;
     using NUnit.Framework;
     using System;
+    using System.Collections.Generic;
+    using System.Reflection;
 
-    internal class ComplexIEntity : TableEntity
+    internal class ComplexIEntity : ITableEntity
     {
+        /// <summary>
+        /// The partition key is a unique identifier for the partition within a given table and forms the first part of an entity's primary key.
+        /// </summary>
+        /// <value>A string containing the partition key for the entity.</value>
+        public string PartitionKey { get; set; }
+
+        /// <summary>
+        /// The row key is a unique identifier for an entity within a given partition. Together the <see cref="PartitionKey" /> and RowKey uniquely identify every entity within a table.
+        /// </summary>
+        /// <value>A string containing the row key for the entity.</value>
+        public string RowKey { get; set; }
+
+        /// <summary>
+        /// The Timestamp property is a DateTime value that is maintained on the server side to record the time an entity was last modified.
+        /// The Table service uses the Timestamp property internally to provide optimistic concurrency. The value of Timestamp is a monotonically increasing value,
+        /// meaning that each time the entity is modified, the value of Timestamp increases for that entity.
+        /// This property should not be set on insert or update operations (the value will be ignored).
+        /// </summary>
+        /// <value>A <see cref="DateTimeOffset"/> containing the timestamp of the entity.</value>
+        public DateTimeOffset? Timestamp { get; set; }
+
+        /// <summary>
+        /// Gets or sets the entity's ETag.
+        /// </summary>
+        /// <value>A string containing the ETag value for the entity.</value>
+        public ETag ETag { get; set; }
+
         public const int NumberOfNonNullProperties = 26;
 
         public ComplexIEntity()
@@ -36,11 +65,10 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         }
 
         public ComplexIEntity(string pk, string rk)
-            : base(pk, rk)
         {
+            PartitionKey = pk;
+            RowKey = rk;
         }
-
-        public CloudStorageAccount UnSupportedProperty { get; set; }
 
         private DateTimeOffset? dateTimeOffsetNull = null;
         public DateTimeOffset? DateTimeOffsetNull
@@ -299,6 +327,80 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             get { return stringObj; }
             set { stringObj = value; }
+        }
+
+        /// <summary>
+        /// Deserializes this <see cref="DynamicTableEntity"/> instance using the specified <see cref="Dictionary{TKey,TValue}"/> of property names to values of type <see cref="object"/>.
+        /// </summary>
+        /// <param name="properties">A collection containing the <see cref="Dictionary{TKey,TValue}"/> of string property names mapped to values of type <see cref="object"/> to store in this <see cref="DynamicTableEntity"/> instance.</param>
+        public virtual void ReadEntity(IDictionary<string, object> properties)
+        {
+            foreach (PropertyInfo allProperty in this.GetType().GetTypeInfo().GetAllProperties())
+            {
+                if (ShouldSkipProperty(allProperty))
+                {
+                    continue;
+                }
+
+                if (!properties.ContainsKey(allProperty.Name))
+                {
+                    ReplicatedTableLogger.LogInformational("Omitting property '{0}' from de-serialization because there is no corresponding entry in the dictionary provided.", allProperty.Name);
+                    continue;
+                }
+
+                allProperty.SetValue(this, properties[allProperty.Name]);
+            }
+        }
+
+        /// <summary>
+        /// Serializes the <see cref="Dictionary{TKey,TValue}"/> of property names mapped to values of type <see cref="object"/> from this <see cref="DynamicTableEntity"/> instance.
+        /// </summary>
+        /// <returns>A collection containing the map of string property names to values of type <see cref="object"/> stored in this <see cref="DynamicTableEntity"/> instance.</returns>
+        public virtual IDictionary<string, object> WriteEntity()
+        {
+            Dictionary<string, object> dictionary = new Dictionary<string, object>();
+            foreach (PropertyInfo allProperty in this.GetType().GetTypeInfo().GetAllProperties())
+            {
+                if (!ShouldSkipProperty(allProperty))
+                {
+                    var obj = allProperty.GetValue(this, null);
+                    if (obj != null)
+                    {
+                        dictionary.Add(allProperty.Name, obj);
+                    }
+                }
+            }
+
+            return dictionary;
+        }
+
+        internal static bool ShouldSkipProperty(PropertyInfo property)
+        {
+            switch (property.Name)
+            {
+                case "PartitionKey":
+                case "RowKey":
+                case "Timestamp":
+                case "ETag":
+                    return true;
+                default:
+                    {
+                        MethodInfo methodInfo = property.SetMethod;
+                        MethodInfo methodInfo2 = property.SetMethod;
+                        if ((object)methodInfo == null || !methodInfo.IsPublic || (object)methodInfo2 == null || !methodInfo2.IsPublic)
+                        {
+                            ReplicatedTableLogger.LogInformational("Omitting property '{0}' from serialization/de-serialization because the property's getter/setter are not public.", property.Name);
+                            return true;
+                        }
+
+                        if (methodInfo.IsStatic)
+                        {
+                            return true;
+                        }
+
+                        return false;
+                    }
+            }
         }
 
         public static void AssertEquality(ComplexIEntity a, ComplexIEntity b)

@@ -21,18 +21,10 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage.RTableTest;
-    using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.Test.Network;
     using Microsoft.WindowsAzure.Test.Network.Behaviors;
     using NUnit.Framework;
     using System;
-    using System.Collections.Generic;
-    using System.IO;
-    using System.Net;
-    using System.Text;
-    using System.Threading;
 
     /// <summary>
     /// The scenario is this: 

@@ -21,19 +21,19 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using global::Azure.Data.Tables;
+    using global::Azure.Storage.Blobs;
     using System;
     using System.Collections.Generic;
     using System.Linq;
     using System.Security;
-    using Microsoft.WindowsAzure.Storage.Blob;
-    using Microsoft.WindowsAzure.Storage.Table;
 
     class ReplicatedTableConfigurationManager
     {
         private PeriodicTimer viewRefreshTimer;
         private List<ConfigurationStoreLocationInfo> blobLocations;
         private bool useHttps;
-        private Dictionary<string, CloudBlockBlob> blobs = new Dictionary<string, CloudBlockBlob>();
+        private Dictionary<string, BlobClient> blobs = new Dictionary<string, BlobClient>();
         private readonly IReplicatedTableConfigurationParser blobParser;
         private Dictionary<string, View> viewMap = new Dictionary<string, View>();
         private Dictionary<string, ReplicatedTableConfiguredTable> tableMap = new Dictionary<string, ReplicatedTableConfiguredTable>();
@@ -113,7 +113,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 try
                 {
-                    CloudBlockBlob blob = CloudBlobHelpers.GetBlockBlob(accountConnectionString, blobLocation.BlobPath);
+                    BlobClient blob = CloudBlobHelpers.GetBlockBlob(accountConnectionString, blobLocation.BlobPath);
                     this.blobs.Add(blobLocation.StorageAccountName + ';' + blobLocation.BlobPath, blob);
                 }
                 catch (Exception e)
@@ -270,7 +270,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             set;
         }
 
-        internal protected List<CloudBlockBlob> GetBlobs()
+        internal protected List<BlobClient> GetBlobs()
         {
             return this.blobs.Values.ToList();
         }
@@ -377,9 +377,9 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Class functions:
          */
-        static internal protected CloudTableClient GetTableClientForReplica(ReplicaInfo replica)
+        static internal protected TableServiceClient GetTableClientForReplica(ReplicaInfo replica)
         {
-            CloudTableClient tableClient = null;
+            TableServiceClient tableClient = null;
             if (!CloudBlobHelpers.TryCreateCloudTableClient(replica.ConnectionString, out tableClient))
             {
                 ReplicatedTableLogger.LogError("No table client created for replica info: {0}", replica);

@@ -24,7 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Collections.Generic;
     using System.Net;
     using System.Threading;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure.Data.Tables;
     using Microsoft.Azure.Toolkit.Replication;
 
     public abstract class RTableWrapperBase<T> where T : ReplicatedTableEntity, new()
@@ -54,8 +54,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="rEntity"></param>
         public void InsertRow(T rEntity)
         {
-            TableOperation operation = TableOperation.Insert(rEntity);
-            TableResult result = rTable.Execute(operation);
+            TableResult result = rTable.Insert(rEntity);
             // TODO What exception to throw if the item could not be inserted? (Maybe because it already exists... Found? Conflict?)
             HandleResult(result);
         }
@@ -67,8 +66,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="rEntity">The row to be replaced</param>
         public void InsertOrReplaceRow(T rEntity)
         {
-            TableOperation operation = TableOperation.InsertOrReplace(rEntity);
-            TableResult result = rTable.Execute(operation);
+            TableResult result = rTable.InsertOrReplace(rEntity);
             HandleResult(result);
         }
 
@@ -79,8 +77,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="rEntity">The row to be replaced</param>
         public void ReplaceRow(T rEntity)
         {
-            TableOperation operation = TableOperation.Replace(rEntity);
-            TableResult result = rTable.Execute(operation);
+            TableResult result = rTable.Replace(rEntity);
             HandleResult(result);
         }
 
@@ -91,8 +88,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="rEntity">The row to be merged</param>
         public void MergeRow(T rEntity)
         {
-            TableOperation operation = TableOperation.Merge(rEntity);
-            TableResult result = rTable.Execute(operation);
+            TableResult result = rTable.Merge(rEntity);
             HandleResult(result);
         }
 
@@ -103,8 +99,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="rEntity">The row to be merged</param>
         public void InsertOrMergeRow(T rEntity)
         {
-            TableOperation operation = TableOperation.InsertOrMerge(rEntity);
-            TableResult result = rTable.Execute(operation);
+            TableResult result = rTable.InsertOrMerge(rEntity);
             HandleResult(result);
         }
 
@@ -117,10 +112,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <returns></returns>
         public T FindRow(string partitionKey, string rowKey)
         {
-            TableOperation operation = TableOperation.Retrieve<T>(partitionKey, rowKey);
-            TableResult result = rTable.Execute(operation);
+            TableResult result = rTable.Retrieve(partitionKey, rowKey);
             HandleResult(result);
-            return (T)result.Result;
+            return ConvertEntity((ReplicatedTableEntity)result.Result);
         }
 
         /// <summary>
@@ -130,8 +124,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <param name="rEntity"></param>
         public void DeleteRow(T rEntity)
         {
-            TableOperation operation = TableOperation.Delete(rEntity);
-            TableResult result = rTable.Execute(operation);
+            TableResult result = rTable.Delete(rEntity);
             HandleResult(result);
         }
 
@@ -283,10 +276,23 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         public IEnumerable<T> GetAllRows(string partitionKey)
         {
-            TableQuery<T> query = new TableQuery<T>()
-                .Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, partitionKey));
+            return rTable.ExecuteQuery<T>(TableClient.CreateQueryFilter<T>(e => e.PartitionKey == partitionKey));
+        }
 
-            return rTable.ExecuteQuery<T>(query);
+        protected T ConvertEntity(ReplicatedTableEntity entity)
+        {
+            T retval;
+            if (entity == null)
+            {
+                retval = null;
+            }
+            else
+            {
+                retval = new T();
+                retval.CopyFrom(entity);
+            }
+
+            return retval;
         }
 
         /// <summary>

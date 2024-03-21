@@ -24,9 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
-    using System.Linq;
     using System.Net;
-    using Microsoft.WindowsAzure.Storage.Table;
     using System.Threading;
     using Microsoft.WindowsAzure.Test.Network;
     using Microsoft.WindowsAzure.Test.Network.Behaviors;
@@ -249,8 +247,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 customer = RetrieveCustomer(firstName, lastName, workerTwo);
                 customer.Email = "workerTwo";
 
-                TableOperation operation = TableOperation.Replace(customer);
-                newUpdateResult = workerTwo.Execute(operation);
+                newUpdateResult = workerTwo.Replace(customer);
 
                 oldUpdateResume = true;
             });
@@ -297,8 +294,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 customer = RetrieveCustomer(firstName, lastName, workerOne);
                 customer.Email = "workerOne";
 
-                TableOperation operation = TableOperation.Replace(customer);
-                oldUpdateResult = workerOne.Execute(operation);
+                oldUpdateResult = workerOne.Replace(customer);
             }
 
             // Wait on new Update to finish
@@ -397,8 +393,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                  * 4 - WorkerTwo => updates the entry using new View ...
                  */
                 customer.Email = "workerTwo";
-                TableOperation operation = TableOperation.Replace(customer);
-                newUpdateResult = workerTwo.Execute(operation);
+                newUpdateResult = workerTwo.Replace(customer);
             });
 
 
@@ -443,8 +438,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 customer = RetrieveCustomer(firstName, lastName, workerOne);
                 customer.Email = "workerOne";
 
-                TableOperation operation = TableOperation.Replace(customer);
-                oldUpdateResult = workerOne.Execute(operation);
+                oldUpdateResult = workerOne.Replace(customer);
 
                 updateWithOldViewFinished = true;
             }
@@ -525,8 +519,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 var customer = new CustomerEntity(firstName, lastName);
                 customer.Email = "workerTwo";
 
-                TableOperation operation = TableOperation.Insert(customer);
-                newInsertResult = workerTwo.Execute(operation);
+                newInsertResult = workerTwo.Insert(customer);
 
                 // Signal old Insert to resume
                 oldInsertResume = true;
@@ -574,8 +567,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 var customer = new CustomerEntity(firstName, lastName);
                 customer.Email = "workerOne";
 
-                TableOperation operation = TableOperation.Insert(customer);
-                oldInsertResult = workerOne.Execute(operation);
+                oldInsertResult = workerOne.Insert(customer);
             }
 
             // Wait on new Insert to finish
@@ -606,7 +598,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         [Test(Description = "RepairTable when we have some rows with higher wiewId and IgnoreHigherViewIdRows flag is set")]
         public void RepairTableWontRepairRowsWithHigherViewIdWhenIgnoreHigherViewIdRowsFlagIsSet()
         {
-            TableOperation operation;
             TableResult result;
             CustomerEntity customer;
 
@@ -630,8 +621,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 customer = new CustomerEntity(firstName + i, lastName + i);
 
-                operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
@@ -646,16 +636,14 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             foreach (int entryId in new int[] { 5, 8 })
             {
-                operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-                result = rtable.Execute(operation);
+                result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
-                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && (CustomerEntity)result.Result != null, "Retrieve customer failed");
+                Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.OK && new CustomerEntity((ReplicatedTableEntity)result.Result) != null, "Retrieve customer failed");
 
-                customer = (CustomerEntity)result.Result;
+                customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
                 customer.Email = "new_view@email.com";
 
-                operation = TableOperation.Replace(customer);
-                result = rtable.Execute(operation);
+                result = rtable.Replace(customer);
 
                 Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent, "Update customer failed");
             }
@@ -675,8 +663,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 // Check Retrieve of row #5 and #8 returns NotFound
                 foreach (int entryId in new int[] { 5, 8 })
                 {
-                    operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-                    var retrievedResult = rtable.Execute(operation);
+                    var retrievedResult = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
                     Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                     Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
@@ -701,8 +688,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 // Check Retrieve of row #5 and #8 returns NotFound
                 foreach (int entryId in new int[] { 5, 8 })
                 {
-                    operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-                    var retrievedResult = rtable.Execute(operation);
+                    var retrievedResult = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
                     Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                     Assert.AreEqual((int)HttpStatusCode.NotFound, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
@@ -722,7 +708,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             string firstName = "FirstName";
             string lastName = "LastName";
 
-            TableOperation operation;
             TableResult result;
             CustomerEntity customer;
 
@@ -745,8 +730,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 customer = new CustomerEntity(firstName + i, lastName + i);
 
-                operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
@@ -763,15 +747,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 customer = new CustomerEntity(firstName + i, lastName + i);
 
-                operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
             // => Read old entry - from Tail -
             int entryId = 1;
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-            result = rtable.Execute(operation);
+            result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
 
             // 3 - Cut-off Tail without repairing replicas
@@ -783,10 +765,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.configurationService.UpdateConfiguration(config);
 
             // => Update the row
-            customer = (CustomerEntity)result.Result;
+            customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
             customer.Email = "new_view@email.com";
-            operation = TableOperation.Replace(customer);
-            result = rtable.Execute(operation);
+            result = rtable.Replace(customer);
             Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NotFound, "Update customer should failed");
         }
 
@@ -796,7 +777,6 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             string firstName = "FirstName";
             string lastName = "LastName";
 
-            TableOperation operation;
             TableResult result;
             CustomerEntity customer;
 
@@ -819,8 +799,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 customer = new CustomerEntity(firstName + i, lastName + i);
 
-                operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
@@ -837,15 +816,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             {
                 customer = new CustomerEntity(firstName + i, lastName + i);
 
-                operation = TableOperation.Insert(customer);
-                rtable.Execute(operation);
+                rtable.Insert(customer);
             }
 
 
             // => Read old entry - from Tail -
             int entryId = 10;
-            operation = TableOperation.Retrieve<CustomerEntity>(firstName + entryId, lastName + entryId);
-            result = rtable.Execute(operation);
+            result = rtable.Retrieve(firstName + entryId, lastName + entryId);
 
 
             // 3 - Cut-off Tail without repairing replicas
@@ -857,10 +834,9 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.configurationService.UpdateConfiguration(config);
 
             // => Update the row
-            customer = (CustomerEntity)result.Result;
+            customer = new CustomerEntity((ReplicatedTableEntity)result.Result);
             customer.Email = "new_view@email.com";
-            operation = TableOperation.Replace(customer);
-            result = rtable.Execute(operation);
+            result = rtable.Replace(customer);
             Assert.IsTrue(result != null && result.HttpStatusCode == (int)HttpStatusCode.NoContent, "Update customer failed");
         }
 
@@ -912,8 +888,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private void InsertCustormer(CustomerEntity customer, ReplicatedTable repTable)
         {
-            TableOperation operation = TableOperation.Insert(customer);
-            TableResult result = repTable.Execute(operation);
+            TableResult result = repTable.Insert(customer);
 
             Assert.AreNotEqual(null, result, "result = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, result.HttpStatusCode, "result.HttpStatusCode mismatch");
@@ -922,20 +897,18 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
         private CustomerEntity RetrieveCustomer(string firstName, string lastName, ReplicatedTable repTable)
         {
-            TableOperation operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-            TableResult retrievedResult = repTable.Execute(operation);
+            TableResult retrievedResult = repTable.Retrieve(firstName, lastName);
 
             Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
             Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
             Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
 
-            return (CustomerEntity)retrievedResult.Result;
+            return new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
         }
 
         private void UpdateCustomer(CustomerEntity customer, ReplicatedTable repTable)
         {
-            TableOperation operation = TableOperation.Replace(customer);
-            TableResult updateResult = repTable.Execute(operation);
+            TableResult updateResult = repTable.Replace(customer);
 
             Assert.IsNotNull(updateResult, "updateResult = null");
             Assert.AreEqual((int)HttpStatusCode.NoContent, updateResult.HttpStatusCode, "updateResult.HttpStatusCode mismatch");

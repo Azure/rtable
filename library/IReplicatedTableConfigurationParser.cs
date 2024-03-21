@@ -23,7 +23,7 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
-    using Microsoft.WindowsAzure.Storage.Blob;
+    using global::Azure.Storage.Blobs;
 
     internal interface IReplicatedTableConfigurationParser
     {
@@ -41,7 +41,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="ignoreHigherViewIdRows"></param>
         /// <returns></returns>
         List<View> ParseBlob(
-                        List<CloudBlockBlob> blobs,
+                        List<BlobClient> blobs,
                         Action<ReplicaInfo> SetConnectionString,
                         out List<ReplicatedTableConfiguredTable> tableConfigList,
                         out int leaseDuration,
