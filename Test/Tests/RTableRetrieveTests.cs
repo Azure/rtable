@@ -3,12 +3,12 @@
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using System.Net;
-    using Microsoft.WindowsAzure.Storage;
     using Microsoft.WindowsAzure.Test.Network;
     using Microsoft.WindowsAzure.Test.Network.Behaviors;
     using NUnit.Framework;
     using System;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure;
+    using global::Azure.Data.Tables;
 
     [TestFixture]
     [Parallelizable(ParallelScope.None)]
@@ -53,20 +53,15 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             using (new HttpMangler(false, manglingBehaviors))
             {
 
-                Assert.Throws<StorageException>(() =>
+                Assert.Throws<RequestFailedException>(() =>
                 {
                     try
                     {
                         this.rtableWrapper.ReadEntity(jobType, jobId);
                     }
-                    catch (StorageException se)
+                    catch (RequestFailedException rfe)
                     {
-                        Assert.IsNotNull(se.InnerException);
-                        var webException = se.InnerException as WebException;
-                        Assert.IsNotNull(webException);
-                        var response = (HttpWebResponse)webException.Response;
-                        Assert.IsNotNull(response);
-                        Assert.AreEqual(HttpStatusCode.BadRequest, response.StatusCode);
+                        Assert.AreEqual((int)HttpStatusCode.BadRequest, rfe.Status);
                         throw;
                     }
                 });
@@ -88,30 +83,27 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             string lastName = "LastName01";
 
             var customer = new CustomerEntity(firstName, lastName);
-            TableOperation operation = TableOperation.Insert(customer);
-            rtable.Execute(operation);
+            rtable.Insert(customer);
 
 
             // Using xstore modify the row in each replica individually ... so we know, later, which replica RTable will retrieve from
             for (int replicaIndex = 0; replicaIndex < this.cloudTableClients.Count; replicaIndex++)
             {
-                CloudTableClient tableClient = this.cloudTableClients[replicaIndex];
-                CloudTable table = tableClient.GetTableReference(this.repTable.TableName);
+                TableServiceClient tableClient = this.cloudTableClients[replicaIndex];
+                TableClient table = tableClient.GetTableClient(this.repTable.TableName);
 
-                TableOperation retrieveOperation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-                TableResult retrieveResult = table.Execute(retrieveOperation);
+                var retrieveResult = table.GetEntity<CustomerEntity>(firstName, lastName);
 
-                customer = (CustomerEntity)retrieveResult.Result;
+                customer = retrieveResult.Value;
                 customer.Email = replicaIndex.ToString(); // Head = 0
                 // ...  = 1
                 // Tail = 2
 
-                TableOperation updateOperation = TableOperation.Replace(customer);
-                TableResult updateResult = table.Execute(updateOperation);
+                var updateResult = table.UpdateEntity(customer, customer.ETag);
 
                 Assert.IsNotNull(updateResult, "updateResult = null");
-                Console.WriteLine("updateResult.HttpStatusCode = {0}", updateResult.HttpStatusCode);
-                Assert.AreEqual((int)HttpStatusCode.NoContent, updateResult.HttpStatusCode, "updateResult.HttpStatusCode mismatch");
+                Console.WriteLine("updateResult.HttpStatusCode = {0}", updateResult.Status);
+                Assert.AreEqual((int)HttpStatusCode.NoContent, updateResult.Status, "updateResult.HttpStatusCode mismatch");
             }
 
             string accountNameToNotTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[0];
@@ -142,14 +134,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             using (new HttpMangler(false, behaviors))
             {
-                operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-                TableResult retrievedResult = repTable.Execute(operation);
+                TableResult retrievedResult = repTable.Retrieve(firstName, lastName);
 
                 Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                 Assert.AreEqual((int)HttpStatusCode.OK, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");
                 Assert.AreNotEqual(null, retrievedResult.Result, "retrievedResult.Result = null");
 
-                customer = (CustomerEntity)retrievedResult.Result;
+                customer = new CustomerEntity((ReplicatedTableEntity)retrievedResult.Result);
                 Assert.AreEqual(customer.Email, (0).ToString(), "we should have read the row from Head");
             }
         }
@@ -167,30 +158,27 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             string lastName = "LastName01";
 
             var customer = new CustomerEntity(firstName, lastName);
-            TableOperation operation = TableOperation.Insert(customer);
-            rtable.Execute(operation);
+            rtable.Insert(customer);
 
 
             // Using xstore modify the row in each replica individually ... so we know, later, which replica RTable will retrieve from
             for (int replicaIndex = 0; replicaIndex < this.cloudTableClients.Count; replicaIndex++)
             {
-                CloudTableClient tableClient = this.cloudTableClients[replicaIndex];
-                CloudTable table = tableClient.GetTableReference(this.repTable.TableName);
+                TableServiceClient tableClient = this.cloudTableClients[replicaIndex];
+                TableClient table = tableClient.GetTableClient(this.repTable.TableName);
 
-                TableOperation retrieveOperation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-                TableResult retrieveResult = table.Execute(retrieveOperation);
+                var retrieveResult = table.GetEntity<CustomerEntity>(firstName, lastName);
 
-                customer = (CustomerEntity)retrieveResult.Result;
+                customer = retrieveResult.Value;
                 customer.Email = replicaIndex.ToString(); // Head = 0
                 // ...  = 1
                 // Tail = 2
 
-                TableOperation updateOperation = TableOperation.Replace(customer);
-                TableResult updateResult = table.Execute(updateOperation);
+                var updateResult = table.UpdateEntity(customer, customer.ETag);
 
                 Assert.IsNotNull(updateResult, "updateResult = null");
-                Console.WriteLine("updateResult.HttpStatusCode = {0}", updateResult.HttpStatusCode);
-                Assert.AreEqual((int)HttpStatusCode.NoContent, updateResult.HttpStatusCode, "updateResult.HttpStatusCode mismatch");
+                Console.WriteLine("updateResult.HttpStatusCode = {0}", updateResult.Status);
+                Assert.AreEqual((int)HttpStatusCode.NoContent, updateResult.Status, "updateResult.HttpStatusCode mismatch");
             }
 
             // string accountNameToNotTamper = this.rtableTestConfiguration.StorageInformation.AccountNames[0];
@@ -221,8 +209,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             using (new HttpMangler(false, behaviors))
             {
-                operation = TableOperation.Retrieve<CustomerEntity>(firstName, lastName);
-                TableResult retrievedResult = repTable.Execute(operation);
+                TableResult retrievedResult = repTable.Retrieve(firstName, lastName);
 
                 Assert.AreNotEqual(null, retrievedResult, "retrievedResult = null");
                 Assert.AreEqual((int)HttpStatusCode.ServiceUnavailable, retrievedResult.HttpStatusCode, "retrievedResult.HttpStatusCode mismatch");

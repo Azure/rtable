@@ -20,7 +20,7 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure;
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
@@ -216,8 +216,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 this.GenerateJobId(jobId, 0, 0),
                 out partitionKey,
                 out rowKey);
-            TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
-            TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+            var getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+            var retrieveResult = new TableResult
+            {
+                Result = getResp.Value,
+                Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                HttpStatusCode = (int)getResp?.GetRawResponse().Status
+            };
 
             Assert.IsNotNull(retrieveResult, "retrieveResult = null");
             SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
@@ -241,8 +246,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             InitDynamicReplicatedTableEntity replaceTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
 
-            TableOperation replaceOperation = TableOperation.Replace(replaceTableEntity);
-            TableResult replaceResult = this.repTable.Execute(replaceOperation);
+            TableResult replaceResult = this.repTable.Replace(replaceTableEntity);
+
             Assert.IsNotNull(replaceResult, "replaceResult = null");
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.updatedMessage, true); // check _rtable_ViewId
 
@@ -271,8 +276,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 this.GenerateJobId(jobId, 0, 0),
                 out partitionKey,
                 out rowKey);
-            TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
-            TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+            var getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+            var retrieveResult = new TableResult
+            {
+                Result = getResp.Value,
+                Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                HttpStatusCode = (int)getResp?.GetRawResponse().Status
+            };
 
             Assert.IsNotNull(retrieveResult, "retrieveResult = null");
             SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
@@ -296,8 +306,8 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             InitDynamicReplicatedTableEntity mergeTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
 
-            TableOperation mergeOperation = TableOperation.Merge(mergeTableEntity);
-            TableResult mergeResult = this.repTable.Execute(mergeOperation);
+            TableResult mergeResult = this.repTable.Merge(mergeTableEntity);
+
             Assert.IsNotNull(mergeResult, "mergeResult = null");
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.updatedMessage, true); // check _rtable_ViewId
 
@@ -326,8 +336,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 this.GenerateJobId(jobId, 0, 0),
                 out partitionKey,
                 out rowKey);
-            TableOperation retrieveOperation = TableOperation.Retrieve<SampleXStoreEntity>(partitionKey, rowKey);
-            TableResult retrieveResult = this.xstoreCloudTable.Execute(retrieveOperation);
+            var getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+            var retrieveResult = new TableResult
+            {
+                Result = getResp.Value,
+                Etag = getResp.HasValue ? getResp.Value.ETag.ToString() : null,
+                HttpStatusCode = (int)getResp?.GetRawResponse().Status
+            };
 
             Assert.IsNotNull(retrieveResult, "retrieveResult = null");
             SampleXStoreEntity retrievedEntity = (SampleXStoreEntity)retrieveResult.Result;
@@ -348,14 +363,28 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             //
             InitDynamicReplicatedTableEntity deleteTableEntity = SampleXStoreEntity.ToInitDynamicReplicatedTableEntity(retrievedEntity);
 
-            TableOperation deleteOperation = TableOperation.Delete(deleteTableEntity);
-            TableResult deleteResult = this.repTable.Execute(deleteOperation);
+            var deleteResp = this.xstoreCloudTable.DeleteEntity(deleteTableEntity.PartitionKey, deleteTableEntity.RowKey, deleteTableEntity.ETag);
+            var deleteResult = new TableResult
+            {
+                Result = deleteTableEntity,
+                Etag = deleteResp.Headers.ETag.ToString(),
+                HttpStatusCode = deleteResp.Status
+            };
             Assert.IsNotNull(deleteResult, "deleteResult = null");
 
-            retrieveOperation = TableOperation.Retrieve(partitionKey, rowKey);
-            retrieveResult = this.repTable.Execute(retrieveOperation);
-            Assert.IsNotNull(retrieveResult, "retrieveResult = null");
-            Assert.AreEqual(retrieveResult.HttpStatusCode, (int)HttpStatusCode.NotFound, "entry should not exist!");
+            try
+            {
+                getResp = this.xstoreCloudTable.GetEntity<SampleXStoreEntity>(partitionKey, rowKey);
+                Assert.Fail("GetEntity should throw when entity does not exist.");
+            }
+            catch (RequestFailedException ex)
+            {
+                Assert.AreEqual(ex.Status, (int)HttpStatusCode.NotFound);
+            }
+            catch (Exception)
+            {
+                Assert.Fail("GetEntity should throw RequestFailedException when entity does not exist.");
+            }
 
             this.PerformInsertOperationAndValidate(jobType, jobId, this.message);
             this.PerformRetrieveOperationAndValidate(jobType, jobId, this.message, true); // check _rtable_ViewId

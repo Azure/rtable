@@ -21,10 +21,13 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using global::Azure;
+    using global::Azure.Data.Tables;
     using System;
     using System.Collections.Generic;
-    using Microsoft.WindowsAzure.Storage;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using System.Reflection;
+    using System.Runtime.Serialization;
+    using System.ServiceModel;
 
     //this is the class that users extend to store their own data in a row
     public class ReplicatedTableEntity : IReplicatedTableEntity
@@ -33,7 +36,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// Gets or sets the properties in the table entity, indexed by property name.
         /// </summary>
         /// <value>The entity properties.</value>
-        public IDictionary<string, EntityProperty> Properties { get; set; }
+        public IDictionary<string, object> Properties { get; set; }
 
         /// <summary>
         /// Gets or sets the entity's partition key.
@@ -51,13 +54,13 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// Gets or sets the entity's timestamp.
         /// </summary>
         /// <value>The entity timestamp.</value>
-        public DateTimeOffset Timestamp { get; set; }
+        public DateTimeOffset? Timestamp { get; set; }
 
         /// <summary>
         /// Gets or sets the entity's current ETag. Set this value to '*' to blindly overwrite an entity as part of an update operation.
         /// </summary>
         /// <value>The entity ETag.</value>
-        public string ETag { get; set; }
+        public ETag ETag { get; set; }
 
         // lock bit: used to detect that replication is in progress
         public bool _rtable_RowLock { get; set; }
@@ -101,23 +104,125 @@ namespace Microsoft.Azure.Toolkit.Replication
         }
 
         /// <summary>
-        /// Deserializes this <see cref="DynamicTableEntity"/> instance using the specified <see cref="Dictionary{TKey,TValue}"/> of property names to values of type <see cref="EntityProperty"/>.
+        /// Constructor added for unit testing
         /// </summary>
-        /// <param name="properties">A collection containing the <see cref="Dictionary{TKey,TValue}"/> of string property names mapped to values of type <see cref="EntityProperty"/> to store in this <see cref="DynamicTableEntity"/> instance.</param>
-        /// <param name="operationContext">An <see cref="OperationContext"/> object used to track the execution of the operation.</param>
-        public virtual void  ReadEntity(IDictionary<string, EntityProperty> properties, OperationContext operationContext)
+        /// <param name="entity"></param>
+        public ReplicatedTableEntity(ReplicatedTableEntity entity)
+            : this(entity.PartitionKey, entity.RowKey)
         {
-            TableEntity.ReadUserObject(this, properties, operationContext);
+            this.CopyFrom(entity);
         }
 
         /// <summary>
-        /// Serializes the <see cref="Dictionary{TKey,TValue}"/> of property names mapped to values of type <see cref="EntityProperty"/> from this <see cref="DynamicTableEntity"/> instance.
+        /// Constructor added for unit testing
         /// </summary>
-        /// <param name="operationContext">An <see cref="OperationContext"/> object used to track the execution of the operation.</param>
-        /// <returns>A collection containing the map of string property names to values of type <see cref="EntityProperty"/> stored in this <see cref="DynamicTableEntity"/> instance.</returns>
-        public virtual IDictionary<string, EntityProperty> WriteEntity(OperationContext operationContext)
+        /// <param name="entity"></param>
+        public ReplicatedTableEntity(TableEntity entity)
+            : this(entity.PartitionKey, entity.RowKey)
         {
-            return TableEntity.WriteUserObject(this, operationContext);
+            if (entity == null)
+            {
+                throw new ArgumentNullException(nameof(entity));
+            }
+
+            this._rtable_RowLock = bool.Parse(entity["_rtable_RowLock"].ToString());
+            this._rtable_Version = long.Parse(entity["_rtable_Version"].ToString());
+            this._rtable_Tombstone = bool.Parse(entity["_rtable_Tombstone"].ToString());
+            this._rtable_ViewId = long.Parse(entity["_rtable_ViewId"].ToString());
+            this._rtable_Operation = entity["_rtable_Operation"].ToString();
+            this._rtable_BatchId = Guid.Parse(entity["_rtable_BatchId"].ToString());
+            this._rtable_LockAcquisition = DateTimeOffset.Parse(entity["_rtable_LockAcquisition"].ToString());
+
+            this.Properties = new Dictionary<string, object>();
+            foreach (var key in entity.Keys)
+            {
+                if (key.Equals("Properties", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    continue;
+                }
+                this.Properties.Add(key, entity[key]);
+            }
+        }
+
+        /// <summary>
+        /// Deserializes this <see cref="DynamicTableEntity"/> instance using the specified <see cref="Dictionary{TKey,TValue}"/> of property names to values of type <see cref="object"/>.
+        /// </summary>
+        /// <param name="properties">A collection containing the <see cref="Dictionary{TKey,TValue}"/> of string property names mapped to values of type <see cref="object"/> to store in this <see cref="DynamicTableEntity"/> instance.</param>
+        public virtual void ReadEntity(IDictionary<string, object> properties)
+        {
+            foreach (PropertyInfo allProperty in this.GetType().GetTypeInfo().GetAllProperties())
+            {
+                if (ShouldSkipProperty(allProperty))
+                {
+                    continue;
+                }
+
+                if (!properties.ContainsKey(allProperty.Name))
+                {
+                    ReplicatedTableLogger.LogInformational("Omitting property '{0}' from de-serialization because there is no corresponding entry in the dictionary provided.", allProperty.Name);
+                    continue;
+                }
+
+                allProperty.SetValue(this, properties[allProperty.Name]);
+            }
+        }
+
+        /// <summary>
+        /// Serializes the <see cref="Dictionary{TKey,TValue}"/> of property names mapped to values of type <see cref="object"/> from this <see cref="DynamicTableEntity"/> instance.
+        /// </summary>
+        /// <returns>A collection containing the map of string property names to values of type <see cref="object"/> stored in this <see cref="DynamicTableEntity"/> instance.</returns>
+        public virtual IDictionary<string, object> WriteEntity()
+        {
+            Dictionary<string, object> dictionary = new Dictionary<string, object>();
+            foreach (PropertyInfo allProperty in this.GetType().GetTypeInfo().GetAllProperties())
+            {
+                if (!ShouldSkipProperty(allProperty))
+                {
+                    var obj = allProperty.GetValue(this, null);
+                    if (obj != null)
+                    {
+                        dictionary.Add(allProperty.Name, obj);
+                    }
+                }
+            }
+
+            return dictionary;
+        }
+
+        public static bool ShouldSkipProperty(PropertyInfo property)
+        {
+
+            switch (property.Name)
+            {
+                case "PartitionKey":
+                case "RowKey":
+                case "Timestamp":
+                case "ETag":
+                    return true;
+                default:
+                    {
+                        MethodInfo methodInfo = property.SetMethod;
+                        MethodInfo methodInfo2 = property.SetMethod;
+                        if ((object)methodInfo == null || !methodInfo.IsPublic || (object)methodInfo2 == null || !methodInfo2.IsPublic)
+                        {
+                            ReplicatedTableLogger.LogInformational("Omitting property '{0}' from serialization/de-serialization because the property's getter/setter are not public.", property.Name);
+                            return true;
+                        }
+
+                        if (methodInfo.IsStatic)
+                        {
+                            return true;
+                        }
+
+                        if (Attribute.IsDefined(property, typeof(IgnoreDataMemberAttribute)))
+                        {
+                            ReplicatedTableLogger.LogInformational("Omitting property '{0}' from serialization/de-serialization because IgnoreAttribute has been set on that property.", property.Name);
+                            return true;
+                        }
+
+                        return false;
+                    }
+            }
         }
 
         public override bool Equals(object obj)
@@ -141,6 +246,28 @@ namespace Microsoft.Azure.Toolkit.Replication
         public override int GetHashCode()
         {
             return base.GetHashCode();
+        }
+
+        public void CopyFrom(ReplicatedTableEntity entity)
+        {
+            if (entity == null)
+            {
+                throw new ArgumentNullException("entity");
+            }
+
+            this.PartitionKey = entity.PartitionKey;
+            this.RowKey = entity.RowKey;
+            this.Timestamp = entity.Timestamp;
+            this.ETag = entity.ETag;
+            this._rtable_RowLock = entity._rtable_RowLock;
+            this._rtable_Version = entity._rtable_Version;
+            this._rtable_Tombstone = entity._rtable_Tombstone;
+            this._rtable_ViewId = entity._rtable_ViewId;
+            this._rtable_Operation = entity._rtable_Operation;
+            this._rtable_BatchId = entity._rtable_BatchId;
+            this._rtable_LockAcquisition = entity._rtable_LockAcquisition;
+
+            this.ReadEntity(entity.Properties);
         }
     }
 }

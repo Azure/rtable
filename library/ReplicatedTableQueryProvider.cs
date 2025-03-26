@@ -27,7 +27,6 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System.Linq;
     using System.Linq.Expressions;
     using System.Reflection;
-    using Microsoft.WindowsAzure.Storage.Table;
 
     /// <summary>
     /// Implement System.Linq.IQueryable

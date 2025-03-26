@@ -63,5 +63,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         public static string LongConnectioStringTemplate =
             @"DefaultEndpointsProtocol={0};AccountName={1};AccountKey={2};BlobEndpoint={0}://{1}.blob.{3};QueueEndpoint={0}://{1}.queue.{3};TableEndpoint={0}://{1}.table.{3}";
+
+        public static string BlobStorageEndpointTemplate = @"{0}://{1}.blob.{2}";
+        public static string TableStorageEndpointTemplate = @"{0}://{1}.table.{2}";
     }
 }

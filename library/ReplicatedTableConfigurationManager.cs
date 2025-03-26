@@ -21,19 +21,22 @@
 
 namespace Microsoft.Azure.Toolkit.Replication
 {
+    using global::Azure.Core;
+    using global::Azure.Data.Tables;
+    using global::Azure.Storage.Blobs;
     using System;
     using System.Collections.Generic;
     using System.Linq;
     using System.Security;
-    using Microsoft.WindowsAzure.Storage.Blob;
-    using Microsoft.WindowsAzure.Storage.Table;
 
     class ReplicatedTableConfigurationManager
     {
         private PeriodicTimer viewRefreshTimer;
         private List<ConfigurationStoreLocationInfo> blobLocations;
+        private TokenCredential blobLocationsStorageToken;
         private bool useHttps;
-        private Dictionary<string, CloudBlockBlob> blobs = new Dictionary<string, CloudBlockBlob>();
+        private string storageEndpointDomain;
+        private Dictionary<string, BlobClient> blobs = new Dictionary<string, BlobClient>();
         private readonly IReplicatedTableConfigurationParser blobParser;
         private Dictionary<string, View> viewMap = new Dictionary<string, View>();
         private Dictionary<string, ReplicatedTableConfiguredTable> tableMap = new Dictionary<string, ReplicatedTableConfiguredTable>();
@@ -44,13 +47,14 @@ namespace Microsoft.Azure.Toolkit.Replication
 
         private readonly object connectionStringLock = new object();
         private Dictionary<string, SecureString> connectionStringMap = null;
-        private Action<ReplicaInfo> SetConnectionStringStrategy;
+        private Dictionary<string, TokenCredential> replicaStorageTokenMap = null;
+        private Func<ReplicaInfo, TableServiceClient> ReplicaTableClientCreationStrategy;
 
         /// <summary>
         /// Connection string provided by user
         /// </summary>
         /// <param name="replica"></param>
-        private void NewStrategyToSetConnectionString(ReplicaInfo replica)
+        private TableServiceClient NewTableClientFromConnectionStringStrategy(ReplicaInfo replica)
         {
             if (this.connectionStringMap.ContainsKey(replica.StorageAccountName))
             {
@@ -60,19 +64,51 @@ namespace Microsoft.Azure.Toolkit.Replication
             {
                 replica.ConnectionString = null;
             }
+
+            return GetConnectionStringTableClientForReplica(replica);
         }
 
         /// <summary>
-        /// Connection string infered from blob content
+        /// Connection string inferred from blob content
         /// </summary>
         /// <param name="replica"></param>
-        private void OldStrategyToSetConnectionString(ReplicaInfo replica)
+        private TableServiceClient OldTableClientFromConnectionStringStrategy(ReplicaInfo replica)
         {
             string connectionString = String.Format(Constants.ShortConnectioStringTemplate, useHttps ? "https" : "http", replica.StorageAccountName, replica.StorageAccountKey);
             replica.ConnectionString = SecureStringHelper.ToSecureString(connectionString);
+
+            return GetConnectionStringTableClientForReplica(replica);
         }
 
+        /// <summary>
+        /// Managed Identity provided by user.
+        /// </summary>
+        /// <param name="replica"></param>
+        /// <returns></returns>
+        private TableServiceClient TableClientFromManagedIdentityStrategy(ReplicaInfo replica)
+        {
+            TokenCredential storageToken = null;
+            if (this.replicaStorageTokenMap.ContainsKey(replica.StorageAccountName))
+            {
+                storageToken = this.replicaStorageTokenMap[replica.StorageAccountName];
+            }
 
+            string tableStorageEndpoint = String.Format(Constants.TableStorageEndpointTemplate,
+                ((this.useHttps == true) ? "https" : "http"),
+                replica.StorageAccountName,
+                this.storageEndpointDomain);
+
+            return GetTokenTableClientForReplica(replica, tableStorageEndpoint, storageToken);
+        }
+
+        /// <summary>
+        /// Initializes the ReplicatedTableConfigurationManager for connection string auth to storage.
+        /// </summary>
+        /// <param name="blobLocations"></param>
+        /// <param name="connectionStringMap"></param>
+        /// <param name="useHttps"></param>
+        /// <param name="lockTimeoutInSeconds"></param>
+        /// <param name="blobParser"></param>
         internal protected ReplicatedTableConfigurationManager(
                                     List<ConfigurationStoreLocationInfo> blobLocations,
                                     Dictionary<string, SecureString> connectionStringMap,
@@ -80,13 +116,15 @@ namespace Microsoft.Azure.Toolkit.Replication
                                     int lockTimeoutInSeconds,
                                     IReplicatedTableConfigurationParser blobParser)
         {
+            // Setup configuration blob and replica connection variables.
             this.blobLocations = blobLocations;
             this.ConnectionStrings = connectionStringMap;
             this.useHttps = useHttps;
+
             this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? Constants.LockTimeoutInSeconds : lockTimeoutInSeconds);
             this.LeaseDuration = TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec);
 
-            this.Initialize();
+            this.InitializeConfigurationStoreWithConnectionStrings();
 
             this.blobParser = blobParser;
 
@@ -97,7 +135,46 @@ namespace Microsoft.Azure.Toolkit.Replication
             viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, null, TimeSpan.FromMilliseconds(-1), TimeSpan.FromSeconds(TimerIntervalInSeconds));
         }
 
-        private void Initialize()
+        /// <summary>
+        /// Initializes the ReplicatedTableConfigurationManager for managed identity auth to storage.
+        /// </summary>
+        /// <param name="blobLocations"></param>
+        /// <param name="blobLocationsStorageToken"></param>
+        /// <param name="replicaStorageTokenMap"></param>
+        /// <param name="useHttps"></param>
+        /// <param name="lockTimeoutInSeconds"></param>
+        /// <param name="blobParser"></param>
+        internal protected ReplicatedTableConfigurationManager(
+                                    List<ConfigurationStoreLocationInfo> blobLocations,
+                                    TokenCredential blobLocationsStorageToken,
+                                    Dictionary<string, TokenCredential> replicaStorageTokenMap,
+                                    bool useHttps,
+                                    string storageEndpointDomain,
+                                    int lockTimeoutInSeconds,
+                                    IReplicatedTableConfigurationParser blobParser)
+        {
+            // Setup configuration blob and replica connection variables.
+            this.blobLocations = blobLocations;
+            this.blobLocationsStorageToken = blobLocationsStorageToken;
+            this.ReplicaStorageTokenMap = replicaStorageTokenMap;
+            this.useHttps = useHttps;
+            this.storageEndpointDomain = storageEndpointDomain;
+
+            this.LockTimeout = TimeSpan.FromSeconds(lockTimeoutInSeconds == 0 ? Constants.LockTimeoutInSeconds : lockTimeoutInSeconds);
+            this.LeaseDuration = TimeSpan.FromSeconds(Constants.LeaseRenewalIntervalInSec);
+
+            this.InitializeConfigurationStoreWithTokenCredentials();
+
+            this.blobParser = blobParser;
+
+            /* IMPORTANT:
+             * It is wrong to get a call-back before Constructor finishes !
+             * For that, Timer has to be DISABLED initially.
+             */
+            viewRefreshTimer = new PeriodicTimer(RefreshReadAndWriteViewsFromBlobs, null, TimeSpan.FromMilliseconds(-1), TimeSpan.FromSeconds(TimerIntervalInSeconds));
+        }
+
+        private void InitializeConfigurationStoreWithConnectionStrings()
         {
             if ((this.blobLocations.Count % 2) == 0)
             {
@@ -113,7 +190,49 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                 try
                 {
-                    CloudBlockBlob blob = CloudBlobHelpers.GetBlockBlob(accountConnectionString, blobLocation.BlobPath);
+                    BlobClient blob = CloudBlobHelpers.GetBlockBlob(accountConnectionString, blobLocation.BlobPath);
+
+                    this.blobs.Add(blobLocation.StorageAccountName + ';' + blobLocation.BlobPath, blob);
+                }
+                catch (Exception e)
+                {
+                    ReplicatedTableLogger.LogError("Failed to init blob Acc={0}, Blob={1}. Exception: {2}",
+                        blobLocation.StorageAccountName,
+                        blobLocation.BlobPath,
+                        e.Message);
+                }
+            }
+
+            int quorumSize = (this.blobLocations.Count / 2) + 1;
+
+            if (this.blobs.Count < quorumSize)
+            {
+                throw new Exception(string.Format("Retrieved blobs count ({0}) is less than quorum !", this.blobs.Count));
+            }
+        }
+
+        private void InitializeConfigurationStoreWithTokenCredentials()
+        {
+            if ((this.blobLocations.Count % 2) == 0)
+            {
+                throw new ArgumentException("Number of blob locations must be odd");
+            }
+
+            foreach (ConfigurationStoreLocationInfo blobLocation in blobLocations)
+            {
+                TokenCredential blobStorageToken = this.blobLocationsStorageToken;
+                string blobStorageEndpoint = String.Format(Constants.BlobStorageEndpointTemplate,
+                    ((this.useHttps == true) ? "https" : "http"),
+                    blobLocation.StorageAccountName,
+                    this.storageEndpointDomain);
+
+                try
+                {
+                    BlobClient blob = CloudBlobHelpers.GetBlockBlob(
+                        blobStorageEndpoint,
+                        blobStorageToken,
+                        blobLocation.BlobPath);
+
                     this.blobs.Add(blobLocation.StorageAccountName + ';' + blobLocation.BlobPath, blob);
                 }
                 catch (Exception e)
@@ -172,13 +291,13 @@ namespace Microsoft.Azure.Toolkit.Replication
             bool instrumentationFlag;
             bool ignoreHigherViewIdRows;
 
-            // Lock because both SetConnectionStringStrategy and connectionStringMap can be updated OOB!
+            // Lock because both ReplicaTableClientCreationStrategy and connectionStringMap can be updated OOB!
             lock (connectionStringLock)
             {
                 DateTime startTime = DateTime.UtcNow;
                 views = this.blobParser.ParseBlob(
                                             this.blobs.Values.ToList(),
-                                            this.SetConnectionStringStrategy,
+                                            this.ReplicaTableClientCreationStrategy,
                                             out tableConfigList,
                                             out leaseDuration,
                                             out configId,
@@ -270,7 +389,7 @@ namespace Microsoft.Azure.Toolkit.Replication
             set;
         }
 
-        internal protected List<CloudBlockBlob> GetBlobs()
+        internal protected List<BlobClient> GetBlobs()
         {
             return this.blobs.Values.ToList();
         }
@@ -301,16 +420,32 @@ namespace Microsoft.Azure.Toolkit.Replication
 
                     if (this.connectionStringMap != null)
                     {
-                        SetConnectionStringStrategy = NewStrategyToSetConnectionString;
+                        ReplicaTableClientCreationStrategy = NewTableClientFromConnectionStringStrategy;
                     }
                     else
                     {
-                        SetConnectionStringStrategy = OldStrategyToSetConnectionString;
+                        ReplicaTableClientCreationStrategy = OldTableClientFromConnectionStringStrategy;
                     }
                 }
             }
         }
 
+        /// <summary>
+        /// Managed identity token strategy as an alternative to ConnectionStrings.
+        /// </summary>
+        internal protected Dictionary<string, TokenCredential> ReplicaStorageTokenMap
+        {
+            private get { return null; }
+
+            set
+            {
+                lock (connectionStringLock)
+                {
+                    replicaStorageTokenMap = value;
+                    ReplicaTableClientCreationStrategy = TableClientFromManagedIdentityStrategy;
+                }
+            }
+        }
 
         /*
          * Views functions:
@@ -377,12 +512,23 @@ namespace Microsoft.Azure.Toolkit.Replication
         /*
          * Class functions:
          */
-        static internal protected CloudTableClient GetTableClientForReplica(ReplicaInfo replica)
+        static internal protected TableServiceClient GetConnectionStringTableClientForReplica(ReplicaInfo replica)
         {
-            CloudTableClient tableClient = null;
+            TableServiceClient tableClient = null;
             if (!CloudBlobHelpers.TryCreateCloudTableClient(replica.ConnectionString, out tableClient))
             {
-                ReplicatedTableLogger.LogError("No table client created for replica info: {0}", replica);
+                ReplicatedTableLogger.LogError("No table client (connection string) created for replica info: {0}", replica);
+            }
+
+            return tableClient;
+        }
+
+        static internal protected TableServiceClient GetTokenTableClientForReplica(ReplicaInfo replica, string tableStorageEndpoint, TokenCredential tableToken)
+        {
+            TableServiceClient tableClient = null;
+            if (!CloudBlobHelpers.TryCreateCloudTableClient(tableStorageEndpoint, tableToken, out tableClient))
+            {
+                ReplicatedTableLogger.LogError("No table client (token) created for replica info: {0}", replica);
             }
 
             return tableClient;

@@ -20,6 +20,8 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
+    using global::Azure;
+    using global::Azure.Data.Tables;
     using Microsoft.Azure.Toolkit.Replication;   
     using System;
 
@@ -68,6 +70,20 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             JobType = jobType;
             JobId = jobId;
             Message = message;
+        }
+
+        public SampleRTableEntity(ReplicatedTableEntity entity)
+            : base(entity)
+        {
+            this.JobType = entity.Properties.ContainsKey("JobType") ? entity.Properties["JobType"].ToString() : null;
+            this.JobId = entity.Properties.ContainsKey("JobId") ? entity.Properties["JobId"].ToString() : null;
+            this.Message = entity.Properties.ContainsKey("Message") ? entity.Properties["Message"].ToString() : null;
+        }
+
+        public SampleRTableEntity(TableEntity entity, string etag)
+            : base(entity)
+        {
+            this.ETag = new ETag(etag);
         }
 
         public SampleRTableEntity Clone()

@@ -23,7 +23,6 @@ using NUnit.Framework.Constraints;
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.WindowsAzure.Storage.Table;
     using NUnit.Framework;
     using System;
     using System.Collections.Generic;
@@ -69,7 +68,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                 foreach (var retrievedEntity in allRows)
                 {
                     Assert.AreEqual(
-                            retrievedEntity.ETag,
+                            retrievedEntity.ETag.ToString(),
                             retrievedEntity._rtable_Version.ToString(),
                             "Etag mismatch");
 

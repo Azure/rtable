@@ -19,4 +19,7 @@
     <RTableName>RTableTest</RTableName>
     <ViewId>1</ViewId>
   </RTableInformation>
+  <RunnerInformation>
+    <InteractiveLoginTenantId>00000000-0000-0000-0000-000000000000</InteractiveLoginTenantId>
+  </RunnerInformation>
 </RTableTestConfiguration>

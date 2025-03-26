@@ -22,13 +22,9 @@
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage.Table;
-    using Microsoft.WindowsAzure.Storage.Table.Queryable;
     using NUnit.Framework;
     using System;
     using System.Linq;
-    using System.Reflection;
-    using System.Threading;
     using System.Collections.Generic;
 
     [TestFixture]

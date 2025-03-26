@@ -23,7 +23,8 @@ namespace Microsoft.Azure.Toolkit.Replication
 {
     using System;
     using System.Collections.Generic;
-    using Microsoft.WindowsAzure.Storage.Blob;
+    using global::Azure.Data.Tables;
+    using global::Azure.Storage.Blobs;
 
     internal interface IReplicatedTableConfigurationParser
     {
@@ -33,7 +34,7 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// If null is returned, then the value of tableConfigList/leaseDuration are not relevant.
         /// </summary>
         /// <param name="blobs"></param>
-        /// <param name="SetConnectionString"></param>
+        /// <param name="TableClientCreationStrategy"></param>
         /// <param name="tableConfigList"></param>
         /// <param name="leaseDuration"></param>
         /// <param name="configId"></param>
@@ -41,8 +42,8 @@ namespace Microsoft.Azure.Toolkit.Replication
         /// <param name="ignoreHigherViewIdRows"></param>
         /// <returns></returns>
         List<View> ParseBlob(
-                        List<CloudBlockBlob> blobs,
-                        Action<ReplicaInfo> SetConnectionString,
+                        List<BlobClient> blobs,
+                        Func<ReplicaInfo, TableServiceClient> TableClientCreationStrategy,
                         out List<ReplicatedTableConfiguredTable> tableConfigList,
                         out int leaseDuration,
                         out Guid configId,

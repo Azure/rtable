@@ -24,7 +24,7 @@ namespace Microsoft.Azure.Toolkit.Replication
     using System;
     using System.Collections;
     using System.Collections.Generic;
-    using Microsoft.WindowsAzure.Storage.Table;
+    using global::Azure.Data.Tables;
 
     public enum StaleViewHandling
     {
@@ -168,12 +168,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                     return;
                 }
 
-                if (typeof(T) == typeof(DynamicTableEntity) ||
-                    typeof(T).IsSubclassOf(typeof(DynamicTableEntity)))
+                if (typeof(T) == typeof(ITableEntity) ||
+                    typeof(ITableEntity).IsAssignableFrom(typeof(T)))
                 {
-                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForDynamicTableEntityInConvertMode;
-                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForDynamicTableEntityInConvertMode;
-                    this.RowViewIdFunc = ReplicatedTable.RowViewIdForDynamicTableEntityInConvertMode;
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForTableEntityInConvertMode;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForTableEntityInConvertMode;
+                    this.RowViewIdFunc = ReplicatedTable.RowViewIdForTableEntityInConvertMode;
 
                     return;
                 }
@@ -190,12 +190,12 @@ namespace Microsoft.Azure.Toolkit.Replication
                     return;
                 }
 
-                if (typeof(T) == typeof(DynamicTableEntity) ||
-                    typeof(T).IsSubclassOf(typeof(DynamicTableEntity)))
+                if (typeof(T) == typeof(ITableEntity) ||
+                    typeof(ITableEntity).IsAssignableFrom(typeof(T)))
                 {
-                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForDynamicTableEntity;
-                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForDynamicTableEntity;
-                    this.RowViewIdFunc = ReplicatedTable.RowViewIdForDynamicTableEntity;
+                    this.VirtualizeEtagFunc = ReplicatedTable.VirtualizeEtagForTableEntity;
+                    this.HasTombstoneFunc = ReplicatedTable.HasTombstoneForTableEntity;
+                    this.RowViewIdFunc = ReplicatedTable.RowViewIdForTableEntity;
 
                     return;
                 }

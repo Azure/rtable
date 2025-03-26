@@ -27,10 +27,7 @@
 
 namespace Microsoft.Azure.Toolkit.Replication.Test
 {
-    using Microsoft.WindowsAzure.Storage;
-    using Microsoft.WindowsAzure.Storage.Blob;
     using Microsoft.Azure.Toolkit.Replication;
-    using Microsoft.WindowsAzure.Storage.Table;
     using Microsoft.WindowsAzure.Storage.RTableTest;
     using System;
     using NUnit.Framework;
@@ -40,7 +37,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     using System.Threading;
     using System.Xml.Serialization;
     using System.Security;
-    
+    using global::Azure.Data.Tables;
+    using global::Azure.Identity;
+    using global::Azure.Storage.Blobs;
+    using global::Azure.Core;
+
     public class RTableLibraryTestBase
     {
         /// <summary>
@@ -71,7 +72,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <summary>
         /// Cloud Table Client of the individual storage account used to construct the RTable. Used for debugging and validation only.
         /// </summary>
-        protected List<CloudTableClient> cloudTableClients;
+        protected List<TableServiceClient> cloudTableClients;
 
         /// <summary>
         /// Define how to construct the Rtable using the storage account names/keys specified in the xml file. 
@@ -82,7 +83,7 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         /// <summary>
         /// Cloud Table of the individual storage account used to construct the RTable. Used for debugging and validation only.
         /// </summary>
-        protected List<CloudTable> cloudTables;
+        protected List<TableClient> cloudTables;
 
         /// <summary>
         /// Lock timeout for tests
@@ -98,6 +99,43 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         private int clockFactor = 0;
         private int minimumLeaseRenewalInterval = 0;
         private int lockTimeoutInSeconds = 0;
+
+        /// <summary>
+        /// Used for token-based authentication testing to storage.
+        /// Cache the token credential from interactive login to avoid repeated prompts.
+        /// </summary>
+        private static TokenCredential s_interactiveLoginTokenCredential = null;
+        private static object _loginLock = new object();
+        private TokenCredential InteractiveLoginTokenCredential
+        {
+            get
+            {
+                if (s_interactiveLoginTokenCredential == null)
+                {
+                    lock (_loginLock)
+                    {
+                        if (s_interactiveLoginTokenCredential == null)
+                        {
+                            Guid tenantId = this.rtableTestConfiguration.RunnerInformation.InteractiveLoginTenantId;
+                            if (tenantId == Guid.Empty)
+                            {
+                                s_interactiveLoginTokenCredential = new InteractiveBrowserCredential();
+                            }
+                            else
+                            {
+                                s_interactiveLoginTokenCredential = new InteractiveBrowserCredential(
+                                    new InteractiveBrowserCredentialOptions()
+                                    {
+                                        TenantId = tenantId.ToString()
+                                    });
+                            }
+                        }
+                    }
+                }
+
+                return s_interactiveLoginTokenCredential;
+            }
+        }
 
         protected RTableLibraryTestBase()
         {
@@ -200,13 +238,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             this.repTable.CreateIfNotExists();
             this.rtableWrapper = RTableWrapperForSampleRTableEntity.GetRTableWrapper(this.repTable);
 
-            this.cloudTableClients = new List<CloudTableClient>();
-            this.cloudTables = new List<CloudTable>();
+            this.cloudTableClients = new List<TableServiceClient>();
+            this.cloudTables = new List<TableClient>();
             for (int i = 0; i < this.actualStorageAccountsUsed.Count; i++)
             {
-                CloudTableClient cloudBloblClient = repTable.GetReplicaTableClient(i);
+                TableServiceClient cloudBloblClient = repTable.GetReplicaTableClient(i);
                 this.cloudTableClients.Add(cloudBloblClient);
-                this.cloudTables.Add(cloudBloblClient.GetTableReference(repTable.TableName));
+                this.cloudTables.Add(cloudBloblClient.GetTableClient(repTable.TableName));
             }
         }
 
@@ -290,16 +328,16 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
                     index++)
                 {
                     string connectionString;
-                    CloudBlobClient cloudBloblClient = this.GenerateCloudBlobClient(
+                    BlobServiceClient cloudBloblClient = this.GenerateBlobServiceClient(
                         this.rtableTestConfiguration.StorageInformation.AccountNames[index],
                         this.rtableTestConfiguration.StorageInformation.AccountKeys[index],
                         this.rtableTestConfiguration.StorageInformation.DomainName,
                         out connectionString);
 
-                    CloudBlobContainer container =
-                        cloudBloblClient.GetContainerReference(
+                    BlobContainerClient container =
+                        cloudBloblClient.GetBlobContainerClient(
                             this.rtableTestConfiguration.RTableInformation.ContainerName);
-                    CloudBlockBlob blockBlob = container.GetBlockBlobReference(blobName);
+                    BlobClient blockBlob = container.GetBlobClient(blobName);
                     blockBlob.Delete();
                 }
             }
@@ -430,22 +468,21 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         }
 
         /// <summary>
-        /// Create a CloudBlobClient for the specified accountName, accountKey, and domainName.
+        /// Create a BlobServiceClient for the specified accountName, accountKey, and domainName.
         /// </summary>
         /// <param name="accountName"></param>
         /// <param name="accountKey"></param>
         /// <param name="domainName"></param>
         /// <param name="connectionString">(Output)</param>
         /// <returns></returns>
-        protected CloudBlobClient GenerateCloudBlobClient(
+        protected BlobServiceClient GenerateBlobServiceClient(
             string accountName,
             string accountKey,
             string domainName,
             out string connectionString)
         {
             connectionString = GetConnectionString(accountName, accountKey, domainName);
-            CloudStorageAccount storageAccount = CloudStorageAccount.Parse(connectionString);
-            CloudBlobClient client = storageAccount.CreateCloudBlobClient();
+            BlobServiceClient client = new BlobServiceClient(connectionString); ;
             return client;
         }
 
@@ -462,17 +499,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             partitionKey = partitionKey.ToLower().Replace(" ", "");
             rowKey = rowKey.ToLower().Replace(" ", "");
 
-            string filter1 = TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, partitionKey);
-            string filter2 = TableQuery.GenerateFilterCondition("RowKey", QueryComparisons.Equal, rowKey);
-
-            TableQuery<SampleRTableEntity> query = new TableQuery<SampleRTableEntity>().
-                Where(TableQuery.CombineFilters(filter1, TableOperators.And, filter2));
-
             SampleRTableEntity[] entities = new SampleRTableEntity[configurationWrapper.GetWriteView().Chain.Count];
             for (int i = 0; i < configurationWrapper.GetWriteView().Chain.Count; i++)
             {
                 Console.WriteLine("Executing query for CloudTable #{0}", i);
-                foreach (var item in ((CloudTableClient) configurationWrapper.GetWriteView()[i]).GetTableReference(repTable.TableName).ExecuteQuery(query))
+                foreach (var item in configurationWrapper.GetWriteView()[i].GetTableClient(repTable.TableName).Query<SampleRTableEntity>(e =>
+                    e.PartitionKey == partitionKey &&
+                    e.RowKey == rowKey))
                 {
                     Console.WriteLine("{0}", item.ToString());
                     entities[i] = item;
@@ -505,14 +538,11 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
 
             partitionKey = partitionKey.ToLower().Replace(" ", "");
             
-            TableQuery<SampleRTableEntity> query = new TableQuery<SampleRTableEntity>().
-                                                   Where(TableQuery.GenerateFilterCondition("PartitionKey", QueryComparisons.Equal, partitionKey));
+            //Key = RowKey, Value = Entity
+            var headEntities = configurationWrapper.GetWriteView()[headReplicaAccountIndex].GetTableClient(repTable.TableName).Query<SampleRTableEntity>(e => e.PartitionKey == partitionKey).ToDictionary(e => e.RowKey, e => e);
 
             //Key = RowKey, Value = Entity
-            var headEntities = configurationWrapper.GetWriteView()[headReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
-
-            //Key = RowKey, Value = Entity
-            var tailEntities = configurationWrapper.GetWriteView()[tailReplicaAccountIndex].GetTableReference(repTable.TableName).ExecuteQuery(query).ToDictionary(e => e.RowKey, e => e);
+            var tailEntities = configurationWrapper.GetWriteView()[tailReplicaAccountIndex].GetTableClient(repTable.TableName).Query<SampleRTableEntity>(e => e.PartitionKey == partitionKey).ToDictionary(e => e.RowKey, e => e);
 
             Assert.IsTrue(headEntities.Count >= tailEntities.Count);
 
@@ -725,7 +755,25 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
         {
             this.configurationInfos = this.GetRTableConfigurationLocationInfo(numberOfBlobs);
 
-            this.configurationService = new ReplicatedTableConfigurationServiceV2(this.configurationInfos, this.connectionStringMap, useHttps);
+            Guid tenantId = this.rtableTestConfiguration.RunnerInformation.InteractiveLoginTenantId;
+            if (useHttps && tenantId != Guid.Empty)
+            {
+                // TokenCredentials can only be used with https. Requirement from Azure Storage.
+                var replicaStorageTokenMap = new Dictionary<string, TokenCredential>();
+                this.connectionStringMap.Keys.ToList().ForEach(accountName =>
+                {
+                    replicaStorageTokenMap[accountName] = this.InteractiveLoginTokenCredential;
+                });
+                this.configurationService = new ReplicatedTableConfigurationServiceV2(this.configurationInfos,
+                    this.InteractiveLoginTokenCredential,
+                    replicaStorageTokenMap,
+                    useHttps,
+                    "core.windows.net");
+            }
+            else
+            {
+                this.configurationService = new ReplicatedTableConfigurationServiceV2(this.configurationInfos, this.connectionStringMap, useHttps);
+            }
 
             this.UploadRTableConfigToBlob(viewId, convertXStoreTableMode, numberOfBlobs);
 
@@ -807,13 +855,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
             for (int blobIndex = 0; blobIndex < numberOfBlobs; blobIndex++)
             {
                 string connectionString;
-                CloudBlobClient cloudBloblClient = this.GenerateCloudBlobClient(
+                BlobServiceClient cloudBloblClient = this.GenerateBlobServiceClient(
                                        this.rtableTestConfiguration.StorageInformation.AccountNames[blobIndex],
                                        this.rtableTestConfiguration.StorageInformation.AccountKeys[blobIndex],
                                        this.rtableTestConfiguration.StorageInformation.DomainName,
                                        out connectionString);
 
-                CloudBlobContainer container = cloudBloblClient.GetContainerReference(this.rtableTestConfiguration.RTableInformation.ContainerName);
+                BlobContainerClient container = cloudBloblClient.GetBlobContainerClient(this.rtableTestConfiguration.RTableInformation.ContainerName);
                 container.CreateIfNotExists();
             }
 

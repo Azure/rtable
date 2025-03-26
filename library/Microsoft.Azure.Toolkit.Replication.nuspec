@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package >
+  <metadata>
+    <id>Microsoft.Azure.Toolkit.Replication</id>
+    <version>1.0.8</version>
+    <title>Microsoft.Azure.Toolkit.Replication</title>
+    <authors>Microsoft</authors>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <license type="expression">MIT</license>
+    <!-- <icon>icon.png</icon> -->
+    <description>Internal rtable library for Networking-nfv consumption.</description>
+    <releaseNotes>MSI support</releaseNotes>
+    <copyright>Copyright 2015</copyright>
+  </metadata>
+</package>

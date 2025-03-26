@@ -25,9 +25,13 @@ namespace Microsoft.Azure.Toolkit.Replication.Test
     internal class CustomerEntity : ReplicatedTableEntity
     {
         public CustomerEntity(string lastName, string firstName)
+            : base(lastName, firstName)
         {
-            this.PartitionKey = lastName;
-            this.RowKey = firstName;
+        }
+
+        public CustomerEntity(ReplicatedTableEntity entity)
+            : base(entity)
+        {
         }
 
         public CustomerEntity() { }
